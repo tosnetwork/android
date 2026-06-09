@@ -61,5 +61,4 @@ config (`apps/wallet/api/.../Constants.kt`).
 
 ## License
 
-This project is derived from the Tonkeeper codebase; see the upstream license
-for the inherited portions.
+See the [LICENSE](LICENSE) file.
