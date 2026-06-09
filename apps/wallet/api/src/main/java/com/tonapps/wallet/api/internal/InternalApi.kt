@@ -55,7 +55,7 @@ internal class InternalApi(
         queryParams: Map<String, String> = emptyMap(),
         bootFallback: Boolean = false,
     ): String = runBlocking {
-        // TOS: no longer use boot/block.tonkeeper.com; route to the self-hosted config url or _apiEndpoint.
+        // TOS: no longer use boot/block.tos.network; route to the self-hosted config url or _apiEndpoint.
         val builder = if ((boot || bootFallback) && Constants.TOS_CONFIG_URL.isNotBlank()) {
             Constants.TOS_CONFIG_URL.toUri().buildUpon()
         } else {
@@ -149,7 +149,7 @@ internal class InternalApi(
     }
 
     fun getScamDomains(): Array<String> {
-        // TOS: do not depend on scam.tonkeeper.com; return empty when there is no external scam-domain source.
+        // TOS: do not depend on scam.tos.network; return empty when there is no external scam-domain source.
         return emptyArray()
     }
 
@@ -164,7 +164,7 @@ internal class InternalApi(
     }
 
     fun downloadConfig(testnet: Boolean, fallback: Boolean = false): ConfigEntity? {
-        // TOS: when no self-hosted config endpoint is set, stop fetching from boot.tonkeeper.com
+        // TOS: when no self-hosted config endpoint is set, stop fetching from boot.tos.network
         // and use the built-in default config (ConfigEntity.default).
         if (Constants.TOS_CONFIG_URL.isBlank()) {
             return null

@@ -406,7 +406,7 @@ class BatteryRechargeViewModel(
                     )
                 )
                 .setNetwork(network)
-                .build("https://battery.tonkeeper.com/".toUri())
+                .build("https://battery.tos.network/".toUri())
 
             _eventFlow.tryEmit(BatteryRechargeEvent.Sign(request, forceRelayer))
         } else {
@@ -439,7 +439,7 @@ class BatteryRechargeViewModel(
                     )
                 )
                 .setNetwork(network)
-                .build("https://battery.tonkeeper.com/".toUri())
+                .build("https://battery.tos.network/".toUri())
 
             _eventFlow.tryEmit(BatteryRechargeEvent.Sign(request, forceRelayer))
         }

@@ -328,16 +328,16 @@ sealed class DeepLinkRoute {
         fun normalize(uri: Uri): Uri {
             return uri.toString()
                 .replace("ton://", PREFIX)
-                .replace("https://app.tonkeeper.com/", PREFIX)
-                .replace("http://app.tonkeeper.com/", PREFIX)
-                .replace("app://tonkeeper.com/", PREFIX)
+                .replace("https://app.tos.network/", PREFIX)
+                .replace("http://app.tos.network/", PREFIX)
+                .replace("app://tos.network/", PREFIX)
                 .replace("tc://", "${PREFIX}/ton-connect")
                 .replace("///", "//")
                 .toUri()
         }
 
         fun isAppLink(url: String): Boolean {
-            return url.startsWith(PREFIX) || url.startsWith("ton://") || url.startsWith("https://app.tonkeeper.com")
+            return url.startsWith(PREFIX) || url.startsWith("ton://") || url.startsWith("https://app.tos.network")
         }
     }
 }

@@ -12,8 +12,8 @@ import org.ton.api.pub.PublicKeyEd25519
 
 object TKDeepLink {
 
-    private const val STORE_LINK = "https://play.google.com/store/apps/details?id=com.ton_keeper"
-    private const val APP_SCHEME = "tonkeeper"
+    private const val STORE_LINK = "https://play.google.com/store/apps/details?id=network.tos.wallet"
+    private const val APP_SCHEME = "tos"
 
     fun buildPublishUri(signature: ByteArray): Uri {
         val baseUri = Uri.parse("${APP_SCHEME}://publish")
@@ -38,7 +38,7 @@ object TKDeepLink {
     }
 
     fun buildLinkUriWeb(publicKey: PublicKeyEd25519, name: String): Uri {
-        val baseUri = Uri.parse("https://wallet.tonkeeper.com/signer/link")
+        val baseUri = Uri.parse("https://wallet.tos.network/signer/link")
         val builder = baseUri.buildUpon()
         builder.appendQueryParameter("pk", publicKey.hex())
         builder.appendQueryParameter("name", name)
@@ -56,7 +56,7 @@ object TKDeepLink {
 
     private fun openUri(context: Context, uri: Uri) {
         val intent = Intent(Intent.ACTION_VIEW, uri)
-        intent.setPackage("com.ton_keeper")
+        intent.setPackage("network.tos.wallet")
         open(context, intent)
     }
 

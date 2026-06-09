@@ -557,7 +557,7 @@ class RootActivity : BaseWalletActivity() {
             return
         }
         val uri = url.toUriOrNull() ?: return
-        if (uri.scheme == "tonkeeper" || uri.scheme == "ton" || uri.scheme == "tc" || uri.host == "app.tonkeeper.com") {
+        if (uri.scheme == "tos" || uri.scheme == "ton" || uri.scheme == "tc" || uri.host == "app.tos.network") {
             processDeepLink(uri, true, null)
         } else {
             runOnUiThread {

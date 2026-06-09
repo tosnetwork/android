@@ -81,7 +81,7 @@ class TokenRepository(
         return tokens.firstOrNull { it.isTon }
     }
 
-    suspend fun getTonBalance(
+    suspend fun getTosBalance(
         currency: WalletCurrency,
         accountId: String,
         testnet: Boolean

@@ -20,7 +20,7 @@
         android:required="false" />
 
     <queries>
-        <provider android:authorities="tonkeeper" />
+        <provider android:authorities="tos" />
     </queries>
 
     <uses-permission android:name="android.permission.CAMERA" />

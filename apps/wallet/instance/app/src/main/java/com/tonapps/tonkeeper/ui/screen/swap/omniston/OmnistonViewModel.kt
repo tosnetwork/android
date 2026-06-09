@@ -663,7 +663,7 @@ class OmnistonViewModel(
         params = true
     )
 
-    private suspend fun getTonBalance() = tokenRepository.getTonBalance(settingsRepository.currency, wallet.accountId, wallet.testnet)
+    private suspend fun getTosBalance() = tokenRepository.getTosBalance(settingsRepository.currency, wallet.accountId, wallet.testnet)
 
     private suspend fun transfers(
         request: SignRequestEntity,
@@ -680,7 +680,7 @@ class OmnistonViewModel(
             batteryEnabled = batteryEnabled,
             compressedTokens = emptyList(),
             excessesAddress = excessesAddress,
-            tonBalance = getTonBalance()
+            tonBalance = getTosBalance()
         )
     }
 

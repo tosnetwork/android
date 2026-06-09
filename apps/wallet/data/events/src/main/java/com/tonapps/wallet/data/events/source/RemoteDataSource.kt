@@ -42,7 +42,7 @@ internal class RemoteDataSource(
         afterTimestamp: Timestamp?,
         limit: Int,
     ): List<TxEvent> {
-        val events = api.fetchTonEvents(
+        val events = api.fetchTosEvents(
             accountId =  address.value,
             testnet = address.testnet,
             beforeTimestamp = beforeTimestamp,

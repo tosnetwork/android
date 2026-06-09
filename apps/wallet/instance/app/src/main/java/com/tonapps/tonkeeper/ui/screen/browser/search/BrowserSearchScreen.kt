@@ -136,7 +136,7 @@ class BrowserSearchScreen(wallet: WalletEntity): WalletContextScreen(R.layout.fr
             DeepLinkRoute.normalize(it)
         } ?: viewModel.createSearchUrl(query)
 
-        if (uri.scheme == "tonkeeper") {
+        if (uri.scheme == "tos") {
             rootViewMode.processDeepLink(uri, false, Uri.EMPTY, false, requireContext().packageName)
         } else {
             lifecycleScope.launch {

@@ -63,7 +63,7 @@ class BrowserSearchViewModel(
         val isSafeModeEnabled = settingsRepository.isSafeModeEnabled(api)
 
         var uri = uri(query)?.let { DeepLinkRoute.normalize(it) }
-        if (uri?.scheme == "tonkeeper") {
+        if (uri?.scheme == "tos") {
             val deeplink = uri.toString()
             uri = if (deeplink.startsWith("tonkeeper://dapp/")) {
                 var dappUrl = deeplink.replace("tonkeeper://dapp/", "")

@@ -444,7 +444,7 @@ class TonConnectManager(
 
         private const val TONCONNECT_PREFIX = "tonkeeper://ton-connect"
 
-        private val othersPrefix = listOf("tc://", "https://app.tonkeeper.com/ton-connect")
+        private val othersPrefix = listOf("tc://", "https://app.tos.network/ton-connect")
 
         fun isTonConnectDeepLink(
             uri: Uri

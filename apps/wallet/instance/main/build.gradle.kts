@@ -19,7 +19,7 @@ android {
     compileSdk = Build.compileSdkVersion
 
     defaultConfig {
-        applicationId = "com.ton_keeper"
+        applicationId = "network.tos.wallet"
         minSdk = Build.minSdkVersion
         targetSdk = Build.compileSdkVersion
         versionCode = 600

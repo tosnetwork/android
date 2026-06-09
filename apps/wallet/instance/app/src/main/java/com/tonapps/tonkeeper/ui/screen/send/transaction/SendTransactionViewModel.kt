@@ -315,7 +315,7 @@ class SendTransactionViewModel(
 
         val source = if (request.appUri.host == "signRaw") {
             "transfer-url"
-        } else if (request.appUri.scheme == "tonkeeper") {
+        } else if (request.appUri.scheme == "tos") {
             "local"
         } else {
             request.appUri.host ?: "unknown"
@@ -355,7 +355,7 @@ class SendTransactionViewModel(
         return emulationReadyDate.get() - System.currentTimeMillis()
     }
 
-    // private suspend fun getTonBalance() = tokenRepository.getTonBalance(settingsRepository.currency, wallet.accountId, wallet.testnet)
+    // private suspend fun getTosBalance() = tokenRepository.getTosBalance(settingsRepository.currency, wallet.accountId, wallet.testnet)
 
     private suspend fun transfers(
         compressedTokens: List<AccountTokenEntity>,

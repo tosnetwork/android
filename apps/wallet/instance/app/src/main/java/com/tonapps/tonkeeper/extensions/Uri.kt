@@ -25,7 +25,7 @@ fun Uri.isTonSite(): Boolean {
     return this.host?.endsWith(".ton") ?: false
 }
 
-fun Uri.withUtmSource(source: String = "tonkeeper"): Uri {
+fun Uri.withUtmSource(source: String = "tos"): Uri {
     if (containsQuery("utm_source")) {
         return this
     }

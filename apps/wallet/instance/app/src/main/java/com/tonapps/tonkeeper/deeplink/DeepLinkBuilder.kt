@@ -5,7 +5,7 @@ import com.tonapps.extensions.toUriOrNull
 
 object DeepLinkBuilder {
 
-    private const val prefix = "https://app.tonkeeper.com/"
+    private const val prefix = "https://app.tos.network/"
 
     private val dAppIsSpecialHosts = arrayOf(
         "tonviewer.com", "tronscan.org",

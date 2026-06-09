@@ -47,7 +47,7 @@ class SignerAddScreen: QRCameraScreen(R.layout.fragment_signer_add), BaseFragmen
         val aboutView = view.findViewById<View>(R.id.about)
         aboutView.backgroundTintList = constantWhiteColor
         aboutView.setOnClickListener {
-            BrowserHelper.open(requireActivity(), "https://tonkeeper.com/signer")
+            BrowserHelper.open(requireActivity(), "https://tos.network/signer")
         }
 
         cameraView = view.findViewById(R.id.camera)

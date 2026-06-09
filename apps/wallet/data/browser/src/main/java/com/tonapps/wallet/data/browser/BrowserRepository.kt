@@ -41,7 +41,7 @@ class BrowserRepository(context: Context, api: API) {
     }
 
     suspend fun isTrustedApp(country: String, testnet: Boolean, locale: Locale, deeplink: Uri): Boolean {
-        if (deeplink.host == "dapp.aeon.xyz" || deeplink.host == "tonkeeper.com" || deeplink.host?.endsWith(".tonkeeper.com") == true) {
+        if (deeplink.host == "dapp.aeon.xyz" || deeplink.host == "tos.network" || deeplink.host?.endsWith(".tos.network") == true) {
             return true
         }
         val host = deeplink.host ?: return false

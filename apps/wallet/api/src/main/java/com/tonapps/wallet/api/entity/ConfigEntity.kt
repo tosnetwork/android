@@ -151,7 +151,7 @@ data class ConfigEntity(
     // TOS (Phase 0): the default config points entirely at TOS-owned infrastructure (see Constants).
     // Endpoints for Tonkeeper-only external services (battery/swap/tron/scam/analytics/stories, etc.)
     // are left empty; together with FlagsEntity disabled by default, the app no longer calls
-    // tonkeeper.com / tonapi.io, etc.
+    // tos.network / tonapi.io, etc.
     constructor() : this(
         empty = true,
         supportLink = Constants.TOS_SUPPORT_URL,

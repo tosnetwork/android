@@ -468,7 +468,7 @@ internal class TxActionMapper(
     private fun depositStake(address: BlockchainAddress, action: DepositStakeAction): TxActionBody {
         val implementation = StakingPool.implementation(action.implementation)
         // TODO fix after full move KMM
-        val iconUrl = "android.resource://com.ton_keeper/${StakingPool.getIcon(implementation)}"
+        val iconUrl = "android.resource://network.tos.wallet/${StakingPool.getIcon(implementation)}"
         val amount = Coins.of(action.amount)
         val builder = TxActionBody.Builder(ActionType.DepositStake)
         builder.setRecipient(account(action.pool, address.testnet))

@@ -19,7 +19,7 @@ internal class RemoteDataSource(
         accountId: String,
         testnet: Boolean
     ): BalanceEntity? = withContext(Dispatchers.IO) {
-        api.getTonBalance(accountId, testnet, currency.code)
+        api.getTosBalance(accountId, testnet, currency.code)
     }
 
     suspend fun loadJettons(

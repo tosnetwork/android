@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Signer</string>
-    <string name="web_wallet_host" translatable="false">wallet.tonkeeper.com</string>
+    <string name="web_wallet_host" translatable="false">wallet.tos.network</string>
     <string name="intro_subtitle">The storage place for your keys to sign transactions in Tonkeeper.</string>
     <string name="new_key">Create New Key</string>
     <string name="import_key">Import Existing Key</string>

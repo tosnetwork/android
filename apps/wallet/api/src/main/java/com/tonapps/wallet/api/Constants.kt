@@ -4,7 +4,7 @@ package com.tonapps.wallet.api
  * Centralized TOS endpoint configuration (Phase 0).
  *
  * This file is the single place to change external endpoints when adapting to the ~/tos project.
- * Goal: remove the hard dependency on external services (tonkeeper.com / tonapi.io) and point
+ * Goal: remove the hard dependency on external services (tos.network / tonapi.io) and point
  * every default endpoint at TOS-owned infrastructure.
  *
  * Note: the values below are placeholders — replace them with your deployed TOS endpoints.
@@ -35,7 +35,7 @@ internal object Constants {
 
     // --- Self-hosted app config (optional) ---
     // Empty means "use the built-in default config only", with no remote fetch
-    // (no dependency on boot.tonkeeper.com). If you deploy an equivalent /keys config
+    // (no dependency on boot.tos.network). If you deploy an equivalent /keys config
     // endpoint for TOS, set its base url here to enable remote config.
     const val TOS_CONFIG_URL = ""
 

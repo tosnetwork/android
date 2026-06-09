@@ -336,7 +336,7 @@ class API(
         )
     }
 
-    fun fetchTonEvents(
+    fun fetchTosEvents(
         accountId: String,
         testnet: Boolean,
         beforeLt: Long? = null,
@@ -426,7 +426,7 @@ class API(
         )
     }
 
-    fun getTonBalance(
+    fun getTosBalance(
         accountId: String,
         testnet: Boolean,
         currency: String,
@@ -666,15 +666,9 @@ class API(
     }
 
     fun tonconnectPayload(): String? {
-        try {
-            val url = "${config.tosApiMainnetHost}/v2/tonconnect/payload"
-            val json = withRetry {
-                JSONObject(tonAPIHttpClient.get(url))
-            } ?: return null
-            return json.getString("payload")
-        } catch (e: Throwable) {
-            return null
-        }
+        // TOS: the node does not serve the tonapi /v2/tonconnect/payload endpoint.
+        // No remote payload is available; return null instead of firing a doomed request.
+        return null
     }
 
     suspend fun batteryVerifyPurchasePromo(testnet: Boolean, code: String): Boolean =
@@ -688,16 +682,10 @@ class API(
         }
 
     fun tonconnectProof(address: String, proof: String): String {
-        val url = "${config.tosApiMainnetHost}/v2/wallet/auth/proof"
-        val data = "{\"address\":\"$address\",\"proof\":$proof}"
-        val response = withRetry {
-            tonAPIHttpClient.postJSON(url, data)
-        } ?: throw Exception("Empty response")
-        if (!response.isSuccessful) {
-            throw Exception("Failed creating proof: ${response.code}")
-        }
-        val body = response.body?.string() ?: throw Exception("Empty response")
-        return JSONObject(body).getString("token")
+        // TOS: the node does not serve the tonapi /v2/wallet/auth/proof endpoint
+        // (only consumed by the disabled battery/push features). Return an empty
+        // token instead of firing a doomed request.
+        return ""
     }
 
     fun tonconnectSend(
@@ -880,25 +868,8 @@ class API(
         if (accounts.isEmpty()) {
             return true
         }
-        val url = "${config.tosApiMainnetHost}/v1/internal/pushes/plain/subscribe"
-
-        val accountsArray = JSONArray()
-        for (account in accounts) {
-            val jsonAccount = JSONObject()
-            jsonAccount.put("address", account)
-            accountsArray.put(jsonAccount)
-        }
-
-        val json = JSONObject()
-        json.put("locale", locale.toString())
-        json.put("device", deviceId)
-        json.put("token", firebaseToken)
-        json.put("accounts", accountsArray)
-
-        return withRetry {
-            val response = tonAPIHttpClient.postJSON(url, json.toString())
-            response.isSuccessful
-        } ?: false
+        // TOS: the node does not serve the tonapi push-subscribe endpoint; no-op.
+        return false
     }
 
     fun pushUnsubscribe(
@@ -909,23 +880,8 @@ class API(
             return true
         }
 
-        val url = "${config.tosApiMainnetHost}/v1/internal/pushes/plain/unsubscribe"
-
-        val accountsArray = JSONArray()
-        for (account in accounts) {
-            val jsonAccount = JSONObject()
-            jsonAccount.put("address", account)
-            accountsArray.put(jsonAccount)
-        }
-
-        val json = JSONObject()
-        json.put("device", deviceId)
-        json.put("accounts", accountsArray)
-
-        return withRetry {
-            val response = tonAPIHttpClient.postJSON(url, json.toString())
-            response.isSuccessful
-        } ?: false
+        // TOS: the node does not serve the tonapi push-unsubscribe endpoint; no-op.
+        return false
     }
 
     fun getStories(id: String) = internalApi.getStories(id)
@@ -939,27 +895,8 @@ class API(
         commercial: Boolean,
         silent: Boolean
     ): Boolean {
-        val url = "${config.tosApiMainnetHost}/v1/internal/pushes/tonconnect"
-
-        val json = JSONObject()
-        json.put("app_url", appUrl)
-        json.put("account", accountId)
-        json.put("firebase_token", firebaseToken)
-        sessionId?.let { json.put("session_id", it) }
-        json.put("commercial", commercial)
-        json.put("silent", !silent)
-        val data = json.toString().replace("\\/", "/").trim()
-
-        val headers = ArrayMap<String, String>().apply {
-            set("X-TonConnect-Auth", token)
-            set("Connection", "close")
-        }
-
-        val response = withRetry {
-            tonAPIHttpClient.postJSON(url, data, headers)
-        }
-
-        return response?.isSuccessful ?: false
+        // TOS: the node does not serve the tonapi tonconnect-push endpoint; no-op.
+        return false
     }
 
     fun pushTonconnectUnsubscribe(
@@ -968,39 +905,16 @@ class API(
         accountId: String,
         firebaseToken: String,
     ): Boolean {
-        return try {
-            val uriBuilder =
-                Uri.parse("${config.tosApiMainnetHost}/v1/internal/pushes/tonconnect").buildUpon()
-            uriBuilder.appendQueryParameter("firebase_token", firebaseToken)
-            uriBuilder.appendQueryParameter("app_url", appUrl)
-            uriBuilder.appendQueryParameter("account", accountId)
-
-            val builder = requestBuilder(uriBuilder.build().toString())
-            builder.delete()
-            builder.addHeader("X-TonConnect-Auth", token)
-            builder.addHeader("Connection", "close")
-            tonAPIHttpClient.execute(builder.build()).isSuccessful
-        } catch (e: Throwable) {
-            false
-        }
+        // TOS: the node does not serve the tonapi tonconnect-push endpoint; no-op.
+        return false
     }
 
     fun getPushFromApps(
         token: String,
         accountId: String,
     ): JSONArray {
-        return try {
-            val url = "${config.tosApiMainnetHost}/v1/messages/history?account=$accountId"
-            val response = withRetry {
-                tonAPIHttpClient.get(url, ArrayMap<String, String>().apply {
-                    set("X-TonConnect-Auth", token)
-                })
-            } ?: throw Exception("Empty response")
-            val json = JSONObject(response)
-            json.getJSONArray("items")
-        } catch (e: Throwable) {
-            JSONArray()
-        }
+        // TOS: the node does not serve the tonapi /v1/messages/history endpoint; no-op.
+        return JSONArray()
     }
 
     fun getBrowserApps(testnet: Boolean, locale: Locale): JSONObject {
@@ -1029,16 +943,8 @@ class API(
         startDate: Long,
         endDate: Long
     ): List<ChartEntity> {
-        try {
-            val url =
-                "${config.tosApiMainnetHost}/v2/rates/chart?token=$token&currency=$currency&start_date=$startDate&end_date=$endDate"
-            val array = JSONObject(tonAPIHttpClient.get(url)).getJSONArray("points")
-            return (0 until array.length()).map { index ->
-                ChartEntity(array.getJSONArray(index))
-            }.asReversed()
-        } catch (e: Throwable) {
-            return listOf(ChartEntity(0, 0f))
-        }
+        // TOS: the node does not serve the tonapi /v2/rates/chart endpoint; no chart data.
+        return listOf(ChartEntity(0, 0f))
     }
 
     fun getServerTime(testnet: Boolean): Int {

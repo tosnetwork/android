@@ -81,7 +81,7 @@ abstract class InjectedTonConnectScreen(@LayoutRes layoutId: Int, wallet: Wallet
         val refererUri = request.requestHeaders?.get("Referer")?.toUri()
         val url = DeepLink.fixBadUri(request.url).normalizeTONSites()
         val scheme = url.scheme ?: ""
-        if (scheme == "https" && url.host != "app.tonkeeper.com") {
+        if (scheme == "https" && url.host != "app.tos.network") {
             return false
         }
         val deeplink = DeepLink(url, false, refererUri)
