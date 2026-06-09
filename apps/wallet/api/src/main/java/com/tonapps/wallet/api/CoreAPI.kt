@@ -52,7 +52,7 @@ abstract class CoreAPI(private val context: Context) {
         return createTonAPIHttpClient(
             context = context,
             userAgent = userAgent,
-            tonApiV2Key = { config().tonApiV2Key },
+            tosApiKey = { config().tosApiKey },
             allowDomains = { config().domains },
             cronetEngine = { cronetEngine }
         )
@@ -101,14 +101,14 @@ abstract class CoreAPI(private val context: Context) {
             userAgent: String,
             context: Context,
             cronetEngine: () -> CronetEngine?,
-            tonApiV2Key: () -> String,
+            tosApiKey: () -> String,
             allowDomains: () -> List<String>
         ): OkHttpClient {
             val interceptors = listOf(
                 UserAgentInterceptor(userAgent),
                 AcceptLanguageInterceptor(context.locale),
                 AuthorizationInterceptor.bearer(
-                    token = tonApiV2Key,
+                    token = tosApiKey,
                     allowDomains = allowDomains
                 )
             )

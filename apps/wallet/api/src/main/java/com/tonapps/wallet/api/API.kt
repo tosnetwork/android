@@ -101,9 +101,9 @@ class API(
         TosSource(
             httpClient = tonAPIHttpClient,
             baseUrlProvider = { testnet ->
-                if (testnet) config.tonapiTestnetHost else config.tonapiMainnetHost
+                if (testnet) config.tosApiTestnetHost else config.tosApiMainnetHost
             },
-            apiKeyProvider = { config.tonApiV2Key.takeIf { it.isNotBlank() } },
+            apiKeyProvider = { config.tosApiKey.takeIf { it.isNotBlank() } },
         )
     }
 
@@ -127,7 +127,7 @@ class API(
         }
         val host = uri.host ?: throw Exception("Invalid URL")
         // TOS: only allow the configured TOS API host; no hardcoded tonapi.io.
-        val allowedHost = config.tonapiMainnetHost.toUriOrNull()?.host
+        val allowedHost = config.tosApiMainnetHost.toUriOrNull()?.host
         if (allowedHost != null && host != allowedHost) {
             throw Exception("Invalid host. Should be $allowedHost")
         }
@@ -150,7 +150,7 @@ class API(
                 builder.addHeader(key, value)
             }
         }
-        builder.addHeader("Authorization", "Bearer ${config.tonApiV2Key}")
+        builder.addHeader("Authorization", "Bearer ${config.tosApiKey}")
 
         if (methodOptions.equals("POST", ignoreCase = true)) {
             builder.post(bodyOptions.toRequestBody(contentTypeOptions.toMediaType()))
@@ -160,7 +160,7 @@ class API(
     }
 
     private val provider: Provider by lazy {
-        Provider(config.tonapiMainnetHost, config.tonapiTestnetHost, tonAPIHttpClient)
+        Provider(config.tosApiMainnetHost, config.tosApiTestnetHost, tonAPIHttpClient)
     }
 
     private val batteryProvider: BatteryProvider by lazy {
@@ -258,8 +258,8 @@ class API(
         config: ConfigEntity,
         onFailure: ((Throwable) -> Unit)?
     ): Flow<SSEvent> {
-        val endpoint = if (testnet) config.tonapiSSETestnetEndpoint else config.tonapiSSEEndpoint
-        val url = "$endpoint/sse/traces?account=$accountId&token=${config.tonApiV2Key}"
+        val endpoint = if (testnet) config.tosSSETestnetEndpoint else config.tosSSEEndpoint
+        val url = "$endpoint/sse/traces?account=$accountId&token=${config.tosApiKey}"
         return seeHttpClient.sse(url, onFailure = onFailure)
     }
 
@@ -667,7 +667,7 @@ class API(
 
     fun tonconnectPayload(): String? {
         try {
-            val url = "${config.tonapiMainnetHost}/v2/tonconnect/payload"
+            val url = "${config.tosApiMainnetHost}/v2/tonconnect/payload"
             val json = withRetry {
                 JSONObject(tonAPIHttpClient.get(url))
             } ?: return null
@@ -688,7 +688,7 @@ class API(
         }
 
     fun tonconnectProof(address: String, proof: String): String {
-        val url = "${config.tonapiMainnetHost}/v2/wallet/auth/proof"
+        val url = "${config.tosApiMainnetHost}/v2/wallet/auth/proof"
         val data = "{\"address\":\"$address\",\"proof\":$proof}"
         val response = withRetry {
             tonAPIHttpClient.postJSON(url, data)
@@ -880,7 +880,7 @@ class API(
         if (accounts.isEmpty()) {
             return true
         }
-        val url = "${config.tonapiMainnetHost}/v1/internal/pushes/plain/subscribe"
+        val url = "${config.tosApiMainnetHost}/v1/internal/pushes/plain/subscribe"
 
         val accountsArray = JSONArray()
         for (account in accounts) {
@@ -909,7 +909,7 @@ class API(
             return true
         }
 
-        val url = "${config.tonapiMainnetHost}/v1/internal/pushes/plain/unsubscribe"
+        val url = "${config.tosApiMainnetHost}/v1/internal/pushes/plain/unsubscribe"
 
         val accountsArray = JSONArray()
         for (account in accounts) {
@@ -939,7 +939,7 @@ class API(
         commercial: Boolean,
         silent: Boolean
     ): Boolean {
-        val url = "${config.tonapiMainnetHost}/v1/internal/pushes/tonconnect"
+        val url = "${config.tosApiMainnetHost}/v1/internal/pushes/tonconnect"
 
         val json = JSONObject()
         json.put("app_url", appUrl)
@@ -970,7 +970,7 @@ class API(
     ): Boolean {
         return try {
             val uriBuilder =
-                Uri.parse("${config.tonapiMainnetHost}/v1/internal/pushes/tonconnect").buildUpon()
+                Uri.parse("${config.tosApiMainnetHost}/v1/internal/pushes/tonconnect").buildUpon()
             uriBuilder.appendQueryParameter("firebase_token", firebaseToken)
             uriBuilder.appendQueryParameter("app_url", appUrl)
             uriBuilder.appendQueryParameter("account", accountId)
@@ -990,7 +990,7 @@ class API(
         accountId: String,
     ): JSONArray {
         return try {
-            val url = "${config.tonapiMainnetHost}/v1/messages/history?account=$accountId"
+            val url = "${config.tosApiMainnetHost}/v1/messages/history?account=$accountId"
             val response = withRetry {
                 tonAPIHttpClient.get(url, ArrayMap<String, String>().apply {
                     set("X-TonConnect-Auth", token)
@@ -1031,7 +1031,7 @@ class API(
     ): List<ChartEntity> {
         try {
             val url =
-                "${config.tonapiMainnetHost}/v2/rates/chart?token=$token&currency=$currency&start_date=$startDate&end_date=$endDate"
+                "${config.tosApiMainnetHost}/v2/rates/chart?token=$token&currency=$currency&start_date=$startDate&end_date=$endDate"
             val array = JSONObject(tonAPIHttpClient.get(url)).getJSONArray("points")
             return (0 until array.length()).map { index ->
                 ChartEntity(array.getJSONArray(index))

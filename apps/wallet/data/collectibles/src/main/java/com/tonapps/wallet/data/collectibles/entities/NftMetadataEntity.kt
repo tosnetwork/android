@@ -37,11 +37,11 @@ data class NftMetadataEntity(
     val isNotRender: Boolean
         get() = strings["render_type"] == "hidden"
 
+    // TOS: load the lottie source directly instead of proxying it through an
+    // external (c.tonapi.io) service, so no NFT URL is leaked to a third party.
     @IgnoredOnParcel
     val lottie: String? by lazy {
-        val originalUrl = strings["lottie"] ?: return@lazy null
-        val encoded = Base64.encodeToString(originalUrl.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING).trim()
-        "https://c.tonapi.io/json?url=$encoded"
+        strings["lottie"]
     }
 
     constructor(map: Map<String, JsonAny>) : this(

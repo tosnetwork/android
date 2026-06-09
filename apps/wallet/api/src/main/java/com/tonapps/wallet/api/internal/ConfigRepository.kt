@@ -27,7 +27,7 @@ internal class ConfigRepository(
         private set (value) {
             field = value
             _stream.value = value.copy()
-            internalApi.setApiUrl(value.tonkeeperApiUrl)
+            internalApi.setApiUrl(value.tosApiUrl)
         }
 
     init {
