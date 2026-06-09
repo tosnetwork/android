@@ -2,8 +2,7 @@
 
 A native Android wallet for the **TOS blockchain** (The Open System).
 
-TOS Wallet is adapted from the open-source Tonkeeper codebase and re-wired so
-that it talks **only to a TOS node**. There is no dependency on any external
+TOS Wallet talks **only to a TOS node**. There is no dependency on any external
 indexer or third-party API service — the wallet speaks JSON-RPC directly to a
 TOS node, and the node itself serves the data the wallet needs (balances,
 transactions, and jetton/NFT enumeration via an in-process index).
