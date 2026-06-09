@@ -9,8 +9,8 @@ transactions, and jetton/NFT enumeration via an in-process index).
 
 ## Why
 
-The broader ecosystem of TON-style chains relies on fragmented, centralized
-indexer APIs. TOS Wallet removes that dependency: anyone running a TOS node can
+Many blockchain wallets rely on fragmented, centralized indexer APIs. TOS
+Wallet removes that dependency: anyone running a TOS node can
 back the wallet with their own infrastructure, and the wallet works against a
 single, self-hosted endpoint.
 
