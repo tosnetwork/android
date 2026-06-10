@@ -59,7 +59,7 @@ data class KeystoneSignArgs(
         } else {
             CryptoKeypath(pathList, sourceFingerprint)
         }
-        val request = TonSignRequest(requestId.toByteArray(), hex(unsignedBody), if (isTransaction) 1 else 2, path, address, "Tonkeeper")
+        val request = TonSignRequest(requestId.toByteArray(), hex(unsignedBody), if (isTransaction) 1 else 2, path, address, "TOS Wallet")
         request.toUR()
     }
 

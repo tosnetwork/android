@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name" translatable="false">Signer</string>
     <string name="web_wallet_host" translatable="false">wallet.tos.network</string>
-    <string name="intro_subtitle">The storage place for your keys to sign transactions in Tonkeeper.</string>
+    <string name="intro_subtitle">The storage place for your keys to sign transactions in TOS Wallet.</string>
     <string name="new_key">Create New Key</string>
     <string name="import_key">Import Existing Key</string>
     <string name="create_password">Create Password</string>
@@ -34,9 +34,9 @@
     <string name="wrong_url">Invalid URL</string>
 
     <string name="key_export_qr_title">Link to another device</string>
-    <string name="key_export_qr_subtitle">Open Tonkeeper » Import Existing Wallet » Pair with Signer</string>
-    <string name="key_export_tonkeeper">Link to Tonkeeper</string>
-    <string name="key_export_tonkeeper_web">Link to Tonkeeper Web</string>
+    <string name="key_export_qr_subtitle">Open TOS Wallet » Import Existing Wallet » Pair with Signer</string>
+    <string name="key_export_tonkeeper">Link to TOS Wallet</string>
+    <string name="key_export_tonkeeper_web">Link to TOS Wallet Web</string>
     <string name="open_settings">Open Settings</string>
     <string name="unknown_error">Unknown error</string>
     <string name="camera_permission">Enable access to your camera in order to can scan QR codes</string>
@@ -60,8 +60,8 @@
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string name="scan_qr_code">Scan QR code</string>
-    <string name="scan_qr_code_subtitle">From Tonkeeper on the action confirmation page</string>
-    <string name="qr_sign_title">Scan the QR code with Tonkeeper</string>
+    <string name="scan_qr_code_subtitle">From TOS Wallet on the action confirmation page</string>
+    <string name="qr_sign_title">Scan the QR code with TOS Wallet</string>
     <string name="qr_sign_subtitle">After scanning, the transaction will be sent to the network.</string>
     <string name="recovery_phrase">Recovery Phrase</string>
     <string name="signed_transaction">Signed Transaction</string>

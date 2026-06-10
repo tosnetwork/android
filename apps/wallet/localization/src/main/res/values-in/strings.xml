@@ -3,7 +3,7 @@
     <string name="add_contact">Tambahkan ke Buku Alamat</string>
     <string name="add_to_home_screen">Tambahkan ke Layar Beranda</string>
     <string name="remind_me_later">Ingatkan aku nanti</string>
-    <string name="multi_account_secret_wrong">Silakan gunakan Tonkeeper Desktop untuk Akun Multi-Dompet</string>
+    <string name="multi_account_secret_wrong">Silakan gunakan TOS Wallet Desktop untuk Akun Multi-Dompet</string>
     <string name="total">Jumlah: %1$s</string>
     <string name="staking_ready_withdraw">%1$s sudah siap. Ketuk kumpulkan bersama.</string>
     <string name="staking_pending_deposit">%1$s akan disimpan di %2$s</string>
@@ -33,7 +33,7 @@
     <string name="setup_finish_biometry">Gunakan biometrik untuk menyetujui transaksi</string>
     <string name="setup_finish_backup">Cadangkan frasa pemulihan Anda</string>
     <string name="setup_finish_backup_subtitle">Tanpanya, Anda tidak dapat memulihkan dompet Anda</string>
-    <string name="setup_finish_telegram">Bergabung dengan saluran Tonkeeper</string>
+    <string name="setup_finish_telegram">Bergabung dengan saluran TOS Wallet</string>
     <string name="setup_onboarding">Pelajari cara menggunakan dompet Anda</string>
     <string name="contacts">Kontak</string>
     <string name="step_1">Langkah 1</string>
@@ -54,7 +54,7 @@
     <string name="unverified_token_reason_2">Token tidak terdaftar di platform perdagangan dan memiliki permintaan terbatas.</string>
     <string name="unverified_token_reason_3">Digunakan untuk spam. Digunakan untuk mengirim pesan yang tidak diinginkan dan sering kali tidak relevan dalam jumlah besar.</string>
     <string name="unverified_token_reason_4">Digunakan untuk penipuan. Nama atau gambar token dapat menyesatkan pengguna.</string>
-    <string name="w5_story_description_1">Kirim USDT tanpa memiliki TON – biaya transaksi akan ditanggung oleh beberapa sen USDT secara otomatis.</string>
+    <string name="w5_story_description_1">Kirim USDT tanpa memiliki TOS – biaya transaksi akan ditanggung oleh beberapa sen USDT secara otomatis.</string>
     <string name="w5_story_description_3">W5 meningkatkan jumlah operasi simultan dari 4 menjadi 255, yang dapat menghemat biaya.</string>
     <string name="w5_story_description_4">Akun lama dan W5 menggunakan frasa pemulihan yang sama – saat memulihkan akun di perangkat baru, baik yang lama maupun yang baru akan muncul secara otomatis.</string>
     <string name="w5_usdt_title">Transfer Tanpa Gas</string>
@@ -65,16 +65,16 @@
     <string name="other">Lainnya</string>
     <string name="minimum_amount">Minimal %1$s</string>
     <string name="stake_ethena_disclaimer">Ini adalah estimasi pengembalian tahunan berdasarkan imbalan protokol rata-rata minggu lalu dan jumlah rata-rata USDe yang dipertaruhkan. Pengembalian tersebut dihitung per tahun dengan peracikan mingguan. <annotation colorAttr="textSecondaryColor">Kinerja masa lalu tidak menjamin hasil di masa mendatang.</annotation> Staking dan imbalan disediakan oleh Ethena, layanan pihak ketiga, dan tunduk pada <annotation colorAttr="textAccentColor">persyaratan</annotation> mereka.</string>
-    <string name="stake_tonstakers_description">Saat Anda mempertaruhkan TON di pool Tonstakers, Anda menerima token yang disebut tsTON yang mewakili bagian Anda di pool tersebut. Saat pool tersebut mengumpulkan keuntungan, tsTON Anda mewakili jumlah TON yang lebih besar.</string>
+    <string name="stake_tonstakers_description">Saat Anda mempertaruhkan TOS di pool Tonstakers, Anda menerima token yang disebut tsTON yang mewakili bagian Anda di pool tersebut. Saat pool tersebut mengumpulkan keuntungan, tsTON Anda mewakili jumlah TOS yang lebih besar.</string>
     <string name="edit">Edit</string>
     <string name="pinned">Disematkan</string>
     <string name="all_assets">Semua Aset</string>
-    <string name="all_ton_assets">Semua Aset TON</string>
+    <string name="all_ton_assets">Semua Aset TOS</string>
     <string name="sorted_by_price">Diurutkan berdasarkan Harga</string>
     <string name="staking_minimum_deposit">Setoran minimum %1$s.</string>
     <string name="staking_options">Opsi</string>
     <string name="staking_minimal_deposit">Deposit minimal</string>
-    <string name="staking_details_description">Staking didasarkan pada kontrak pintar oleh pihak ketiga. Tonkeeper tidak bertanggung jawab atas pengalaman staking.</string>
+    <string name="staking_details_description">Staking didasarkan pada kontrak pintar oleh pihak ketiga. TOS Wallet tidak bertanggung jawab atas pengalaman staking.</string>
     <string name="staking_links">Tautan</string>
     <string name="links">Tautan</string>
     <string name="staking_choose">Pilih</string>
@@ -91,8 +91,8 @@
     <string name="manual_start_button">Cadangkan Secara Manual</string>
     <string name="backup_attention_title">Perhatian</string>
     <string name="backup_attention_description">Harap baca dengan cermat sebelum melihat frasa pemulihan Anda.</string>
-    <string name="backup_attention_line_1">Jangan pernah memasukkan frasa pemulihan Anda di tempat lain selain Tonkeeper untuk mengakses dompet Anda.</string>
-    <string name="backup_attention_line_2">Tonkeeper Support tidak pernah meminta frasa pemulihan.</string>
+    <string name="backup_attention_line_1">Jangan pernah memasukkan frasa pemulihan Anda di tempat lain selain TOS Wallet untuk mengakses dompet Anda.</string>
+    <string name="backup_attention_line_2">TOS Wallet Support tidak pernah meminta frasa pemulihan.</string>
     <string name="backup_attention_line_3">Setiap orang dengan frasa pemulihan Anda dapat mengakses dompet Anda.</string>
     <string name="manual_backup_check">Periksa Cadangan</string>
     <string name="backup_check">Pemeriksaan Cadangan</string>
@@ -106,10 +106,10 @@
     <string name="apps">Aplikasi</string>
     <string name="apps_notifications_description">Notifikasi dari aplikasi yang terhubung dalam aktivitas Anda</string>
     <string name="push_notifications">Notifikasi dorong</string>
-    <string name="push_notifications_description">Dapatkan notifikasi saat Anda menerima TON, token, dan NFT. Notifikasi dari aplikasi yang terhubung.</string>
+    <string name="push_notifications_description">Dapatkan notifikasi saat Anda menerima TOS, token, dan NFT. Notifikasi dari aplikasi yang terhubung.</string>
     <string name="failed">Gagal</string>
     <string name="remove_dapp_confirm">Hapus %1$s?</string>
-    <string name="rate_tonkeeper">Beri nilai Tonkeeper</string>
+    <string name="rate_tonkeeper">Beri nilai TOS Wallet</string>
     <string name="encrypted_comment">Komentar terenkripsi</string>
     <string name="encrypted_comment_description">Komentar ini dienkripsi oleh pengirim dan hanya dapat didekripsi oleh Anda. Harap berhati-hati dengan konten dan waspada terhadap penipuan.</string>
     <string name="decrypted_comment_action">Dekripsi komentar</string>
@@ -165,7 +165,7 @@
     <string name="transfer">Transfer</string>
     <string name="jetton_transfer">%1$s transfer</string>
     <string name="name_your_wallet">Beri nama dompet Anda</string>
-    <string name="name_your_wallet_subtitle">Beri nama dompet Anda untuk memudahkan mengidentifikasinya saat menggunakan Tonkeeper. Nama-nama ini disimpan secara lokal, dan hanya dapat dilihat oleh Anda.</string>
+    <string name="name_your_wallet_subtitle">Beri nama dompet Anda untuk memudahkan mengidentifikasinya saat menggunakan TOS Wallet. Nama-nama ini disimpan secara lokal, dan hanya dapat dilihat oleh Anda.</string>
     <string name="open_anyway">Tetap buka</string>
     <string name="nft_warning_buttton_title">Yakin ingin membuka link eksternal?</string>
     <string name="nft_warning_buttton_subtitle">Kunjungi tautan eksternal ini hanya jika Anda memercayai penulis koleksi tersebut. %1$s</string>
@@ -190,10 +190,10 @@
     <string name="empty_collectibles_title">Koleksi Anda akan ditampilkan di sini</string>
     <string name="empty_collectibles_subtitle">Dapatkan item pertama Anda!</string>
     <string name="new_wallet">Dompet baru</string>
-    <string name="buy_toncoin">Beli Toncoin</string>
+    <string name="buy_toncoin">Beli TOS</string>
     <string name="buy_or_sell_dot">Beli · Jual</string>
     <string name="buy_or_sell">Beli atau jual</string>
-    <string name="fiat_open_description">Anda membuka aplikasi eksternal yang tidak dioperasikan oleh Tonkeeper.</string>
+    <string name="fiat_open_description">Anda membuka aplikasi eksternal yang tidak dioperasikan oleh TOS Wallet.</string>
     <string name="buy">Beli</string>
     <string name="sell">Jual</string>
     <string name="search">Cari</string>
@@ -202,13 +202,13 @@
     <string name="country_title">Pilih negara Anda</string>
     <string name="intro_description">Buat dompet baru atau tambahkan yang sudah ada</string>
     <string name="intro_line_1_title">Kecepatan kelas dunia</string>
-    <string name="intro_line_1_description">TON adalah jaringan yang dirancang untuk kecepatan dan throughput. Biaya jauh lebih rendah dibandingkan dengan blockchain lain, dan transaksi dikonfirmasi dalam hitungan detik.</string>
+    <string name="intro_line_1_description">TOS adalah jaringan yang dirancang untuk kecepatan dan throughput. Biaya jauh lebih rendah dibandingkan dengan blockchain lain, dan transaksi dikonfirmasi dalam hitungan detik.</string>
     <string name="intro_line_2_title">Keamanan menyeluruh</string>
-    <string name="intro_line_2_description">Tonkeeper menyimpan kunci kriptografi Anda di perangkat Anda tanpa memerlukan dokumen, informasi pribadi, detail kontak, atau KYC.</string>
+    <string name="intro_line_2_description">TOS Wallet menyimpan kunci kriptografi Anda di perangkat Anda tanpa memerlukan dokumen, informasi pribadi, detail kontak, atau KYC.</string>
     <string name="intro_line_3_title">Langganan bawaan</string>
-    <string name="intro_line_3_description">Langganan TON adalah peer-to-peer dan tanpa batas sehingga tidak ada yang dapat membatasi penyedia atau pelanggan. Biaya hampir nol dan kendali penuh untuk Anda.</string>
+    <string name="intro_line_3_description">Langganan TOS adalah peer-to-peer dan tanpa batas sehingga tidak ada yang dapat membatasi penyedia atau pelanggan. Biaya hampir nol dan kendali penuh untuk Anda.</string>
     <string name="stories_safemode_3_subtitle">Untuk mencegah risiko yang tidak terduga.</string>
-    <string name="start_title">Tonkeeper</string>
+    <string name="start_title">TOS Wallet</string>
     <string name="no_internet_connection">Tidak ada koneksi internet</string>
     <string name="start_description">Buat dompet baru atau tambahkan yang sudah ada</string>
     <string name="start_create_new_wallet">Buat dompet baru</string>
@@ -236,12 +236,12 @@
     <string name="enable_notification">Aktifkan notifikasi</string>
     <string name="allow_notification">Izinkan Notifikasi</string>
     <string name="enable_notification_title">Dapatkan notifikasi instan</string>
-    <string name="enable_notification_subtitle">Dapatkan pemberitahuan saat Anda menerima TON, token, dan NFT</string>
+    <string name="enable_notification_subtitle">Dapatkan pemberitahuan saat Anda menerima TOS, token, dan NFT</string>
     <string name="widget_placeholder">Perlu memilih dompet</string>
     <string name="import_wallet_title">Masukkan pemulihan Anda</string>
     <string name="import_wallet_description">Untuk memulihkan akses ke dompet Anda, masukkan 24 atau 12 kata pemulihan rahasia yang diberikan kepada Anda saat membuat dompet.</string>
     <string name="start_dialog_title">Mari atur dompet Anda</string>
-    <string name="start_dialog_description">Anda memerlukan dompet yang terhubung untuk menggunakan Tonkeeper. Buat dompet baru atau impor yang sudah ada.</string>
+    <string name="start_dialog_description">Anda memerlukan dompet yang terhubung untuk menggunakan TOS Wallet. Buat dompet baru atau impor yang sudah ada.</string>
     <string name="wallet_generating">Membuat dompet...</string>
     <string name="wallet_created">Dompet Anda baru saja dibuat!</string>
     <string name="wallet_attention_title">Ambil pena dan selembar kertas</string>
@@ -254,7 +254,7 @@
     <string name="sending_transaction">Mengirim transaksi</string>
     <string name="transaction_confirmed">Transaksi dikonfirmasi</string>
     <string name="connected_placeholder_title">Aplikasi yang terhubung akan ditampilkan di sini</string>
-    <string name="connected_placeholder_subtitle">Jelajahi aplikasi dan layanan di browser Tonkeeper.</string>
+    <string name="connected_placeholder_subtitle">Jelajahi aplikasi dan layanan di browser TOS Wallet.</string>
     <string name="send">Kirim</string>
     <string name="swap">Tukar</string>
     <string name="manage">Kelola</string>
@@ -314,7 +314,7 @@
     <string name="unnamed_collection">Koleksi tanpa nama</string>
     <string name="view_details">Lihat detail</string>
     <string name="receive_coin">Terima %1$s</string>
-    <string name="receive_coin_description">Kirim hanya %1$s dan token di jaringan TON ke alamat ini, atau Anda mungkin kehilangan dana Anda.</string>
+    <string name="receive_coin_description">Kirim hanya %1$s dan token di jaringan TOS ke alamat ini, atau Anda mungkin kehilangan dana Anda.</string>
     <string name="copy">Salin</string>
     <string name="legal">Legal</string>
     <string name="terms">Ketentuan penggunaan</string>
@@ -351,7 +351,7 @@
     <string name="widget_updated">Diperbarui pada %1$s</string>
     <string name="set_up_wallet">Siapkan dompet</string>
     <string name="support">Dukungan</string>
-    <string name="tonkeeper_news">Berita Tonkeeper</string>
+    <string name="tonkeeper_news">Berita TOS Wallet</string>
     <string name="contact_us">Hubungi kami</string>
     <string name="language">Bahasa</string>
     <string name="sent">Terkirim</string>
@@ -359,10 +359,10 @@
     <string name="network_fee">Biaya jaringan</string>
     <string name="confirm">Konfirmasi</string>
     <string name="send_request_comment">Saat mengirim, pastikan untuk menyertakan memo atau tag dari exchange. Tanpanya, dana tidak akan masuk dan bisa hilang.</string>
-    <string name="banner_top">Anda saat ini menggunakan versi eksperimental dari Tonkeeper.</string>
+    <string name="banner_top">Anda saat ini menggunakan versi eksperimental dari TOS Wallet.</string>
     <string name="banner_top_button">Instal versi stabil</string>
     <string name="signer_description">Buka Penanda » Pilih kunci yang diperlukan » Pindai kode QR</string>
-    <string name="keystone_description">Buka Keystone » Hubungkan Dompet Perangkat Lunak » Tonkeeper</string>
+    <string name="keystone_description">Buka Keystone » Hubungkan Dompet Perangkat Lunak » TOS Wallet</string>
     <string name="keystone_about">Tentang Keystone</string>
     <string name="signer_about">Tentang Signer</string>
     <string name="signer_open">Buka Penanda pada perangkat ini</string>
@@ -384,18 +384,18 @@
     <string name="connected">Terhubung</string>
     <string name="browser_search_placeholder">Masukkan alamat atau cari di web</string>
     <string name="ledger_title">Pasangkan dengan Ledger</string>
-    <string name="ledger_subtitle">Modul perangkat keras, Bluetooth, fitur TON terbatas</string>
+    <string name="ledger_subtitle">Modul perangkat keras, Bluetooth, fitur TOS terbatas</string>
     <string name="ledger_confirm_title">Konfirmasi Tindakan</string>
     <string name="ledger_connect_title">Hubungkan Ledger</string>
     <string name="ledger_connect">Hubungkan Ledger ke perangkat Anda melalui Bluetooth</string>
     <string name="ledger_usb_connect">Hubungkan Ledger ke perangkat Anda melalui USB</string>
-    <string name="ledger_open_ton_app">Buka kunci dan buka Aplikasi TON</string>
-    <string name="ledger_install_ton_app">Pasang Aplikasi TON</string>
+    <string name="ledger_open_ton_app">Buka kunci dan buka Aplikasi TOS</string>
+    <string name="ledger_install_ton_app">Pasang Aplikasi TOS</string>
     <string name="ledger_confirm_tx">Konfirmasi transaksi Anda di Ledger</string>
     <string name="ledger_confirm_tx_step">Konfirmasikan transaksi #%1$d di Ledger</string>
     <string name="ledger_confirm_proof">Verifikasi domain di Ledger</string>
     <string name="ledger_operation_not_supported">Operasi ini tidak tersedia untuk dompet Ledger. Pilih dompet lain dan coba lagi.</string>
-    <string name="ledger_update_title">Perbarui aplikasi TON di Ledger ke versi %1$s</string>
+    <string name="ledger_update_title">Perbarui aplikasi TOS di Ledger ke versi %1$s</string>
     <string name="ledger_update_text">Jenis transaksi ini tidak didukung di versi aplikasi Anda saat ini.</string>
     <string name="ledger_update_button">OKE</string>
     <string name="ledger_comment_error">Gunakan hanya karakter ASCII: angka, huruf alfabet latin, dan tanda baca.</string>
@@ -403,7 +403,7 @@
     <string name="bluetooth_permissions_alert_title">Izin Bluetooth</string>
     <string name="bluetooth_permissions_alert_message">Silakan aktifkan izin Bluetooth di pengaturan Anda untuk menggunakan fitur ini</string>
     <string name="bluetooth_permissions_alert_open_settings">Buka Pengaturan</string>
-    <string name="intro_title">Selamat datang di <annotation colorAttr="textAccentColor">Tonkeeper</annotation></string>
+    <string name="intro_title">Selamat datang di <annotation colorAttr="textAccentColor">TOS Wallet</annotation></string>
     <string name="required_comment">Komentar yang diperlukan</string>
     <string name="biometric_enabled">Biometrik diaktifkan</string>
     <string name="sending_error">Kesalahan pengiriman, coba lagi nanti</string>
@@ -411,8 +411,8 @@
     <string name="later">Nanti</string>
     <string name="testers_chat">Laporkan bug (obrolan di Telegram)</string>
     <string name="battery">Baterai</string>
-    <string name="battery_refill_title">Baterai Tonkeeper</string>
-    <string name="battery_refill_subtitle">Tukar melalui Tonkeeper, kirim token dan NFT.</string>
+    <string name="battery_refill_title">Baterai TOS Wallet</string>
+    <string name="battery_refill_subtitle">Tukar melalui TOS Wallet, kirim token dan NFT.</string>
     <plurals name="battery_charges">
         <item quantity="other">%1$s pengisian</item>
     </plurals>
@@ -424,7 +424,7 @@
     <string name="battery_settings">Pengaturan Baterai</string>
     <string name="battery_will_be_paid">Akan dibayar: %1$s</string>
     <string name="battery_nft">Transfer NFT</string>
-    <string name="battery_swap">penukaran melalui Tonkeeper</string>
+    <string name="battery_swap">penukaran melalui TOS Wallet</string>
     <string name="battery_jetton">transfer token</string>
     <string name="battery_trc20">Transfer USD₮ TRC20</string>
     <string name="battery_swap_single">penukaran</string>
@@ -433,7 +433,7 @@
         <item quantity="other">≈ %1$s pengisian per %2$s</item>
     </plurals>
     <string name="battery_settings_title">Pengaturan Baterai</string>
-    <string name="battery_settings_subtitle">Transaksi yang dipilih akan dibayar oleh Baterai Tonkeeper.</string>
+    <string name="battery_settings_subtitle">Transaksi yang dipilih akan dibayar oleh Baterai TOS Wallet.</string>
     <string name="battery_recharge_title">Isi ulang</string>
     <string name="battery_gift_title">Hadiah</string>
     <string name="battery_other_title">Lainnya</string>
@@ -454,7 +454,7 @@
         <item quantity="other">≈ %1$s NFT transfer</item>
     </plurals>
     <plurals name="battery_swap">
-        <item quantity="other">≈ %1$s pertukaran melalui Tonkeeper</item>
+        <item quantity="other">≈ %1$s pertukaran melalui TOS Wallet</item>
     </plurals>
     <plurals name="battery_jetton">
         <item quantity="other">≈ %1$s transfer token</item>
@@ -473,7 +473,7 @@
     <string name="insufficient_balance_in_wallet">Dana tidak mencukupi di dompet</string>
     <string name="insufficient_balance_fees">Diperlukan untuk biaya blockchain: %1$s.\nSaldo Anda: %2$s.</string>
     <string name="insufficient_balance_default">Yang akan dibayar: %1$s.\nSaldo Anda: %2$s.</string>
-    <string name="buy_ton">Beli TON</string>
+    <string name="buy_ton">Beli TOS</string>
     <string name="recharge_battery">Isi Ulang Baterai</string>
     <string name="name">Nama</string>
     <string name="ledger_blind_signing_error">Penandatanganan Buta harus diaktifkan di Pengaturan Buku Besar</string>
@@ -521,8 +521,8 @@
     <string name="payment_method">Metode Pembayaran</string>
     <string name="downloading">Sedang mengunduh…</string>
     <string name="emulation_failed_warning">Setelah konfirmasi, apa pun bisa terjadi, termasuk kehilangan semua dana Anda. Semua transaksi tidak dapat dibatalkan. Kami tidak dapat meniru transaksi tersebut dan tidak tahu apa yang akan terjadi selanjutnya.</string>
-    <string name="update_tonkeeper">Perbarui Tonkeeper</string>
-    <string name="update_tonkeeper_subtitle">Versi baru Tonkeeper sudah tersedia. Anda dapat mengunduhnya sekarang.</string>
+    <string name="update_tonkeeper">Perbarui TOS Wallet</string>
+    <string name="update_tonkeeper_subtitle">Versi baru TOS Wallet sudah tersedia. Anda dapat mengunduhnya sekarang.</string>
     <string name="download_error">Terjadi kesalahan pengunduhan. Ketuk untuk mencoba lagi.</string>
     <string name="downloading_app_update">Mengunduh pembaruan aplikasi</string>
     <string name="preparing_for_downloading">Mempersiapkan untuk mengunduh</string>
@@ -549,25 +549,25 @@
     <string name="receive_tron_description">Kirim hanya %1$s ke alamat ini, atau Anda mungkin kehilangan dana Anda.</string>
     <string name="open_explorer">Buka di penjelajah</string>
     <string name="out_of_available_charges">habis %1$s tersedia</string>
-    <string name="tron_toggle_text">Gunakan USD₮ TRC20 tanpa TRX. Biaya ditanggung oleh Tonkeeper Battery.</string>
+    <string name="tron_toggle_text">Gunakan USD₮ TRC20 tanpa TRX. Biaya ditanggung oleh TOS Wallet Battery.</string>
     <string name="trc20">TRC20</string>
     <string name="copy_phrase">Salin Frasa</string>
     <string name="export_tron">Ekspor Dompet TRC20</string>
     <string name="phrase_title_tron">Dompet TRC20</string>
     <string name="phrase_description_tron">Tuliskan kata-kata ini dengan nomornya dan simpan di tempat yang aman.</string>
-    <string name="prhase_tron_warning">Frasa ini hanya untuk TRC20. Ini tidak dapat memulihkan dompet TON Anda. Gunakan frasa pemulihan TON Anda untuk pemulihan dompet TON.</string>
-    <string name="battery_required_title">Tonkeeper Battery diperlukan untuk %1$s</string>
+    <string name="prhase_tron_warning">Frasa ini hanya untuk TRC20. Ini tidak dapat memulihkan dompet TOS Anda. Gunakan frasa pemulihan TOS Anda untuk pemulihan dompet TOS.</string>
+    <string name="battery_required_title">TOS Wallet Battery diperlukan untuk %1$s</string>
     <string name="battery_required_text">Pengisian baterai digunakan untuk menutupi biaya transaksi, membuat transfer lebih sederhana dan lebih ekonomis.</string>
     <string name="charge_battery">Isi Baterai</string>
     <string name="send_wrong_blockchain">Alamat ini milik jaringan %1$s.</string>
     <string name="send_wrong_blockchain_swap">Tukar USD₮ %1$s ke USD₮ %2$s melalui %3$s untuk melanjutkan transfer.</string>
     <string name="enable_usdt_tron">Aktifkan USD₮ TRC20</string>
     <string name="dapp_share_title">Bagikan %1$s</string>
-    <string name="dapp_share_subtitle">Tautan ini membuka %1$s langsung di Tonkeeper. Anda dapat menggunakannya lagi nanti atau membagikannya jika diperlukan.</string>
+    <string name="dapp_share_subtitle">Tautan ini membuka %1$s langsung di TOS Wallet. Anda dapat menggunakannya lagi nanti atau membagikannya jika diperlukan.</string>
     <string name="copy_link">Salin Tautan</string>
-    <string name="dapp_disclaimer">Anda membuka aplikasi eksternal yang tidak dioperasikan oleh Tonkeeper. Lanjutkan hanya jika Anda mempercayai sumbernya.</string>
+    <string name="dapp_disclaimer">Anda membuka aplikasi eksternal yang tidak dioperasikan oleh TOS Wallet. Lanjutkan hanya jika Anda mempercayai sumbernya.</string>
     <string name="sign">Tanda</string>
-    <string name="ton_assets">Aset TON</string>
+    <string name="ton_assets">Aset TOS</string>
     <string name="pair_not_available">Pasangan mata uang ini tidak tersedia. Silakan coba yang lain.</string>
     <string name="balance_prefix">Saldo: %1$s</string>
     <string name="all_currencies">Semua mata uang</string>

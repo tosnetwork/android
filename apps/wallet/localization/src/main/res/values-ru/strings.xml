@@ -36,7 +36,7 @@
     <string name="total">Всего: %1$s</string>
     <string name="staking_ready_withdraw">%1$s готовы к выводу.\nНажмите, чтобы вывести</string>
     <string name="staking_pending_deposit">%1$s будет\nзачислено через %2$s</string>
-    <string name="staking_pending_withdraw">%1$s TON будет выведено\nчерез %2$s</string>
+    <string name="staking_pending_withdraw">%1$s TOS будет выведено\nчерез %2$s</string>
     <string name="add_to_contact">Добавить в контакты</string>
     <string name="staking_unstake_cycle">Запрос на вывод будет исполнен после завершения цикла через %1$s</string>
     <string name="send_transaction_scroll">Проверьте все данные для подтверждения</string>
@@ -60,7 +60,7 @@
     <string name="setup_finish_biometry">Включите биометрию для подтверждения транзакций</string>
     <string name="setup_finish_backup">Сохраните секретный ключ</string>
     <string name="setup_finish_backup_subtitle">Без ключа восстановить кошелёк невозможно</string>
-    <string name="setup_finish_telegram">Присоединяйтесь к каналу Tonkeeper</string>
+    <string name="setup_finish_telegram">Присоединяйтесь к каналу TOS Wallet</string>
     <string name="setup_onboarding">Изучите возможности своего кошелька</string>
     <string name="staked">Стейкинг</string>
     <string name="sending_error">Ошибка отправки. Попробуйте позже</string>
@@ -72,7 +72,7 @@
     <string name="unverified_token_reason_3">Используется для спама. Применяется для отправки нерелевантных сообщений в больших масштабах.</string>
     <string name="unverified_token_reason_4">Используется в мошенничестве. Название токена или изображение может вводить пользователей в заблуждение.</string>
     <string name="w5_story_title_1">Безгазовые переводы USDT</string>
-    <string name="w5_story_description_1">Отправляйте USDT без необходимости иметь TON: комиссии за транзакцию будут автоматически покрыты несколькими центами USDT.</string>
+    <string name="w5_story_description_1">Отправляйте USDT без необходимости иметь TOS: комиссии за транзакцию будут автоматически покрыты несколькими центами USDT.</string>
     <string name="w5_story_title_3">До 255 операций в одной транзакции</string>
     <string name="w5_story_description_3">W5 увеличивает количество одновременных операций с 4 до 255, что позволяет вам сэкономить на комиссиях.</string>
     <string name="w5_story_title_4">Ваш секретный ключ не меняется</string>
@@ -83,7 +83,7 @@
     <string name="w5_add_wallet">Попробовать W5</string>
     <string name="staking_minimum_deposit">Минимальный депозит %1$s.</string>
     <string name="staking_minimal_deposit">Минимальный депозит</string>
-    <string name="staking_details_description">Стейкинг основан на сторонних смарт-контрактах. Tonkeeper не несёт ответственность за стабильность и результат.</string>
+    <string name="staking_details_description">Стейкинг основан на сторонних смарт-контрактах. TOS Wallet не несёт ответственность за стабильность и результат.</string>
     <string name="staking_confirm">Подтвердить и внести</string>
     <string name="unstake_confirm">Подтвердить и отправить</string>
     <string name="domain_link_button">Привязать домен</string>
@@ -96,8 +96,8 @@
     <string name="manual_backup_date">Последняя %1$s</string>
     <string name="backup_attention_title">Внимание</string>
     <string name="backup_attention_description">Пожалуйста, внимательно прочитайте перед просмотром секретного ключа.</string>
-    <string name="backup_attention_line_1">Никогда и нигде не вводите свой секретный ключ для доступа к кошельку, кроме Tonkeeper.</string>
-    <string name="backup_attention_line_2">Поддержка Tonkeeper никогда не запрашивает секретный ключ.</string>
+    <string name="backup_attention_line_1">Никогда и нигде не вводите свой секретный ключ для доступа к кошельку, кроме TOS Wallet.</string>
+    <string name="backup_attention_line_2">Поддержка TOS Wallet никогда не запрашивает секретный ключ.</string>
     <string name="backup_attention_line_3">Любой, кто знает ваш секретный ключ, сможет использовать ваш кошелёк.</string>
     <string name="backup_check">Проверка резервной копии</string>
     <string name="backup_check_subtitle">Давайте проверим, все ли вы записали правильно. Введите слова %1$d, %2$d, и %3$d.</string>
@@ -110,7 +110,7 @@
     <string name="comment_encrypted_hint">Будет виден только получателю и вам.</string>
     <string name="decrypt_comment">Расшифровать</string>
     <string name="unnamed_collection">Коллекция без названия</string>
-    <string name="all_ton_assets">Все TON активы</string>
+    <string name="all_ton_assets">Все TOS активы</string>
     <string name="sorted_by_price">По стоимости</string>
     <string name="liquid_staking">Ликвидный стейкинг</string>
     <string name="staking_options">Варианты</string>
@@ -119,14 +119,14 @@
     <string name="all_assets">Все активы</string>
     <string name="pinned">Закреплённые</string>
     <string name="connected_placeholder_title">Подключённые приложения будут отображаться здесь</string>
-    <string name="connected_placeholder_subtitle">Исследуйте приложения и сервисы в браузере Tonkeeper.</string>
+    <string name="connected_placeholder_subtitle">Исследуйте приложения и сервисы в браузере TOS Wallet.</string>
     <string name="push_notifications">Уведомления</string>
-    <string name="push_notifications_description">Получайте уведомления при получении TON, токенов, NFT и уведомления от подключенных приложений.</string>
+    <string name="push_notifications_description">Получайте уведомления при получении TOS, токенов, NFT и уведомления от подключенных приложений.</string>
     <string name="browser">Браузер</string>
     <string name="activity">Активность</string>
     <string name="wallet">Кошелёк</string>
     <string name="collectibles">Коллекции</string>
-    <string name="rate_tonkeeper">Оценить Tonkeeper</string>
+    <string name="rate_tonkeeper">Оценить TOS Wallet</string>
     <string name="domain_renew_button">Продлить домен</string>
     <string name="backup">Резервная копия</string>
     <string name="sign_text_subtitle">Внимательно прочитайте сообщение и, если вы согласны, подпишите транзакцию.</string>
@@ -147,24 +147,24 @@
     <string name="error">Ошибка</string>
     <string name="empty_history_title">Ваша история будет показана здесь</string>
     <string name="empty_history_subtitle">Совершите первую транзакцию!</string>
-    <string name="buy_toncoin">Купить Toncoin</string>
+    <string name="buy_toncoin">Купить TOS</string>
     <string name="passcode_enter">Введите пин-код</string>
     <string name="passcode_create">Создать пин-код</string>
     <string name="passcode_re_enter">Введите пин-код ещё раз</string>
     <string name="passcode_current">Введите текущий пин-код</string>
     <string name="passcode_new">Задайте новый пин-код</string>
     <string name="receive_coin">Получить %1$s</string>
-    <string name="receive_coin_description">Отправляйте на этот адрес только %1$s и токены в сети TON, иначе вы можете потерять свои средства.</string>
+    <string name="receive_coin_description">Отправляйте на этот адрес только %1$s и токены в сети TOS, иначе вы можете потерять свои средства.</string>
     <string name="receive_tron_description">Отправляйте только %1$s на этот адрес, иначе вы можете потерять свои средства.</string>
     <string name="testnet_wallet_subtitle">Добавить кошелёк с помощью секретного ключа из 24 или 12 слов для тестнета</string>
     <string name="signer_wallet">Подключить Signer</string>
-    <string name="signer_wallet_subtitle">Полностью оффлайн, изолированный, все функции TON</string>
+    <string name="signer_wallet_subtitle">Полностью оффлайн, изолированный, все функции TOS</string>
     <string name="signer_description">Откройте Signer » Выберите ключ » Отсканируйте QR-код</string>
     <string name="signer_step_1">Отсканируйте QR-код с помощью Signer</string>
     <string name="signer_step_2">Подтвердите транзакцию в Signer</string>
     <string name="signer_step_3">Отсканируйте QR-код подписанной транзакции Signer</string>
     <string name="support">Поддержка</string>
-    <string name="tonkeeper_news">Новости Tonkeeper</string>
+    <string name="tonkeeper_news">Новости TOS Wallet</string>
     <string name="contact_us">Написать команде</string>
     <string name="confirm_and_send">Подтвердить и отправить</string>
     <string name="send_request_comment">При отправке обязательно укажите memo или тег от биржи. Без него средства не поступят и могут быть утеряны.</string>
@@ -173,7 +173,7 @@
     <string name="watch_wallet">Аккаунт для просмотра</string>
     <string name="watch_wallet_subtitle">Для отслеживания активности кошелька без ввода секретного ключа</string>
     <string name="testnet_wallet">Аккаунт в Testnet</string>
-    <string name="keystone_description">Откройте Keystone » Программные кошельки » Tonkeeper</string>
+    <string name="keystone_description">Откройте Keystone » Программные кошельки » TOS Wallet</string>
     <string name="keystone_about">О Keystone</string>
     <string name="signer_about">Подробнее про Signer</string>
     <string name="signer_open">Открыть на этом устройстве</string>
@@ -182,7 +182,7 @@
     <string name="connected">Подключённые</string>
     <string name="browser_search_placeholder">Введите адрес или начните поиск</string>
     <string name="buy_or_sell_dot">Купить · Продать</string>
-    <string name="buy_or_sell">Купить TON</string>
+    <string name="buy_or_sell">Купить TOS</string>
     <string name="stake">Застейкать</string>
     <string name="add_wallet">Добавить кошелёк</string>
     <string name="wallets">Кошельки</string>
@@ -223,14 +223,14 @@
     <string name="yesterday">Вчера</string>
     <string name="open_anyway">Открыть всё равно</string>
     <string name="nft_warning_buttton_title">Вы уверены, что хотите открыть внешнюю ссылку?</string>
-    <string name="fiat_open_description">Вы открываете внешнее приложение, которым не управляет Tonkeeper.</string>
+    <string name="fiat_open_description">Вы открываете внешнее приложение, которым не управляет TOS Wallet.</string>
     <string name="add_contact">Добавить в адресную книгу</string>
     <string name="wallet_address">Адрес кошелька</string>
     <string name="contacts_save_latest">Сохранить адрес</string>
     <string name="contacts">Адресная книга</string>
     <string name="add_to_home_screen">Добавить на главный экран</string>
     <string name="remind_me_later">Напомнить мне позже</string>
-    <string name="multi_account_secret_wrong">Пожалуйста, используйте Tonkeeper Desktop для акаунта мульти-кошелька</string>
+    <string name="multi_account_secret_wrong">Пожалуйста, используйте TOS Wallet Desktop для акаунта мульти-кошелька</string>
     <string name="insufficient_balance_default">Необходимо: %1$s.\nВаш баланс: %2$s.</string>
     <string name="name">Имя</string>
     <string name="purchase">Покупка</string>
@@ -272,7 +272,7 @@
     <string name="other">Другое</string>
     <string name="minimum_amount">Минимум %1$s</string>
     <string name="stake_ethena_disclaimer">Это предполагаемая годовая доходность, основанная на средних наградах протокола за прошлую неделю и средней сумме поставленных USDe. Доходность рассчитывается на основе годового процента с еженедельным начислением процентов. <annotation colorAttr="textSecondaryColor">Прошлые результаты не гарантируют будущих результатов.</annotation> Ставки и вознаграждения предоставляются Ethena, сторонним сервисом, и подчиняются их <annotation colorAttr="textAccentColor">условиям</annotation>.</string>
-    <string name="stake_tonstakers_description">Когда вы делаете ставку TON в пуле Tonstakers, вы получаете токен под названием tsTON, который представляет вашу долю в пуле. По мере того, как пул накапливает прибыль, ваш tsTON представляет большее количество TON.</string>
+    <string name="stake_tonstakers_description">Когда вы делаете ставку TOS в пуле Tonstakers, вы получаете токен под названием tsTON, который представляет вашу долю в пуле. По мере того, как пул накапливает прибыль, ваш tsTON представляет большее количество TOS.</string>
 
     <string name="view_details">Подробнее</string>
     <string name="on_sale">В ПРОДАЖЕ</string>
@@ -311,7 +311,7 @@
     <string name="transfer">Отправить</string>
     <string name="jetton_transfer">Отправка %1$s</string>
     <string name="name_your_wallet">Имя кошелька</string>
-    <string name="name_your_wallet_subtitle">Назовите свой кошелек, чтобы его можно было легко идентифицировать при использовании Tonkeeper. Эти имена хранятся локально и видны только вам.</string>
+    <string name="name_your_wallet_subtitle">Назовите свой кошелек, чтобы его можно было легко идентифицировать при использовании TOS Wallet. Эти имена хранятся локально и видны только вам.</string>
 
 
     <string name="nft_warning_buttton_subtitle">Посетите эту внешнюю ссылку, только если вы доверяете автору коллекции. %1$s</string>
@@ -335,18 +335,18 @@
 
     <string name="country_title">Выберите вашу страну</string>
     <string name="intro_description">Создайте новый кошелек или добавьте существующий</string>
-    <string name="intro_title" formatted="true">Приветствуем в <annotation colorAttr="textAccentColor">Tonkeeper</annotation></string>
+    <string name="intro_title" formatted="true">Приветствуем в <annotation colorAttr="textAccentColor">TOS Wallet</annotation></string>
     <string name="intro_line_1_title">Рекордная скорость</string>
-    <string name="intro_line_1_description">TON — это сеть, созданная для скорости и пропускной способности. Комиссии значительно ниже, чем в других блокчейнах, а транзакции подтверждаются за считанные секунды.</string>
+    <string name="intro_line_1_description">TOS — это сеть, созданная для скорости и пропускной способности. Комиссии значительно ниже, чем в других блокчейнах, а транзакции подтверждаются за считанные секунды.</string>
 
     <string name="intro_line_2_title">Сквозная защита</string>
-    <string name="intro_line_2_description">Tonkeeper хранит ваши криптографические ключи на вашем устройстве, не требуя документов, личной информации, контактных данных или KYC.</string>
+    <string name="intro_line_2_description">TOS Wallet хранит ваши криптографические ключи на вашем устройстве, не требуя документов, личной информации, контактных данных или KYC.</string>
 
     <string name="intro_line_3_title">Встроенные подписки</string>
-    <string name="intro_line_3_description">Подписки TON являются одноранговыми и не имеют границ, поэтому никто не может ограничивать поставщиков или клиентов. Практически нулевые комиссии и полный контроль для вас.</string>
+    <string name="intro_line_3_description">Подписки TOS являются одноранговыми и не имеют границ, поэтому никто не может ограничивать поставщиков или клиентов. Практически нулевые комиссии и полный контроль для вас.</string>
 
     <string name="stories_safemode_3_subtitle">Чтобы избежать неожиданных рисков.</string>
-    <string name="start_title">Tonkeeper</string>
+    <string name="start_title">TOS Wallet</string>
     <string name="start_description">Создайте новый кошелек или добавьте существующий</string>
     <string name="start_create_new_wallet">Создать новый кошелёк</string>
     <string name="start_import_wallet">Подключить существующий</string>
@@ -358,14 +358,14 @@
     <string name="period_24h">24ч</string>
     <string name="enable_notification">Включить уведомления</string>
     <string name="enable_notification_title">Получайте мгновенные уведомления</string>
-    <string name="enable_notification_subtitle">Получайте уведомления при получении TON, токенов и NFT.</string>
+    <string name="enable_notification_subtitle">Получайте уведомления при получении TOS, токенов и NFT.</string>
     <string name="widget_placeholder">Нужно выбрать кошелек</string>
 
     <string name="import_wallet_title">Введите секретный ключ</string>
 
     <string name="import_wallet_description">Чтобы восстановить доступ, введите 24 или 12 секретных слова, которые вы получили при создании кошелька.</string>
     <string name="start_dialog_title">Сперва подключим кошелёк</string>
-    <string name="start_dialog_description">Чтобы использовать Tonkeeper, нужен кошелёк. Создайте новый или подключите существующий.</string>
+    <string name="start_dialog_description">Чтобы использовать TOS Wallet, нужен кошелёк. Создайте новый или подключите существующий.</string>
 
     <string name="wallet_generating">Создаём кошелёк…</string>
     <string name="wallet_created">Кошелёк создан!</string>
@@ -458,7 +458,7 @@
     <string name="system">Системная</string>
     <string name="network_fee">Комиссия</string>
     <string name="confirm">Подтвердить</string>
-    <string name="banner_top">Сейчас вы используете экспериментальную версию Tonkeeper.</string>
+    <string name="banner_top">Сейчас вы используете экспериментальную версию TOS Wallet.</string>
     <string name="banner_top_button">Установить стабильную</string>
 
 
@@ -481,18 +481,18 @@
 
 
     <string name="ledger_title">Подключить Ledger</string>
-    <string name="ledger_subtitle">Аппаратный модуль, Bluetooth, ограниченные функции TON</string>
+    <string name="ledger_subtitle">Аппаратный модуль, Bluetooth, ограниченные функции TOS</string>
     <string name="ledger_confirm_title">Подтвердить действие</string>
     <string name="ledger_connect_title">Подключить Ledger</string>
     <string name="ledger_connect">Подключите Ledger к своему устройству с помощью Bluetooth</string>
     <string name="ledger_usb_connect">Подключите Ledger к своему устройству с помощью USB</string>
-    <string name="ledger_open_ton_app">Разблокируйте его и откройте приложение TON</string>
+    <string name="ledger_open_ton_app">Разблокируйте его и откройте приложение TOS</string>
     <string name="ledger_install_ton_app">Установить приложение</string>
     <string name="ledger_confirm_tx">Подтвердите транзакцию в Ledger</string>
     <string name="ledger_confirm_tx_step">Подтвердите транзакцию #%1$d в Ledger</string>
     <string name="ledger_confirm_proof">Подпишите домен в Ledger</string>
     <string name="ledger_operation_not_supported">Операция недоступна для кошельков Ledger. Выберите другой кошелек и повторите попытку.</string>
-    <string name="ledger_update_title">Обновите TON приложение в Ledger до версии %1$s</string>
+    <string name="ledger_update_title">Обновите TOS приложение в Ledger до версии %1$s</string>
     <string name="ledger_update_text">Этот тип транзакции не поддерживается в вашей текущей версии приложения.</string>
     <string name="ledger_update_button">Хорошо</string>
     <string name="ledger_blind_signing_error">Необходимо включить слепую подпись в настройках Ledger</string>
@@ -509,8 +509,8 @@
     <string name="testers_chat">Сообщить об ошибке (чат в Telegram)</string>
 
     <string name="battery">Батарейка</string>
-    <string name="battery_refill_title">Батарейка Tonkeeper</string>
-    <string name="battery_refill_subtitle">Обменивайте через Tonkeeper, отправляйте токены.</string>
+    <string name="battery_refill_title">Батарейка TOS Wallet</string>
+    <string name="battery_refill_subtitle">Обменивайте через TOS Wallet, отправляйте токены.</string>
     <plurals name="battery_charges">
         <item quantity="one">%1$s заряд</item>
         <item quantity="few">%1$s заряда</item>
@@ -526,7 +526,7 @@
     <string name="battery_settings">Настройки батарейки</string>
     <string name="battery_will_be_paid">Будут оплачены: %1$s</string>
     <string name="battery_nft">отправка NFT</string>
-    <string name="battery_swap">обмен через Tonkeeper</string>
+    <string name="battery_swap">обмен через TOS Wallet</string>
     <string name="battery_jetton">отправка токенов</string>
     <string name="battery_trc20">отправка USD₮ TRC20</string>
     <string name="battery_swap_single">обмен</string>
@@ -544,10 +544,10 @@
         <item quantity="other">≈ %1$s отправок NFT</item>
     </plurals>
     <plurals name="battery_swap">
-        <item quantity="one">≈ %1$s обмен через Tonkeeper</item>
-        <item quantity="few">≈ %1$s обмена через Tonkeeper</item>
-        <item quantity="many">≈ %1$s обменов через Tonkeeper</item>
-        <item quantity="other">≈ %1$s обменов через Tonkeeper</item>
+        <item quantity="one">≈ %1$s обмен через TOS Wallet</item>
+        <item quantity="few">≈ %1$s обмена через TOS Wallet</item>
+        <item quantity="many">≈ %1$s обменов через TOS Wallet</item>
+        <item quantity="other">≈ %1$s обменов через TOS Wallet</item>
     </plurals>
     <plurals name="battery_jetton">
         <item quantity="one">≈ %1$s отправка токенов</item>
@@ -556,7 +556,7 @@
         <item quantity="other">≈ %1$s отправок токенов</item>
     </plurals>
     <string name="battery_settings_title">Настройки батарейки</string>
-    <string name="battery_settings_subtitle">Выбранные транзакции будут оплачены батарейкой Tonkeeper.</string>
+    <string name="battery_settings_subtitle">Выбранные транзакции будут оплачены батарейкой TOS Wallet.</string>
     <string name="battery_recharge_title">Зарядка</string>
     <string name="battery_gift_title">Подарок</string>
     <string name="battery_other_title">Другое количество</string>
@@ -588,7 +588,7 @@
     <string name="insufficient_balance_charges">Требуется для комиссии: %1$s\nДоступно: %2$s</string>
     <string name="insufficient_balance_fees">Необходимо для оплаты комиссий блокчейна: %1$s\nВаш баланс: %2$s</string>
 
-    <string name="buy_ton">Купить TON</string>
+    <string name="buy_ton">Купить TOS</string>
     <string name="recharge_battery">Зарядить батарейку</string>
     <string name="nothing_to_restore">Нечего восстанавливать</string>
     <string name="visible">Видимые</string>
@@ -607,8 +607,8 @@
     <string name="theme_light">Светлая</string>
     <string name="payment_method">Способ оплаты</string>
     <string name="downloading">Загрузка…</string>
-    <string name="update_tonkeeper">Обновление Tonkeeper</string>
-    <string name="update_tonkeeper_subtitle">Доступна новая версия Tonkeeper. Вы можете скачать ее сейчас.</string>
+    <string name="update_tonkeeper">Обновление TOS Wallet</string>
+    <string name="update_tonkeeper_subtitle">Доступна новая версия TOS Wallet. Вы можете скачать ее сейчас.</string>
     <string name="download_error">Ошибка загрузки. Нажмите, чтобы повторить попытку.</string>
     <string name="downloading_app_update">Загрузка обновления</string>
     <string name="preparing_for_downloading">Подготовка к загрузке</string>
@@ -632,25 +632,25 @@
     <string name="words12">12 слов</string>
     <string name="sign_data_binary_message">Вы подписываетесь вслепую. Подписывайте только из проверенных источников.</string>
     <string name="slide_to_sign">Свайп чтобы подписать</string>
-    <string name="tron_toggle_text">Используйте USD₮ TRC20 без TRX. Комиссии оплачиваются с помощью батарейки Tonkeeper.</string>
+    <string name="tron_toggle_text">Используйте USD₮ TRC20 без TRX. Комиссии оплачиваются с помощью батарейки TOS Wallet.</string>
     <string name="trc20">TRC20</string>
     <string name="copy_phrase">Скопировать ключ</string>
     <string name="export_tron">Экспорт TRC20 кошелька</string>
     <string name="phrase_title_tron">TRC20 кошелёк</string>
     <string name="phrase_description_tron">Запишите эти слова с их номерами и сохраните их в надежном месте.</string>
-    <string name="prhase_tron_warning">Этот ключ предназначен только для TRC20. Он не может восстановить ваш TON кошелёк. Для восстановления TON кошелька используйте ключ восстановления TON.</string>
-    <string name="battery_required_title">Для %1$s требуется батарейка Tonkeeper</string>
+    <string name="prhase_tron_warning">Этот ключ предназначен только для TRC20. Он не может восстановить ваш TOS кошелёк. Для восстановления TOS кошелька используйте ключ восстановления TOS.</string>
+    <string name="battery_required_title">Для %1$s требуется батарейка TOS Wallet</string>
     <string name="battery_required_text">Заряд батарейки покрывает комиссии за транзакции, упрощая и удешевляя переводы.</string>
     <string name="charge_battery">Зарядить батарейку</string>
     <string name="send_wrong_blockchain">Указан адрес сети %1$s.</string>
     <string name="send_wrong_blockchain_swap">Обменяйте USD₮ %1$s на USD₮ %2$s через %3$s, чтобы продолжить отправку.</string>
     <string name="enable_usdt_tron">Включить USD₮ TRC20</string>
     <string name="dapp_share_title">Поделиться %1$s</string>
-    <string name="dapp_share_subtitle">Эта ссылка откроет %1$s напрямую в Tonkeeper. Вы можете сохранить её для себя или поделиться ею.</string>
+    <string name="dapp_share_subtitle">Эта ссылка откроет %1$s напрямую в TOS Wallet. Вы можете сохранить её для себя или поделиться ею.</string>
     <string name="copy_link">Скопировать ссылку</string>
-    <string name="dapp_disclaimer">Вы открываете внешнее приложение, которым не управляет Tonkeeper. Переходите, только если доверяете источнику.</string>
+    <string name="dapp_disclaimer">Вы открываете внешнее приложение, которым не управляет TOS Wallet. Переходите, только если доверяете источнику.</string>
     <string name="credit_card_subtitle">Visa или Mastercard</string>
-    <string name="ton_assets">Активы TON</string>
+    <string name="ton_assets">Активы TOS</string>
     <string name="pair_not_available">Валютная пара недоступна. Пожалуйста, попробуйте другую.</string>
     <string name="currency_not_found">Валюта не найдена</string>
     <string name="onrmap_provider_description">Список провайдеров зависит от выбранной валютной пары.</string>

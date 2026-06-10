@@ -116,7 +116,7 @@ class APKManager(
     }
 
     private fun getFile(apk: ApkEntity): File {
-        return folder.file("Tonkeeper_${apk.apkName}.apk")
+        return folder.file("TOSWallet_${apk.apkName}.apk")
     }
 
     private fun checkUpdates(apk: ApkEntity) {

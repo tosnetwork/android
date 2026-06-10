@@ -3,7 +3,7 @@
     <string name="add_contact">添加到地址簿</string>
     <string name="add_to_home_screen">添加到主屏幕</string>
     <string name="remind_me_later">稍后提醒我</string>
-    <string name="multi_account_secret_wrong">请使用 Tonkeeper Desktop 管理多钱包账户</string>
+    <string name="multi_account_secret_wrong">请使用 TOS Wallet Desktop 管理多钱包账户</string>
     <string name="total">总计：%1$s</string>
     <string name="staking_ready_withdraw">%1$s 已准备就绪。点击共同收集。</string>
     <string name="staking_pending_deposit">%1$s 将存入 %2$s</string>
@@ -33,7 +33,7 @@
     <string name="setup_finish_biometry">使用生物识别技术批准交易</string>
     <string name="setup_finish_backup">备份您的恢复助记词</string>
     <string name="setup_finish_backup_subtitle">没有它，您将无法恢复钱包</string>
-    <string name="setup_finish_telegram">加入Tonkeeper频道</string>
+    <string name="setup_finish_telegram">加入TOS Wallet频道</string>
     <string name="setup_onboarding">了解如何使用您的钱包</string>
     <string name="contacts">联系方式</string>
     <string name="step_1">步骤 1</string>
@@ -67,16 +67,16 @@
     <string name="min_amount">最低金额：%1$s</string>
     <string name="stake_ethena_description">tsUSDe 代币代表通过 Ethena（一种去中心化的质押服务）持有的 USDe。tsUSDe 会自动累积质押奖励，且锁定时间最少。</string>
     <string name="stake_ethena_disclaimer">这是根据过去一周的平均协议奖励和平均质押 USDe 数量估算的年化收益。收益按周复利计算，以年化形式呈现。<annotation colorAttr="textSecondaryColor">过往表现不保证未来结果。</annotation> 质押和奖励由第三方服务商 Ethena 提供，并受其<annotation colorAttr="textAccentColor">条款</annotation>约束。</string>
-    <string name="stake_tonstakers_description">当您在 Tonstakers 池中质押 TON 时，您会收到一个名为 tsTON 的代币，它代表您在池中的份额。随着池子积累利润，您的 tsTON 代表的 TON 数量会越来越多。</string>
+    <string name="stake_tonstakers_description">当您在 Tonstakers 池中质押 TOS 时，您会收到一个名为 tsTON 的代币，它代表您在池中的份额。随着池子积累利润，您的 tsTON 代表的 TOS 数量会越来越多。</string>
     <string name="edit">编辑</string>
     <string name="pinned">置顶</string>
     <string name="all_assets">所有资产</string>
-    <string name="all_ton_assets">所有 TON 资产</string>
+    <string name="all_ton_assets">所有 TOS 资产</string>
     <string name="sorted_by_price">按价格排序</string>
     <string name="staking_minimum_deposit">最低存款 %1$s。</string>
     <string name="staking_options">选项</string>
     <string name="staking_minimal_deposit">最低存款</string>
-    <string name="staking_details_description">质押基于第三方的智能合约。Tonkeeper 不对质押体验负责。</string>
+    <string name="staking_details_description">质押基于第三方的智能合约。TOS Wallet 不对质押体验负责。</string>
     <string name="staking_links">链接</string>
     <string name="links">链接</string>
     <string name="staking_choose">选择</string>
@@ -93,8 +93,8 @@
     <string name="manual_start_button">手动备份</string>
     <string name="backup_attention_title">注意</string>
     <string name="backup_attention_description">在查看您的恢复短语之前，请仔细阅读以下内容。</string>
-    <string name="backup_attention_line_1">切勿在Tonkeeper以外的任何地方输入您的恢复短语以访问您的钱包。</string>
-    <string name="backup_attention_line_2">Tonkeeper 支持从不要求提供恢复短语。</string>
+    <string name="backup_attention_line_1">切勿在TOS Wallet以外的任何地方输入您的恢复短语以访问您的钱包。</string>
+    <string name="backup_attention_line_2">TOS Wallet 支持从不要求提供恢复短语。</string>
     <string name="backup_attention_line_3">任何拥有您的恢复短语的人都可以访问您的钱包。</string>
     <string name="manual_backup_check">检查备份</string>
     <string name="backup_check">备份检查</string>
@@ -111,7 +111,7 @@
     <string name="push_notifications_description">在收到TON、代币和NFT时接收通知。来自连接应用的通知。</string>
     <string name="failed">失败</string>
     <string name="remove_dapp_confirm">移除%1$s？</string>
-    <string name="rate_tonkeeper">评价 Tonkeeper</string>
+    <string name="rate_tonkeeper">评价 TOS Wallet</string>
     <string name="encrypted_comment">加密评论</string>
     <string name="encrypted_comment_description">该评论由发送者加密，只有您可以解密。请谨慎处理内容，注意诈骗。</string>
     <string name="decrypted_comment_action">解密评论</string>
@@ -167,7 +167,7 @@
     <string name="transfer">转移</string>
     <string name="jetton_transfer">%1$s 转账</string>
     <string name="name_your_wallet">命名你的钱包</string>
-    <string name="name_your_wallet_subtitle">命名您的钱包以便在使用Tonkeeper时轻松识别。这些名称存储在本地，只有您可以看到。</string>
+    <string name="name_your_wallet_subtitle">命名您的钱包以便在使用TOS Wallet时轻松识别。这些名称存储在本地，只有您可以看到。</string>
     <string name="open_anyway">仍然打开</string>
     <string name="nft_warning_buttton_title">您确定要打开外部链接吗？</string>
     <string name="nft_warning_buttton_subtitle">仅当您信任该收藏的作者时才访问此外部链接。\n\n%1$s</string>
@@ -192,10 +192,10 @@
     <string name="empty_collectibles_title">您的收藏品将显示在这里</string>
     <string name="empty_collectibles_subtitle">获取你的第一个物品！</string>
     <string name="new_wallet">新钱包</string>
-    <string name="buy_toncoin">购买Toncoin</string>
+    <string name="buy_toncoin">购买TOS</string>
     <string name="buy_or_sell_dot">买入·卖出</string>
     <string name="buy_or_sell">买或卖</string>
-    <string name="fiat_open_description">您正在打开一个非由Tonkeeper操作的外部应用程序。</string>
+    <string name="fiat_open_description">您正在打开一个非由TOS Wallet操作的外部应用程序。</string>
     <string name="buy">购买</string>
     <string name="sell">卖</string>
     <string name="search">搜索</string>
@@ -204,13 +204,13 @@
     <string name="country_title">选择您的国家</string>
     <string name="intro_description">创建一个新钱包或添加一个现有的钱包</string>
     <string name="intro_line_1_title">世界级速度</string>
-    <string name="intro_line_1_description">TON 是一个为速度和吞吐量而设计的网络。费用比其他区块链显著更低，交易在几秒钟内确认。</string>
+    <string name="intro_line_1_description">TOS 是一个为速度和吞吐量而设计的网络。费用比其他区块链显著更低，交易在几秒钟内确认。</string>
     <string name="intro_line_2_title">端到端安全</string>
-    <string name="intro_line_2_description">Tonkeeper在您的设备上存储您的加密密钥，无需文件、个人信息、联系方式或KYC。</string>
+    <string name="intro_line_2_description">TOS Wallet在您的设备上存储您的加密密钥，无需文件、个人信息、联系方式或KYC。</string>
     <string name="intro_line_3_title">内置订阅</string>
-    <string name="intro_line_3_description">TON 订阅是点对点和无国界的，因此没有人可以限制提供者或客户。几乎为零的费用和完全的控制权为您提供。</string>
+    <string name="intro_line_3_description">TOS 订阅是点对点和无国界的，因此没有人可以限制提供者或客户。几乎为零的费用和完全的控制权为您提供。</string>
     <string name="stories_safemode_3_subtitle">防范意外风险。</string>
-    <string name="start_title">Tonkeeper</string>
+    <string name="start_title">TOS Wallet</string>
     <string name="no_internet_connection">没有网络连接</string>
     <string name="start_description">创建新钱包或添加现有钱包</string>
     <string name="start_create_new_wallet">创建新钱包</string>
@@ -243,7 +243,7 @@
     <string name="import_wallet_title">输入您的恢复短语</string>
     <string name="import_wallet_description">要恢复对钱包的访问权限，请输入您创建钱包时提供的 24 或 12 个秘密恢复词。</string>
     <string name="start_dialog_title">让我们设置你的钱包</string>
-    <string name="start_dialog_description">要使用Tonkeeper，您需要连接一个钱包。您可以创建一个新钱包或导入现有的钱包。</string>
+    <string name="start_dialog_description">要使用TOS Wallet，您需要连接一个钱包。您可以创建一个新钱包或导入现有的钱包。</string>
     <string name="wallet_generating">正在生成钱包…</string>
     <string name="wallet_created">您的钱包已成功创建！</string>
     <string name="wallet_attention_title">拿起一支笔和一张纸</string>
@@ -256,7 +256,7 @@
     <string name="sending_transaction">发送交易</string>
     <string name="transaction_confirmed">交易已确认</string>
     <string name="connected_placeholder_title">已连接的应用程序将显示在此处</string>
-    <string name="connected_placeholder_subtitle">在 Tonkeeper 浏览器中探索应用和服务。</string>
+    <string name="connected_placeholder_subtitle">在 TOS Wallet 浏览器中探索应用和服务。</string>
     <string name="send">发送</string>
     <string name="swap">交换</string>
     <string name="manage">管理</string>
@@ -316,7 +316,7 @@
     <string name="unnamed_collection">未命名的集合</string>
     <string name="view_details">查看详情</string>
     <string name="receive_coin">接收 %1$s</string>
-    <string name="receive_coin_description">仅向此地址发送 %1$s 和 TON 网络中的代币，否则您可能会丢失资金。</string>
+    <string name="receive_coin_description">仅向此地址发送 %1$s 和 TOS 网络中的代币，否则您可能会丢失资金。</string>
     <string name="copy">复制</string>
     <string name="legal">法律</string>
     <string name="terms">使用条款</string>
@@ -353,7 +353,7 @@
     <string name="widget_updated">更新于 %1$s</string>
     <string name="set_up_wallet">设置钱包</string>
     <string name="support">支持</string>
-    <string name="tonkeeper_news">Tonkeeper 新闻</string>
+    <string name="tonkeeper_news">TOS Wallet 新闻</string>
     <string name="contact_us">联系我们</string>
     <string name="language">语言</string>
     <string name="sent">已发送</string>
@@ -361,10 +361,10 @@
     <string name="network_fee">网络费用</string>
     <string name="confirm">确认</string>
     <string name="send_request_comment">在发送时，请务必填写交易所提供的 memo 或标签。否则资金将无法到账，并可能丢失。</string>
-    <string name="banner_top">您当前正在使用 Tonkeeper 的实验版本。</string>
+    <string name="banner_top">您当前正在使用 TOS Wallet 的实验版本。</string>
     <string name="banner_top_button">安装稳定版</string>
     <string name="signer_description">打开签名器 » 选择所需的密钥 » 扫描二维码</string>
-    <string name="keystone_description">打开 Keystone » 连接软件钱包 » Tonkeeper</string>
+    <string name="keystone_description">打开 Keystone » 连接软件钱包 » TOS Wallet</string>
     <string name="keystone_about">关于 Keystone</string>
     <string name="signer_about">关于Signer</string>
     <string name="signer_open">在此设备上打开签名器</string>
@@ -405,7 +405,7 @@
     <string name="bluetooth_permissions_alert_title">蓝牙权限</string>
     <string name="bluetooth_permissions_alert_message">请在设置中启用蓝牙权限以使用此功能</string>
     <string name="bluetooth_permissions_alert_open_settings">打开设置</string>
-    <string name="intro_title">欢迎来到 <annotation colorAttr="textAccentColor">Tonkeeper</annotation></string>
+    <string name="intro_title">欢迎来到 <annotation colorAttr="textAccentColor">TOS Wallet</annotation></string>
     <string name="required_comment">必填注释</string>
     <string name="biometric_enabled">已启用生物识别</string>
     <string name="sending_error">发送错误，请稍后重试</string>
@@ -413,8 +413,8 @@
     <string name="later">之后</string>
     <string name="testers_chat">报告错误（在 Telegram 中聊天）</string>
     <string name="battery">电池</string>
-    <string name="battery_refill_title">Tonkeeper 电池</string>
-    <string name="battery_refill_subtitle">通过 Tonkeeper 交换，发送代币和 NFT。</string>
+    <string name="battery_refill_title">TOS Wallet 电池</string>
+    <string name="battery_refill_subtitle">通过 TOS Wallet 交换，发送代币和 NFT。</string>
     <plurals name="battery_charges">
         <item quantity="other">%1$s 次充电</item>
     </plurals>
@@ -426,7 +426,7 @@
     <string name="battery_settings">电池设置</string>
     <string name="battery_will_be_paid">将支付：%1$s</string>
     <string name="battery_nft">NFT 转账</string>
-    <string name="battery_swap">通过 Tonkeeper 交换</string>
+    <string name="battery_swap">通过 TOS Wallet 交换</string>
     <string name="battery_jetton">代币转账</string>
     <string name="battery_trc20">USD₮ TRC20 转账</string>
     <string name="battery_swap_single">交换</string>
@@ -435,7 +435,7 @@
         <item quantity="other">≈ 每 %2$s %1$s 次充电</item>
     </plurals>
     <string name="battery_settings_title">电池设置</string>
-    <string name="battery_settings_subtitle">选定的交易将由 Tonkeeper 电池支付。</string>
+    <string name="battery_settings_subtitle">选定的交易将由 TOS Wallet 电池支付。</string>
     <string name="battery_recharge_title">充值</string>
     <string name="battery_gift_title">礼物</string>
     <string name="battery_other_title">其他</string>
@@ -456,7 +456,7 @@
         <item quantity="other">≈ %1$s NFT 转移</item>
     </plurals>
     <plurals name="battery_swap">
-        <item quantity="other">≈ %1$s 通过 Tonkeeper 进行交换</item>
+        <item quantity="other">≈ %1$s 通过 TOS Wallet 进行交换</item>
     </plurals>
     <plurals name="battery_jetton">
         <item quantity="other">≈ %1$s 代币转移</item>
@@ -475,7 +475,7 @@
     <string name="insufficient_balance_in_wallet">钱包资金不足</string>
     <string name="insufficient_balance_fees">区块链费用所需：%1$s。\n您的余额：%2$s。</string>
     <string name="insufficient_balance_default">待付款：%1$s。\n您的余额：%2$s。</string>
-    <string name="buy_ton">购买 TON</string>
+    <string name="buy_ton">购买 TOS</string>
     <string name="recharge_battery">给电池充电</string>
     <string name="name">姓名</string>
     <string name="ledger_blind_signing_error">必须在 Ledger 设置中启用盲签名</string>
@@ -523,8 +523,8 @@
     <string name="payment_method">付款方式</string>
     <string name="downloading">正在下载…</string>
     <string name="emulation_failed_warning">确认后，任何事情都可能发生，包括损失所有资金。所有交易均不可逆转。我们无法模拟该交易，也不知道接下来会发生什么。</string>
-    <string name="update_tonkeeper">更新 Tonkeeper</string>
-    <string name="update_tonkeeper_subtitle">Tonkeeper 有新版本可用。您现在就可以下载。</string>
+    <string name="update_tonkeeper">更新 TOS Wallet</string>
+    <string name="update_tonkeeper_subtitle">TOS Wallet 有新版本可用。您现在就可以下载。</string>
     <string name="download_error">下载错误。点击重试。</string>
     <string name="downloading_app_update">正在下载应用程序更新</string>
     <string name="preparing_for_downloading">准备下载</string>
@@ -551,25 +551,25 @@
     <string name="receive_tron_description">请仅向此地址发送 %1$s，否则您可能会丢失资金。</string>
     <string name="open_explorer">在浏览器中打开</string>
     <string name="out_of_available_charges">已用完 %1$s 可用额度</string>
-    <string name="tron_toggle_text">使用 USD₮ TRC20，无需 TRX。手续费由 Tonkeeper Battery 支付。</string>
+    <string name="tron_toggle_text">使用 USD₮ TRC20，无需 TRX。手续费由 TOS Wallet Battery 支付。</string>
     <string name="trc20">TRC20</string>
     <string name="copy_phrase">复制助记词</string>
     <string name="export_tron">导出 TRC20 钱包</string>
     <string name="phrase_title_tron">TRC20 钱包</string>
     <string name="phrase_description_tron">请记下这些助记词和对应编号，并妥善保管。</string>
-    <string name="prhase_tron_warning">此助记词仅适用于 TRC20，无法恢复您的 TON 钱包。请使用您的 TON 恢复助记词进行恢复。</string>
-    <string name="battery_required_title">%1$s 需要 Tonkeeper Battery</string>
+    <string name="prhase_tron_warning">此助记词仅适用于 TRC20，无法恢复您的 TOS 钱包。请使用您的 TOS 恢复助记词进行恢复。</string>
+    <string name="battery_required_title">%1$s 需要 TOS Wallet Battery</string>
     <string name="battery_required_text">电池电量用于支付交易手续费，使转账更简单且更具性价比。</string>
     <string name="charge_battery">为电池充电</string>
     <string name="send_wrong_blockchain">该地址属于 %1$s 网络。</string>
     <string name="send_wrong_blockchain_swap">通过 %3$s 将 USD₮ %1$s 兑换为 USD₮ %2$s 以继续转账。</string>
     <string name="enable_usdt_tron">启用 USD₮ TRC20</string>
     <string name="dapp_share_title">分享 %1$s</string>
-    <string name="dapp_share_subtitle">此链接将在 Tonkeeper 中直接打开 %1$s。你可以稍后再次使用或根据需要分享它。</string>
+    <string name="dapp_share_subtitle">此链接将在 TOS Wallet 中直接打开 %1$s。你可以稍后再次使用或根据需要分享它。</string>
     <string name="copy_link">复制链接</string>
-    <string name="dapp_disclaimer">你正在打开一个非 Tonkeeper 运营的外部应用。只有在你信任该来源时才继续操作。</string>
+    <string name="dapp_disclaimer">你正在打开一个非 TOS Wallet 运营的外部应用。只有在你信任该来源时才继续操作。</string>
     <string name="sign">符号</string>
-    <string name="ton_assets">TON 资产</string>
+    <string name="ton_assets">TOS 资产</string>
     <string name="pair_not_available">此货币对不可用。请尝试其他货币对。</string>
     <string name="balance_prefix">余额：%1$s</string>
     <string name="all_currencies">所有货币</string>

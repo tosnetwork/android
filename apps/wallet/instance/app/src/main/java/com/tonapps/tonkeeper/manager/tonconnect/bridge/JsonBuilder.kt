@@ -155,7 +155,7 @@ internal object JsonBuilder {
     fun device(maxMessages: Int, appVersion: String): JSONObject {
         val json = JSONObject()
         json.put("platform", "android")
-        json.put("appName", "Tonkeeper")
+        json.put("appName", "TOS Wallet")
         json.put("appVersion", appVersion)
         json.put("maxProtocolVersion", 2)
         json.put("features", features(maxMessages))

@@ -3,7 +3,7 @@
     <string name="add_contact">Manzillar kitobiga qo\'shish</string>
     <string name="add_to_home_screen">Asosiy ekranga qo\'shish</string>
     <string name="remind_me_later">Keyinroq eslating</string>
-    <string name="multi_account_secret_wrong">Multi-Wallet hisobi uchun Tonkeeper Desktop-dan foydalaning</string>
+    <string name="multi_account_secret_wrong">Multi-Wallet hisobi uchun TOS Wallet Desktop-dan foydalaning</string>
     <string name="total">Jami: %1$s</string>
     <string name="staking_ready_withdraw">%1$s tayyor. Birgalikda yig\'ish-ga teging.</string>
     <string name="staking_pending_deposit">%1$s %2$s da saqlanadi</string>
@@ -33,7 +33,7 @@
     <string name="setup_finish_biometry">Tranzaksiyalarni tasdiqlash uchun biometrikani qo\'llang</string>
     <string name="setup_finish_backup">Qayta tiklash iborangizni zaxiralang</string>
     <string name="setup_finish_backup_subtitle">U holda, hamyoningizni tiklay olmaysiz</string>
-    <string name="setup_finish_telegram">Tonkeeper kanaliga qo\'shiling</string>
+    <string name="setup_finish_telegram">TOS Wallet kanaliga qo\'shiling</string>
     <string name="setup_onboarding">Hamyoningizdan qanday foydalanishni o\'rganing</string>
     <string name="contacts">Kontaktlar</string>
     <string name="step_1">1-qadam</string>
@@ -54,7 +54,7 @@
     <string name="unverified_token_reason_2">Token savdo platformalarida ro\'yxatga olinmagan va cheklangan talabga ega.</string>
     <string name="unverified_token_reason_3">Spam uchun ishlatiladi. Ko\'p miqdorda keraksiz va ko\'pincha ahamiyatsiz xabarlarni yuborish uchun foydalaniladi.</string>
     <string name="unverified_token_reason_4">Firibgarlik uchun ishlatiladi. Tokenning nomi yoki tasviri foydalanuvchilarni aldashga olib kelishi mumkin.</string>
-    <string name="w5_story_description_1">TON ga ega bo\'lmasdan USDT yuboring – tranzaksiya to\'lovlari avtomatik ravishda bir necha sent USDT bilan qoplanadi.</string>
+    <string name="w5_story_description_1">TOS ga ega bo\'lmasdan USDT yuboring – tranzaksiya to\'lovlari avtomatik ravishda bir necha sent USDT bilan qoplanadi.</string>
     <string name="w5_story_description_3">W5 bir vaqtning o\'zida bajariladigan operatsiyalar sonini 4 tadan 255 tagacha oshiradi, bu esa to\'lov xarajatlarini tejashga yordam beradi.</string>
     <string name="w5_story_description_4">Eski hisoblar va W5 bir xil tiklash iborasidan foydalanadi – yangi qurilmada hisoblarni tiklashda, eski va yangi avtomatik ravishda paydo bo\'ladi.</string>
     <string name="w5_usdt_title">Gazsiz o\'tkazmalar</string>
@@ -67,16 +67,16 @@
     <string name="min_amount">Min. miqdori: %1$s</string>
     <string name="stake_ethena_description">tsUSDe tokeni markazlashtirilmagan staking xizmati Ethena orqali o\'tkaziladigan USDe ni ifodalaydi. tsUSDe minimal blokirovka bilan avtomatik ravishda staking mukofotlarini oladi.</string>
     <string name="stake_ethena_disclaimer">Bu o\'tgan haftadagi o\'rtacha protokol mukofotlari va stavkaga qo\'yilgan o\'rtacha USDe miqdoriga asoslangan taxminiy yillik daromaddir. Daromad haftalik birikma bilan yillik hisoblanadi. <annotation colorAttr="textSecondaryColor">O‘tgan ishlash kelajakdagi natijalarni kafolatlamaydi.</annotation> Staking va mukofotlar uchinchi tomon xizmati Ethena tomonidan taqdim etiladi va ularning <annotation colorAttr="textAccentColor">shartlariga</annotation> bo‘ysunadi.</string>
-    <string name="stake_tonstakers_description">Tonstakerlar hovuziga TON qo‘shganingizda, siz hovuzdagi ulushingizni ifodalovchi tsTON deb nomlangan token olasiz. Hovuz daromadni to\'plaganligi sababli, sizning tsTON ko\'proq TON miqdorini bildiradi.</string>
+    <string name="stake_tonstakers_description">Tonstakerlar hovuziga TOS qo‘shganingizda, siz hovuzdagi ulushingizni ifodalovchi tsTON deb nomlangan token olasiz. Hovuz daromadni to\'plaganligi sababli, sizning tsTON ko\'proq TOS miqdorini bildiradi.</string>
     <string name="edit">Tahrirlash</string>
     <string name="pinned">Qaydnoma qilindi</string>
     <string name="all_assets">Barcha aktivlar</string>
-    <string name="all_ton_assets">Barcha TON aktivlari</string>
+    <string name="all_ton_assets">Barcha TOS aktivlari</string>
     <string name="sorted_by_price">Narx bo\'yicha saralangan</string>
     <string name="staking_minimum_deposit">Minimal depozit %1$s.</string>
     <string name="staking_options">Opsiyalar</string>
     <string name="staking_minimal_deposit">Minimal depozit</string>
-    <string name="staking_details_description">Steking uchinchi tomonlarning aqlli shartnomalariga asoslangan. Tonkeeper steking tajribasi uchun javobgar emas.</string>
+    <string name="staking_details_description">Steking uchinchi tomonlarning aqlli shartnomalariga asoslangan. TOS Wallet steking tajribasi uchun javobgar emas.</string>
     <string name="staking_links">Havolalar</string>
     <string name="links">Havolalar</string>
     <string name="staking_choose">Tanlang</string>
@@ -93,8 +93,8 @@
     <string name="manual_start_button">Qo\'lda Zaxiralash</string>
     <string name="backup_attention_title">Diqqat</string>
     <string name="backup_attention_description">Iltimos, tiklash iborangizni ko\'rishdan oldin quyidagilarni diqqat bilan o\'qing.</string>
-    <string name="backup_attention_line_1">Hech qachon hamyoningizga kirish uchun Tonkeeperdan boshqa joyda tiklash iborangizni kiritmang.</string>
-    <string name="backup_attention_line_2">Tonkeeper qo\'llab-quvvatlash tiklash iborasini so\'ramaydi.</string>
+    <string name="backup_attention_line_1">Hech qachon hamyoningizga kirish uchun TOS Walletdan boshqa joyda tiklash iborangizni kiritmang.</string>
+    <string name="backup_attention_line_2">TOS Wallet qo\'llab-quvvatlash tiklash iborasini so\'ramaydi.</string>
     <string name="backup_attention_line_3">Har kim sizning tiklash iborangiz bilan hamyoningizga kira oladi.</string>
     <string name="manual_backup_check">Zaxiralarni tekshirish</string>
     <string name="backup_check">Zaxira tekshiruvi</string>
@@ -108,10 +108,10 @@
     <string name="apps">Ilovalar</string>
     <string name="apps_notifications_description">Ulanishgan ilovalardan faoliyatingizdagi bildirishnomalar</string>
     <string name="push_notifications">Push-bildirishnomalar</string>
-    <string name="push_notifications_description">TON, tokenlar va NFTlar qabul qilganingizda bildirishnomalarni oling. Ulangan ilovalardan bildirishnomalar.</string>
+    <string name="push_notifications_description">TOS, tokenlar va NFTlar qabul qilganingizda bildirishnomalarni oling. Ulangan ilovalardan bildirishnomalar.</string>
     <string name="failed">Muvaffaqiyatsiz</string>
     <string name="remove_dapp_confirm">%1$s ni olib tashlaysizmi?</string>
-    <string name="rate_tonkeeper">Tonkeeperni baholang</string>
+    <string name="rate_tonkeeper">TOS Walletni baholang</string>
     <string name="encrypted_comment">Shifrlangan izoh</string>
     <string name="encrypted_comment_description">Izoh yuboruvchi tomonidan shifrlangan va faqat siz tomonidan ochilishi mumkin. Iltimos, mazmuniga ehtiyot bo\'ling va firibgarliklardan ogoh bo\'ling.</string>
     <string name="decrypted_comment_action">Izohni shifrdan chiqarish</string>
@@ -167,7 +167,7 @@
     <string name="transfer">O\'tkazish</string>
     <string name="jetton_transfer">%1$s transferi</string>
     <string name="name_your_wallet">Hamyoningizni nomlang</string>
-    <string name="name_your_wallet_subtitle">Tonkeeperdan foydalanayotganda hamyoningizni oson aniqlash uchun nomlang. Ushbu nomlar mahalliy saqlanadi va faqat siz ko\'rishingiz mumkin.</string>
+    <string name="name_your_wallet_subtitle">TOS Walletdan foydalanayotganda hamyoningizni oson aniqlash uchun nomlang. Ushbu nomlar mahalliy saqlanadi va faqat siz ko\'rishingiz mumkin.</string>
     <string name="open_anyway">Baribir oching</string>
     <string name="nft_warning_buttton_title">Haqiqatan ham tashqi havolani ochmoqchimisiz?</string>
     <string name="nft_warning_buttton_subtitle">Toʻplam muallifiga ishonsangizgina ushbu tashqi havolaga tashrif buyuring. %1$s</string>
@@ -192,10 +192,10 @@
     <string name="empty_collectibles_title">Sizning kolleksiyalaringiz bu yerda ko\'rsatiladi</string>
     <string name="empty_collectibles_subtitle">Birinchi narsangizni oling!</string>
     <string name="new_wallet">Yangi hamyon</string>
-    <string name="buy_toncoin">Toncoin sotib olish</string>
+    <string name="buy_toncoin">TOS sotib olish</string>
     <string name="buy_or_sell_dot">Sotib olish · Sotish</string>
     <string name="buy_or_sell">Sotib olish yoki sotish</string>
-    <string name="fiat_open_description">Siz Tonkeeper tomonidan boshqarilmaydigan tashqi ilovani ochmoqdasiz.</string>
+    <string name="fiat_open_description">Siz TOS Wallet tomonidan boshqarilmaydigan tashqi ilovani ochmoqdasiz.</string>
     <string name="buy">Sotib olish</string>
     <string name="sell">Sotish</string>
     <string name="search">Qidirish</string>
@@ -204,13 +204,13 @@
     <string name="country_title">Mamlakatingizni tanlang</string>
     <string name="intro_description">Yangi hamyon yarating yoki mavjudini qo‘shing</string>
     <string name="intro_line_1_title">Dunyo darajasidagi tezlik</string>
-    <string name="intro_line_1_description">TON tarmog\'i tezlik va o\'tkazuvchanlik uchun mo\'ljallangan. To\'lovlar boshqa blokcheynlarga qaraganda ancha past, va tranzaksiyalar bir necha soniya ichida tasdiqlanadi.</string>
+    <string name="intro_line_1_description">TOS tarmog\'i tezlik va o\'tkazuvchanlik uchun mo\'ljallangan. To\'lovlar boshqa blokcheynlarga qaraganda ancha past, va tranzaksiyalar bir necha soniya ichida tasdiqlanadi.</string>
     <string name="intro_line_2_title">Oxiridan oxirigacha xavfsizlik</string>
-    <string name="intro_line_2_description">Tonkeeper sizning kriptografik kalitlaringizni qurilmangizda hujjatlar, shaxsiy ma\'lumotlar, aloqa ma\'lumotlari yoki KYC talab qilmasdan saqlaydi.</string>
+    <string name="intro_line_2_description">TOS Wallet sizning kriptografik kalitlaringizni qurilmangizda hujjatlar, shaxsiy ma\'lumotlar, aloqa ma\'lumotlari yoki KYC talab qilmasdan saqlaydi.</string>
     <string name="intro_line_3_title">Ichki obunalar</string>
-    <string name="intro_line_3_description">TON obunalar peer-to-peer va chegarasiz bo\'lib, hech kim provayderlar yoki mijozlarni cheklay olmaydi. Deyarli nol to\'lovlar va to\'liq nazorat siz uchun.</string>
+    <string name="intro_line_3_description">TOS obunalar peer-to-peer va chegarasiz bo\'lib, hech kim provayderlar yoki mijozlarni cheklay olmaydi. Deyarli nol to\'lovlar va to\'liq nazorat siz uchun.</string>
     <string name="stories_safemode_3_subtitle">Kutilmagan xavflarni oldini olish uchun.</string>
-    <string name="start_title">Tonkeeper</string>
+    <string name="start_title">TOS Wallet</string>
     <string name="no_internet_connection">Internet aloqasi yo\'q</string>
     <string name="start_description">Yangi hamyon yarating yoki mavjudini qo\'shing</string>
     <string name="start_create_new_wallet">Yangi hamyon yaratish</string>
@@ -238,12 +238,12 @@
     <string name="enable_notification">Bildirishnomani yoqing</string>
     <string name="allow_notification">Bildirishnomalarga ruxsat berish</string>
     <string name="enable_notification_title">Tezkor bildirishnomalarni oling</string>
-    <string name="enable_notification_subtitle">TON, tokenlar va NFTlarni qabul qilganingizda xabarnoma oling</string>
+    <string name="enable_notification_subtitle">TOS, tokenlar va NFTlarni qabul qilganingizda xabarnoma oling</string>
     <string name="widget_placeholder">Hamyon tanlash kerak</string>
     <string name="import_wallet_title">Qayta tiklash iborangizni kiriting</string>
     <string name="import_wallet_description">Hamyoningizga kirishni tiklash uchun, hamyoningizni yaratganingizda sizga berilgan 24 yoki 12-sonli yashirin tiklanish so\'zlarini kiriting.</string>
     <string name="start_dialog_title">Keling, hamyoningizni sozlaymiz</string>
-    <string name="start_dialog_description">Tonkeeper’dan foydalanish uchun sizga ulangan hamyon kerak. Yangi hamyon yarating yoki mavjudini import qiling.</string>
+    <string name="start_dialog_description">TOS Wallet’dan foydalanish uchun sizga ulangan hamyon kerak. Yangi hamyon yarating yoki mavjudini import qiling.</string>
     <string name="wallet_generating">Hamyon yaratilmoqda…</string>
     <string name="wallet_created">Hamyoningiz endi yaratildi!</string>
     <string name="wallet_attention_title">Qalam va qog\'oz oling</string>
@@ -256,7 +256,7 @@
     <string name="sending_transaction">Tranzaksiyani yuborish</string>
     <string name="transaction_confirmed">Tranzaksiya tasdiqlandi</string>
     <string name="connected_placeholder_title">Bu yerda ulanilgan ilovalar ko\'rsatiladi</string>
-    <string name="connected_placeholder_subtitle">Tonkeeper brauzerida ilovalar va xizmatlarni o\'rganing.</string>
+    <string name="connected_placeholder_subtitle">TOS Wallet brauzerida ilovalar va xizmatlarni o\'rganing.</string>
     <string name="send">Yuborish</string>
     <string name="swap">Almashtirish</string>
     <string name="manage">Boshqarish</string>
@@ -316,7 +316,7 @@
     <string name="unnamed_collection">Nomsiz to\'plam</string>
     <string name="view_details">Tafsilotlarni ko\'rish</string>
     <string name="receive_coin">Qabul qilish %1$s</string>
-    <string name="receive_coin_description">Faqat %1$s va TON tarmog\'idagi tokenlarni ushbu manzilga yuboring, aks holda mablag\'ingiz yo\'qolishi mumkin.</string>
+    <string name="receive_coin_description">Faqat %1$s va TOS tarmog\'idagi tokenlarni ushbu manzilga yuboring, aks holda mablag\'ingiz yo\'qolishi mumkin.</string>
     <string name="receive_tron_description">Bu manzilga atigi %1$s yuboring, aks holda mablagʻingiz yoʻqolishi mumkin.</string>
     <string name="copy">Nusxa ko\'chirish</string>
     <string name="legal">Huquqiy</string>
@@ -354,7 +354,7 @@
     <string name="widget_updated">%1$s da yangilangan</string>
     <string name="set_up_wallet">Hamyonni sozlash</string>
     <string name="support">Qo\'llab-quvvatlash</string>
-    <string name="tonkeeper_news">Tonkeeper yangiliklari</string>
+    <string name="tonkeeper_news">TOS Wallet yangiliklari</string>
     <string name="contact_us">Biz bilan bog\'laning</string>
     <string name="language">Til</string>
     <string name="sent">Yuborildi</string>
@@ -362,10 +362,10 @@
     <string name="network_fee">Tarmoq to\'lovi</string>
     <string name="confirm">Tasdiqlash</string>
     <string name="send_request_comment">Yuborishda, albatta, birjadan olingan memo yoki tegni kiriting. U holda mablag‘lar tushmaydi va yo‘qolib ketishi mumkin.</string>
-    <string name="banner_top">Siz hozirda Tonkeeper-ning tajribaviy versiyasidan foydalanmoqdasiz.</string>
+    <string name="banner_top">Siz hozirda TOS Wallet-ning tajribaviy versiyasidan foydalanmoqdasiz.</string>
     <string name="banner_top_button">Barqaror versiyani o\'rnating</string>
     <string name="signer_description">Signer-ni oching » Kerakli kalitni tanlang » QR kodni skaner qiling</string>
-    <string name="keystone_description">Keystone » Ulanish Software Wallet » Tonkeeper ni oching</string>
+    <string name="keystone_description">Keystone » Ulanish Software Wallet » TOS Wallet ni oching</string>
     <string name="keystone_about">Keystone haqida</string>
     <string name="signer_about">Signer haqida</string>
     <string name="signer_open">Ushbu qurilmada imzolovchini oching</string>
@@ -387,18 +387,18 @@
     <string name="connected">Ulangan</string>
     <string name="browser_search_placeholder">Manzilni kiriting yoki internetdan qidiring</string>
     <string name="ledger_title">Ledger bilan birlashtirish</string>
-    <string name="ledger_subtitle">Aparat moduli, Bluetooth, cheklangan TON funksiyalari</string>
+    <string name="ledger_subtitle">Aparat moduli, Bluetooth, cheklangan TOS funksiyalari</string>
     <string name="ledger_confirm_title">Harakatni Tasdiqlang</string>
     <string name="ledger_connect_title">Ledgerni ulash</string>
     <string name="ledger_connect">Ledger qurilmasini Bluetooth orqali qurilmangizga ulang</string>
     <string name="ledger_usb_connect">Ledger’ni qurilmangizga USB orqali ulang</string>
-    <string name="ledger_open_ton_app">Qulflang va TON ilovasini oching</string>
-    <string name="ledger_install_ton_app">TON ilovasini o\'rnating</string>
+    <string name="ledger_open_ton_app">Qulflang va TOS ilovasini oching</string>
+    <string name="ledger_install_ton_app">TOS ilovasini o\'rnating</string>
     <string name="ledger_confirm_tx">Ledger\'da tranzaksiyangizni tasdiqlang</string>
     <string name="ledger_confirm_tx_step">Ledgerda #%1$d tranzaksiyani tasdiqlang</string>
     <string name="ledger_confirm_proof">Domenni Ledger’da tasdiqlang</string>
     <string name="ledger_operation_not_supported">Amal Ledger hamyonlari uchun mavjud emas. Boshqa hamyonni tanlang va qayta urinib ko\'ring.</string>
-    <string name="ledger_update_title">Ledger’dagi TON ilovasini %1$s versiyasiga yangilang</string>
+    <string name="ledger_update_title">Ledger’dagi TOS ilovasini %1$s versiyasiga yangilang</string>
     <string name="ledger_update_text">Ilovangizning joriy versiyasida bu turdagi tranzaksiya qo‘llab-quvvatlanmaydi.</string>
     <string name="ledger_update_button">OK</string>
     <string name="ledger_comment_error">Faqat ASCII belgilaridan foydalaning: raqamlar, lotin alifbosi harflari va tinish belgilari.</string>
@@ -406,7 +406,7 @@
     <string name="bluetooth_permissions_alert_title">Bluetooth ruxsatnomalari</string>
     <string name="bluetooth_permissions_alert_message">Iltimos, ushbu funksiyani ishlatish uchun sozlamalaringizda Bluetooth ruxsatlarini yoqing</string>
     <string name="bluetooth_permissions_alert_open_settings">Sozlamalarni oching</string>
-    <string name="intro_title"><annotation colorAttr="textAccentColor">Tonkeeper</annotation>ga xush kelibsiz</string>
+    <string name="intro_title"><annotation colorAttr="textAccentColor">TOS Wallet</annotation>ga xush kelibsiz</string>
     <string name="required_comment">Sharh kerak</string>
     <string name="biometric_enabled">Biometrik yoqilgan</string>
     <string name="sending_error">Yuborishda xatolik, keyinroq qayta urinib ko‘ring</string>
@@ -414,8 +414,8 @@
     <string name="later">Keyinchalik</string>
     <string name="testers_chat">Xato haqida xabar berish (Telegramda suhbat)</string>
     <string name="battery">Batareya</string>
-    <string name="battery_refill_title">Tonkeeper Batareya</string>
-    <string name="battery_refill_subtitle">Tonkeeper orqali almashtirish, tokenlar va NFTlarni yuboring.</string>
+    <string name="battery_refill_title">TOS Wallet Batareya</string>
+    <string name="battery_refill_subtitle">TOS Wallet orqali almashtirish, tokenlar va NFTlarni yuboring.</string>
     <plurals name="battery_charges">
         <item quantity="one">%1$s zaryad</item>
         <item quantity="other">%1$s zaryadlar</item>
@@ -429,7 +429,7 @@
     <string name="battery_settings">Batareya Sozlamalari</string>
     <string name="battery_will_be_paid">To‘lanadi: %1$s</string>
     <string name="battery_nft">NFT o\'tkazmalari</string>
-    <string name="battery_swap">Tonkeeper orqali almashtirish</string>
+    <string name="battery_swap">TOS Wallet orqali almashtirish</string>
     <string name="battery_jetton">token o\'tkazmalari</string>
     <string name="battery_trc20">USD₮ TRC20 o‘tkazmalari</string>
     <string name="battery_swap_single">almashtirish</string>
@@ -439,7 +439,7 @@
         <item quantity="other">≈ %1$s zaryadlar %2$s uchun</item>
     </plurals>
     <string name="battery_settings_title">Batareya Sozlamalari</string>
-    <string name="battery_settings_subtitle">Tanlangan tranzaktsiyalar Tonkeeper Batareya orqali to‘lanadi.</string>
+    <string name="battery_settings_subtitle">Tanlangan tranzaktsiyalar TOS Wallet Batareya orqali to‘lanadi.</string>
     <string name="battery_recharge_title">Zaryadlash</string>
     <string name="battery_gift_title">Sovg\'a</string>
     <string name="battery_other_title">Boshqa</string>
@@ -461,8 +461,8 @@
         <item quantity="other">≈ %1$s NFT transferi</item>
     </plurals>
     <plurals name="battery_swap">
-        <item quantity="one">≈ %1$s Tonkeeper orqali almashtirish</item>
-        <item quantity="other">≈ %1$s Tonkeeper orqali almashtirish</item>
+        <item quantity="one">≈ %1$s TOS Wallet orqali almashtirish</item>
+        <item quantity="other">≈ %1$s TOS Wallet orqali almashtirish</item>
     </plurals>
     <plurals name="battery_jetton">
         <item quantity="one">≈ %1$s ta token uzatish</item>
@@ -484,7 +484,7 @@
     <string name="insufficient_balance_charges">Toʻlov uchun talab qilinadi: %1$s\\nMavjud: %2$s</string>
     <string name="insufficient_balance_fees">Blokcheyn to‘lovlari uchun talab qilinadi: %1$s.\nBalansingiz: %2$s.</string>
     <string name="insufficient_balance_default">Toʻlanishi kerak: %1$s.\nBalansingiz: %2$s.</string>
-    <string name="buy_ton">TON sotib oling</string>
+    <string name="buy_ton">TOS sotib oling</string>
     <string name="recharge_battery">Batareyani qayta zaryadlash</string>
     <string name="nothing_to_restore">Qayta tiklash uchun hech narsa yo\'q</string>
     <string name="name">Ism</string>
@@ -533,8 +533,8 @@
     <string name="payment_method">To\'lov usuli</string>
     <string name="downloading">Yuklab olinmoqda…</string>
     <string name="emulation_failed_warning">Tasdiqlangandan so\'ng, hamma narsa yuz berishi mumkin, jumladan, barcha mablag\'laringizni yo\'qotish. Barcha operatsiyalar qaytarilmasdir. Biz tranzaksiyani taqlid qila olmadik va keyin nima bo\'lishini bilmaymiz.</string>
-    <string name="update_tonkeeper">Tonkeeper-ni yangilang</string>
-    <string name="update_tonkeeper_subtitle">Tonkeeper ilovasining yangi versiyasi mavjud. Uni hozir yuklab olishingiz mumkin.</string>
+    <string name="update_tonkeeper">TOS Wallet-ni yangilang</string>
+    <string name="update_tonkeeper_subtitle">TOS Wallet ilovasining yangi versiyasi mavjud. Uni hozir yuklab olishingiz mumkin.</string>
     <string name="download_error">Yuklab olish xatosi. Qayta urinish uchun bosing.</string>
     <string name="downloading_app_update">Ilova yangilanishi yuklab olinmoqda</string>
     <string name="preparing_for_downloading">Yuklab olishga tayyorlanmoqda</string>
@@ -556,25 +556,25 @@
     <string name="theme_dark">Qorong\'i</string>
     <string name="sign_data_binary_message">Siz ko\'r-ko\'rona imzo chekyapsiz. Faqat ishonchli manbalardan kiring.</string>
     <string name="slide_to_sign">Imzolash uchun suring</string>
-    <string name="tron_toggle_text">USD₮ TRC20 ni TRX holda ishlating. Komissiyalar Tonkeeper Battery tomonidan qoplanadi.</string>
+    <string name="tron_toggle_text">USD₮ TRC20 ni TRX holda ishlating. Komissiyalar TOS Wallet Battery tomonidan qoplanadi.</string>
     <string name="trc20">TRC20</string>
     <string name="copy_phrase">Iborani nusxalash</string>
     <string name="export_tron">TRC20 hamyonni eksport qilish</string>
     <string name="phrase_title_tron">TRC20 hamyon</string>
     <string name="phrase_description_tron">Ushbu so‘zlarni raqamlari bilan yozib oling va xavfsiz joyda saqlang.</string>
-    <string name="prhase_tron_warning">Ushbu ibora faqat TRC20 uchun. Bu sizning TON hamyoningizni tiklay olmaydi. TON hamyonini tiklash uchun TON tiklash iborasidan foydalaning.</string>
-    <string name="battery_required_title">%1$s uchun Tonkeeper Battery talab qilinadi</string>
+    <string name="prhase_tron_warning">Ushbu ibora faqat TRC20 uchun. Bu sizning TOS hamyoningizni tiklay olmaydi. TOS hamyonini tiklash uchun TOS tiklash iborasidan foydalaning.</string>
+    <string name="battery_required_title">%1$s uchun TOS Wallet Battery talab qilinadi</string>
     <string name="battery_required_text">Tranzaksiya to‘lovlarini qoplash uchun zaryadlar ishlatiladi, bu esa pul o‘tkazmalarini oson va arzon qiladi.</string>
     <string name="charge_battery">Batareyani zaryadlash</string>
     <string name="send_wrong_blockchain">Manzil %1$s tarmog‘iga tegishli.</string>
     <string name="send_wrong_blockchain_swap">USD₮ %1$s ni USD₮ %2$s ga %3$s orqali almashtirib, pul o‘tkazmasini davom eting.</string>
     <string name="enable_usdt_tron">USD₮ TRC20 ni yoqish</string>
     <string name="dapp_share_title">%1$s ulashish</string>
-    <string name="dapp_share_subtitle">Ushbu havola %1$s ni bevosita Tonkeeper’da ochadi. Keyinroq yana foydalanishingiz yoki kerak bo‘lsa, boshqalar bilan ulashishingiz mumkin.</string>
+    <string name="dapp_share_subtitle">Ushbu havola %1$s ni bevosita TOS Wallet’da ochadi. Keyinroq yana foydalanishingiz yoki kerak bo‘lsa, boshqalar bilan ulashishingiz mumkin.</string>
     <string name="copy_link">Havolani nusxalash</string>
-    <string name="dapp_disclaimer">Siz Tonkeeper tomonidan boshqarilmaydigan tashqi ilovani ochyapsiz. Faqat manbaga ishonsangiz davom eting.</string>
+    <string name="dapp_disclaimer">Siz TOS Wallet tomonidan boshqarilmaydigan tashqi ilovani ochyapsiz. Faqat manbaga ishonsangiz davom eting.</string>
     <string name="sign">Obuna boʻling</string>
-    <string name="ton_assets">TON aktivlari</string>
+    <string name="ton_assets">TOS aktivlari</string>
     <string name="pair_not_available">Bu valyuta juftligi mavjud emas. Iltimos, boshqa sinab koʻring.</string>
     <string name="balance_prefix">Balans: %1$s</string>
     <string name="all_currencies">Barcha valyutalar</string>
