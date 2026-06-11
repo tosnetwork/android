@@ -17,8 +17,8 @@ internal object Constants {
     // Phase 1.5: points at the local localnet (scripts/localnet-jsonrpc.py).
     // 10.0.2.2 = Android emulator -> host loopback; use the host LAN IP for a real device,
     // and the production TOS domain for release.
-    const val TOS_API_MAINNET = "http://10.0.2.2:18545"
-    const val TOS_API_TESTNET = "http://10.0.2.2:18545"
+    val TOS_API_MAINNET = if (BuildConfig.DEBUG) "http://10.0.2.2:18545" else "https://rpc.tos.network"
+    val TOS_API_TESTNET = if (BuildConfig.DEBUG) "http://10.0.2.2:18545" else "https://testnet-rpc.tos.network"
 
     // --- TON Connect bridge (self-hosted) ---
     const val TOS_BRIDGE = "https://bridge.tos.network"

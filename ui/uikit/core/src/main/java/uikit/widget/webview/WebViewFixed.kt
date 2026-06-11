@@ -107,7 +107,7 @@ open class WebViewFixed @JvmOverloads constructor(
         settings.domStorageEnabled = true
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.setSupportMultipleWindows(true)
-        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         settings.allowFileAccess = false
         settings.cacheMode = WebSettings.LOAD_NO_CACHE
         settings.allowContentAccess = false

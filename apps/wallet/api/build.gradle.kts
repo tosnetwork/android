@@ -16,6 +16,10 @@ android {
         minSdk = Build.minSdkVersion
         consumerProguardFiles("consumer-rules.pro")
     }
+
+    buildFeatures {
+        buildConfig = true
+    }
 }
 
 dependencies {

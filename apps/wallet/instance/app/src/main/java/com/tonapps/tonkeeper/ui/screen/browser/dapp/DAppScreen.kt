@@ -134,9 +134,9 @@ class DAppScreen(wallet: WalletEntity) : InjectedTonConnectScreen(R.layout.fragm
             resources.forEach { resource ->
                 if (resource == PermissionRequest.RESOURCE_VIDEO_CAPTURE) {
                     androidPermissions.add(Manifest.permission.CAMERA)
-                } else if (resource == PermissionRequest.RESOURCE_AUDIO_CAPTURE) {
-                    androidPermissions.add(Manifest.permission.RECORD_AUDIO)
                 }
+                // TOS: microphone (RESOURCE_AUDIO_CAPTURE) is intentionally not granted to
+                // dApps — the wallet does not request the RECORD_AUDIO permission.
             }
             if (hasPermissions(androidPermissions.toTypedArray())) {
                 request.grant(resources)

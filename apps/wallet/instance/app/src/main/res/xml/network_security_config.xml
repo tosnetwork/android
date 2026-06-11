@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">*.ton</domain>
-    </domain-config>
+    <!-- TOS: release traffic goes to the TOS node over HTTPS only. No cleartext is
+         permitted (the previous *.ton cleartext rule has been removed). Local-dev
+         cleartext to the emulator localnet is allowed only by the debug-flavor config. -->
+    <base-config cleartextTrafficPermitted="false" />
 </network-security-config>
