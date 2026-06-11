@@ -7,6 +7,7 @@ import com.tonapps.extensions.locale
 import com.tonapps.network.interceptor.AcceptLanguageInterceptor
 import com.tonapps.network.interceptor.AuthorizationInterceptor
 import com.tonapps.wallet.api.entity.ConfigEntity
+import okhttp3.CertificatePinner
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -44,6 +45,23 @@ abstract class CoreAPI(private val context: Context) {
 
     private companion object {
 
+        // Builds a CertificatePinner from Constants.TOS_CERT_PINS. Returns null when no
+        // pins are configured, leaving the standard system trust store in effect.
+        // Pinning only constrains the explicitly listed hosts; all other hosts are
+        // unaffected, so this is safe to attach to every client.
+        private fun certificatePinner(): CertificatePinner? {
+            if (Constants.TOS_CERT_PINS.isEmpty()) {
+                return null
+            }
+            val builder = CertificatePinner.Builder()
+            for ((host, pins) in Constants.TOS_CERT_PINS) {
+                for (pin in pins) {
+                    builder.add(host, pin)
+                }
+            }
+            return builder.build()
+        }
+
         class UserAgentInterceptor(private val userAgent: String) : Interceptor {
             override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
                 val request = chain.request().newBuilder()
@@ -66,6 +84,8 @@ abstract class CoreAPI(private val context: Context) {
                 .pingInterval(timeoutSeconds, TimeUnit.SECONDS)
                 .followSslRedirects(true)
                 .followRedirects(true)
+
+            certificatePinner()?.let { builder.certificatePinner(it) }
 
             for (interceptor in interceptors) {
                 builder.addInterceptor(interceptor)

@@ -56,3 +56,14 @@
 -keep class com.facebook.imageutils.** { *; }
 -dontwarn com.facebook.imageutils.**
 
+# Strip all debug-level logging from release builds. R8 removes these calls
+# (and the string concatenation feeding them) so no debug data — addresses,
+# request bodies, tokens, mnemonics — can leak via logcat in production.
+# Log.w / Log.e are kept for genuine error diagnostics (must never carry secrets).
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static boolean isLoggable(java.lang.String, int);
+}
+

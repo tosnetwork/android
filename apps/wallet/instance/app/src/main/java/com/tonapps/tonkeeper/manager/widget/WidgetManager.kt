@@ -101,14 +101,12 @@ object WidgetManager {
             putExtra(ARG_TYPE, type)
         }
 
+        // This is an explicit Intent to our own PinnedReceiver with all extras already
+        // set; the system only fires it back unchanged on pin success. It never needs to
+        // be mutable, so keep it immutable to prevent extras-tampering / intent hijacking.
         val flags = when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                if (intent.component != null || intent.hasCategory(Intent.CATEGORY_BROWSABLE)) {
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-                } else {
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                }
-            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             else -> PendingIntent.FLAG_UPDATE_CURRENT
         }
 
