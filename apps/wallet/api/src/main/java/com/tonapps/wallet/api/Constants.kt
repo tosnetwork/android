@@ -47,6 +47,29 @@ internal object Constants {
     // Legacy-reference compatibility: swap is disabled by default; keep an empty string to avoid NPEs.
     const val SWAP_PREFIX = ""
 
+    // --- TLS certificate pinning ---
+    // First principles: a funds-holding wallet should cryptographically verify it is
+    // talking to the real TOS infrastructure, not merely trust the device CA store
+    // (which a rogue/compromised CA or a user-installed root can subvert).
+    //
+    // Map of host -> list of SPKI pins ("sha256/<base64>"). When a host has pins,
+    // OkHttp rejects any TLS chain whose leaf/intermediate SPKI is not in the set.
+    // EMPTY = pinning disabled (no enforcement). Populate with the real pins of the
+    // deployed TOS endpoints before public release. Compute a pin with:
+    //   openssl s_client -connect rpc.tos.network:443 </dev/null 2>/dev/null \
+    //     | openssl x509 -pubkey -noout \
+    //     | openssl pkey -pubin -outform der \
+    //     | openssl dgst -sha256 -binary | openssl enc -base64
+    // ALWAYS add a backup pin (e.g. the issuing intermediate CA's SPKI) so a planned
+    // certificate rotation cannot brick installed apps.
+    //
+    // Example once the endpoints are live:
+    //   mapOf(
+    //     "rpc.tos.network"    to listOf("sha256/AAAA...", "sha256/BBBB..."),
+    //     "bridge.tos.network" to listOf("sha256/AAAA...", "sha256/BBBB..."),
+    //   )
+    val TOS_CERT_PINS: Map<String, List<String>> = emptyMap()
+
     /**
      * Known jetton master list (Phase 1.5).
      *

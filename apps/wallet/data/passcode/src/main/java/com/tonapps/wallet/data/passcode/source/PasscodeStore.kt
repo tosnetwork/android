@@ -2,7 +2,7 @@ package com.tonapps.wallet.data.passcode.source
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
+import java.security.MessageDigest
 import com.tonapps.extensions.clear
 import com.tonapps.extensions.putString
 import com.tonapps.extensions.remove
@@ -46,7 +46,12 @@ class PasscodeStore(context: Context) {
         if (savedCode.isNullOrBlank()) {
             false
         } else {
-            savedCode == code
+            // Constant-time comparison so the check does not leak how many leading
+            // digits matched via timing.
+            MessageDigest.isEqual(
+                savedCode.toByteArray(Charsets.UTF_8),
+                code.toByteArray(Charsets.UTF_8)
+            )
         }
     }
 

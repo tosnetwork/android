@@ -6,6 +6,7 @@ import com.tonapps.extensions.appVersionCode
 import com.tonapps.extensions.appVersionName
 import com.tonapps.tonkeeper.ui.screen.dev.DevScreen
 import com.tonapps.tonkeeper.ui.screen.settings.main.list.Item
+import com.tonapps.tonkeeperx.BuildConfig
 import com.tonapps.tonkeeperx.R
 import com.tonapps.wallet.localization.Localization
 import uikit.navigation.Navigation
@@ -18,8 +19,14 @@ class LogoHolder(
     private val versionView = findViewById<AppCompatTextView>(R.id.version)
 
     init {
-        itemView.setOnClickListener {
-            Navigation.from(context)?.add(DevScreen.newInstance())
+        // The developer screen exposes migration tooling that can surface legacy
+        // secret material (mnemonic/passcode dumps) and a TonConnect log toggle.
+        // It must never be reachable in a production build, so the entry point is
+        // gated behind the debug build flag.
+        if (BuildConfig.DEBUG) {
+            itemView.setOnClickListener {
+                Navigation.from(context)?.add(DevScreen.newInstance())
+            }
         }
     }
 

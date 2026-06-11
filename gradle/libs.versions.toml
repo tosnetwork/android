@@ -31,7 +31,6 @@ cbor = { module = "co.nstant.in:cbor", version = "0.9" }
 ble = { module = "no.nordicsemi.android:ble-ktx", version = "2.10.2" }
 bcprovjdk = { module = "org.bouncycastle:bcprov-jdk15to18", version = "1.81" }
 web3j = { module = "org.web3j:core", version = "5.0.0" }
-aptabase = { module = "com.github.aptabase:aptabase-kotlin", version = "0.0.8" }
 okio = { module = "com.squareup.okio:okio", version = "3.16.2" }
 material = { module = "com.google.android.material:material", version = "1.13.0" }
 flexbox = { module = "com.google.android.flexbox:flexbox", version = "3.0.0" }
