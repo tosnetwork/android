@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.appVersionName
 import com.tonapps.extensions.file
 import com.tonapps.extensions.getParcelable
@@ -156,6 +157,14 @@ class APKManager(
             return false
         }
 
+        // Never hand an APK to the system installer unless it is signed by the very same
+        // key as the currently running app. This stops a tampered or man-in-the-middled
+        // download from being installed as an "update".
+        if (!isSignedBySameCertificate(context, file)) {
+            file.delete()
+            return false
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.safeCanRequestPackageInstalls()) {
             openSettings()
         } else {
@@ -177,4 +186,53 @@ class APKManager(
     }
 
     private fun isValidFile(file: File) = file.path.startsWith(folder.path)
+
+    /**
+     * True only if [file] is signed by exactly the same certificate set as the running app.
+     * Defends the self-update path against a tampered or man-in-the-middled APK.
+     */
+    private fun isSignedBySameCertificate(context: Context, file: File): Boolean {
+        return try {
+            val installed = signatureDigests(context.packageManager, context.packageName, archive = null)
+            val downloaded = signatureDigests(context.packageManager, file.absolutePath, archive = file.absolutePath)
+            installed.isNotEmpty() && installed == downloaded
+        } catch (e: Throwable) {
+            CrashReporter.recordException(e)
+            false
+        }
+    }
+
+    private fun signatureDigests(
+        pm: android.content.pm.PackageManager,
+        packageName: String,
+        archive: String?,
+    ): Set<String> {
+        val signatures: Array<android.content.pm.Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val flags = android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+            val info = if (archive != null) {
+                pm.getPackageArchiveInfo(archive, flags)
+            } else {
+                pm.getPackageInfo(packageName, flags)
+            } ?: return emptySet()
+            val signingInfo = info.signingInfo ?: return emptySet()
+            if (signingInfo.hasMultipleSigners()) {
+                signingInfo.apkContentsSigners
+            } else {
+                signingInfo.signingCertificateHistory
+            } ?: return emptySet()
+        } else {
+            @Suppress("DEPRECATION")
+            val flags = android.content.pm.PackageManager.GET_SIGNATURES
+            @Suppress("DEPRECATION")
+            val info = if (archive != null) {
+                pm.getPackageArchiveInfo(archive, flags)
+            } else {
+                pm.getPackageInfo(packageName, flags)
+            } ?: return emptySet()
+            @Suppress("DEPRECATION")
+            (info.signatures ?: return emptySet())
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        return signatures.map { android.util.Base64.encodeToString(digest.digest(it.toByteArray()), android.util.Base64.NO_WRAP) }.toSet()
+    }
 }

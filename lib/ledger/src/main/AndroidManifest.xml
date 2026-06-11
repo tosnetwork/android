@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application>
-        <service android:exported="true" android:name="com.tonapps.ledger.ble.service.BleService" android:enabled="true"/>
+        <service android:exported="false" android:name="com.tonapps.ledger.ble.service.BleService" android:enabled="true"/>
 
     </application>
 

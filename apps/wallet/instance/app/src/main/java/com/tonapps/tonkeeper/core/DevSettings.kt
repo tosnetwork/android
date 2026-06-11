@@ -69,7 +69,9 @@ object DevSettings {
 
 
     fun tonConnectLog(message: String, error: Boolean = false) {
-        if (tonConnectLogs) {
+        // Never log TonConnect traffic in a production build, even if the (debug-only)
+        // toggle somehow got persisted.
+        if (com.tonapps.tonkeeperx.BuildConfig.DEBUG && tonConnectLogs) {
             if (error) {
                 Log.e("TonConnect", message)
             } else {

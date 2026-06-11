@@ -155,10 +155,15 @@ open class WebViewFixed @JvmOverloads constructor(
 
                 val anchor = url.toUri().fragment
                 if (!anchor.isNullOrEmpty()) {
+                    // The fragment is attacker-controllable (deeplinks, QR codes, in-page
+                    // navigation). JSON-encode it before interpolation so it cannot break
+                    // out of the JS string literal and execute arbitrary script in the
+                    // page origin (which has the signing bridge attached).
+                    val safeAnchor = org.json.JSONObject.quote(anchor)
                     evaluateJavascript(
                         """
                         (function() {
-                            var el = document.getElementById('$anchor');
+                            var el = document.getElementById($safeAnchor);
                             if (el) {
                                 el.scrollIntoView({behavior: 'smooth'});
                             }

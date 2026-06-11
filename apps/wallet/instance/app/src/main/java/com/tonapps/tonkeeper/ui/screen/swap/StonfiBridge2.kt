@@ -8,6 +8,7 @@ import uikit.widget.webview.bridge.JsBridge
 
 class StonfiBridge2(
     val address: String,
+    val origin: Uri,
     val close: () -> Unit,
     val sendTransaction: suspend (request: SignRequestEntity) -> String?
 ): JsBridge("tonkeeperStonfi") {
@@ -23,7 +24,9 @@ class StonfiBridge2(
             close()
             return null
         } else if (name == "sendTransaction" && args.length() == 1) {
-            val request = SignRequestEntity(args.getJSONObject(0), Uri.parse("https://ston.fi/"))
+            // Use the real provider origin (the WebView is locked to this host) rather than
+            // a hardcoded value, so the confirmation reflects who actually requested it.
+            val request = SignRequestEntity(args.getJSONObject(0), origin)
             return sendTransaction(request)
         }
         throw IllegalArgumentException("Unknown function: $name")

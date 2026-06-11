@@ -1,6 +1,5 @@
 package com.tonapps.wallet.api
 
-import android.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import okhttp3.OkHttpClient
@@ -8,8 +7,6 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlin.math.roundToInt
 
 class FileDownloader(private val okHttpClient: OkHttpClient) {
@@ -32,55 +29,54 @@ class FileDownloader(private val okHttpClient: OkHttpClient) {
         outputFile: File,
         bufferSize: Int = DEFAULT_BUFFER_SIZE
     ) = callbackFlow {
-        var connection: HttpURLConnection? = null
+        // Go through the shared OkHttp client so the download inherits the app's TLS
+        // configuration (including certificate pinning) instead of a raw, unpinned
+        // HttpURLConnection.
+        val call = okHttpClient.newCall(Request.Builder().url(url).get().build())
 
         try {
-            connection = URL(url).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 15000
-            connection.readTimeout = 15000
-            connection.connect()
+            call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("HTTP error code: ${response.code}")
+                }
+                val body = response.body ?: throw IOException("Empty response body")
 
-            val responseCode = connection.responseCode
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw IOException("HTTP error code: $responseCode")
-            }
+                val contentLength = body.contentLength()
+                var downloadedBytes = 0L
+                var lastEmitTime = System.currentTimeMillis()
+                var bytesFromLastEmit = 0L
 
-            val contentLength = connection.contentLengthLong
-            var downloadedBytes = 0L
-            var lastEmitTime = System.currentTimeMillis()
-            var bytesFromLastEmit = 0L
+                body.byteStream().use { input ->
+                    FileOutputStream(outputFile).use { output ->
+                        val buffer = ByteArray(bufferSize)
+                        var bytes = input.read(buffer)
 
-            connection.inputStream.use { input ->
-                FileOutputStream(outputFile).use { output ->
-                    val buffer = ByteArray(bufferSize)
-                    var bytes = input.read(buffer)
+                        while (bytes >= 0) {
+                            output.write(buffer, 0, bytes)
+                            downloadedBytes += bytes
+                            bytesFromLastEmit += bytes
 
-                    while (bytes >= 0) {
-                        output.write(buffer, 0, bytes)
-                        downloadedBytes += bytes
-                        bytesFromLastEmit += bytes
+                            val currentTime = System.currentTimeMillis()
+                            val timeElapsed = currentTime - lastEmitTime
 
-                        val currentTime = System.currentTimeMillis()
-                        val timeElapsed = currentTime - lastEmitTime
+                            if (timeElapsed >= 100) {
+                                val speedBytesPerSec = (bytesFromLastEmit * 1000.0 / timeElapsed).roundToInt()
+                                val progress = DownloadStatus.Progress(
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = contentLength,
+                                    percent = if (contentLength > 0) {
+                                        (downloadedBytes * 100 / contentLength).toInt()
+                                    } else 0,
+                                    downloadSpeed = formatSpeed(speedBytesPerSec)
+                                )
+                                trySend(progress)
 
-                        if (timeElapsed >= 100) {
-                            val speedBytesPerSec = (bytesFromLastEmit * 1000.0 / timeElapsed).roundToInt()
-                            val progress = DownloadStatus.Progress(
-                                downloadedBytes = downloadedBytes,
-                                totalBytes = contentLength,
-                                percent = if (contentLength > 0) {
-                                    (downloadedBytes * 100 / contentLength).toInt()
-                                } else 0,
-                                downloadSpeed = formatSpeed(speedBytesPerSec)
-                            )
-                            trySend(progress)
+                                lastEmitTime = currentTime
+                                bytesFromLastEmit = 0
+                            }
 
-                            lastEmitTime = currentTime
-                            bytesFromLastEmit = 0
+                            bytes = input.read(buffer)
                         }
-
-                        bytes = input.read(buffer)
                     }
                 }
             }
@@ -90,11 +86,9 @@ class FileDownloader(private val okHttpClient: OkHttpClient) {
         } catch (e: Exception) {
             trySend(DownloadStatus.Error(e))
             outputFile.delete()
-        } finally {
-            connection?.disconnect()
         }
 
-        awaitClose { connection?.disconnect() }
+        awaitClose { call.cancel() }
     }
 
     private fun formatSpeed(bytesPerSec: Int): String {

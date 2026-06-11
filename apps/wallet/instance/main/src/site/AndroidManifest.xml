@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      The site (non-Play) build can offer an in-app update, but only through the
+      system package installer, which always requires explicit user confirmation.
+      REQUEST_INSTALL_PACKAGES is kept for that user-confirmed flow.
+      UPDATE_PACKAGES_WITHOUT_USER_ACTION (silent, unattended updates) is deliberately
+      NOT requested: a wallet must never replace its own binary without the user
+      confirming it, as that is a supply-chain / privilege-escalation risk.
+    -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 </manifest>

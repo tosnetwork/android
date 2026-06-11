@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebResourceRequest
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
@@ -68,6 +69,28 @@ class SwapScreen(wallet: WalletEntity): WalletContextScreen(R.layout.fragment_sw
             super.onNewTab(url)
             BrowserHelper.open(requireContext(), url)
         }
+
+        override fun shouldOverrideUrlLoading(request: WebResourceRequest): Boolean {
+            val target = request.url
+            // The swap WebView carries a transaction-signing bridge, so it must never be
+            // allowed to navigate off the trusted provider domain. Off-domain links open
+            // in the external browser instead.
+            if (isAllowedSwapHost(target.host)) {
+                return false
+            }
+            if (target.scheme == "https" || target.scheme == "http") {
+                BrowserHelper.open(requireContext(), target.toString())
+            }
+            return true
+        }
+    }
+
+    private fun isAllowedSwapHost(host: String?): Boolean {
+        val allowed = getUri().host?.lowercase()?.removePrefix("www.") ?: return false
+        val candidate = host?.lowercase()?.removePrefix("www.") ?: return false
+        return candidate == allowed ||
+            candidate.endsWith(".$allowed") ||
+            allowed.endsWith(".$candidate")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +110,7 @@ class SwapScreen(wallet: WalletEntity): WalletContextScreen(R.layout.fragment_sw
         webView.loadUrl(getUri().toString())
         webView.jsBridge = StonfiBridge2(
             address = args.address,
+            origin = args.uri,
             close = ::finish,
             sendTransaction = ::sing
         )

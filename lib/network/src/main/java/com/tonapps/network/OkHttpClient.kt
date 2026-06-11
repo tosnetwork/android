@@ -108,6 +108,7 @@ fun OkHttpClient.sseFactory() = EventSources.createFactory(this)
 fun OkHttpClient.sse(
     url: String,
     lastEventId: Long? = null,
+    headers: Map<String, String>? = null,
     onFailure: ((Throwable) -> Unit)?
 ): Flow<SSEvent> = callbackFlow {
     val listener = object : EventSourceListener() {
@@ -142,6 +143,7 @@ fun OkHttpClient.sse(
     if (lastEventId != null) {
         builder.addHeader("Last-Event-ID", lastEventId.toString())
     }
+    headers?.forEach { (key, value) -> builder.addHeader(key, value) }
     val request = builder.build()
     val events = sseFactory().newEventSource(request, listener)
     awaitClose {

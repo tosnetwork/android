@@ -5,6 +5,7 @@ import android.view.View
 import android.widget.Button
 import com.tonapps.tonkeeper.ui.screen.add.AddWalletScreen
 import com.tonapps.tonkeeper.ui.screen.dev.DevScreen
+import com.tonapps.tonkeeperx.BuildConfig
 import com.tonapps.tonkeeper.ui.screen.init.InitArgs
 import com.tonapps.tonkeeper.ui.screen.init.InitScreen
 import com.tonapps.tonkeeperx.R
@@ -20,9 +21,13 @@ class StartScreen: BaseFragment(R.layout.fragment_intro) {
         super.onViewCreated(view, savedInstanceState)
         view.applyNavBottomPadding()
         
-        view.findViewById<View>(R.id.logo).setOnLongClickListener {
-            navigation?.add(DevScreen.newInstance())
-            true
+        // The developer screen can export/display mnemonics and passcodes in clear text.
+        // It must never be reachable in a production build.
+        if (BuildConfig.DEBUG) {
+            view.findViewById<View>(R.id.logo).setOnLongClickListener {
+                navigation?.add(DevScreen.newInstance())
+                true
+            }
         }
 
         val newWalletButton = view.findViewById<Button>(R.id.new_wallet)

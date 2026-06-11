@@ -21,10 +21,10 @@ object KeyHelper {
         store
     }
 
-    fun createIfNotExists(alias: String) {
+    fun createIfNotExists(alias: String, requireUnlockedDevice: Boolean = false) {
         // Do not log key aliases: they reveal the key-management structure of the vault.
         if (!keyExists(alias)) {
-            generateKey(alias)
+            generateKey(alias, requireUnlockedDevice)
         }
     }
 
@@ -43,16 +43,26 @@ object KeyHelper {
      * once per fresh alias (existing keys are never touched), so it cannot break or
      * migrate vaults of current users.
      */
-    private fun generateKey(alias: String) {
+    private fun generateKey(alias: String, requireUnlockedDevice: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            if (tryGenerateKey(getParameterKeyStrongBox(alias)) && selfTest(alias)) {
+            // Strongest: StrongBox + (optionally) unlocked-device-required.
+            if (tryGenerateKey(getParameterKeyStrongBox(alias, requireUnlockedDevice)) && selfTest(alias)) {
                 return
             }
-            // StrongBox missing, failed to generate, or failed the round-trip self-test:
-            // drop any partial key and fall back to a TEE/software-backed key.
             deleteKey(alias)
+            // Next: TEE/software-backed + unlocked-device-required. setUnlockedDeviceRequired
+            // is unreliable on some OEM devices (e.g. certain Samsung models), so we keep the
+            // key only if it actually round-trips; otherwise we drop the flag below.
+            if (requireUnlockedDevice) {
+                if (tryGenerateKey(getParameterKey(alias, requireUnlockedDevice = true)) && selfTest(alias)) {
+                    return
+                }
+                deleteKey(alias)
+            }
         }
-        generateKeySwallowing(getParameterKey(alias))
+        // Last resort: standard key (older APIs, or OEMs where the hardened flags fail the
+        // self-test). Never weaker than the previous behaviour.
+        generateKeySwallowing(getParameterKey(alias, requireUnlockedDevice = false))
     }
 
     /** Generates a key, returning false (instead of throwing) on any failure. */
@@ -109,7 +119,7 @@ object KeyHelper {
         return keyStore.containsAlias(alias)
     }
 
-    private fun defaultParameterBuilder(alias: String): KeyGenParameterSpec.Builder {
+    private fun defaultParameterBuilder(alias: String, requireUnlockedDevice: Boolean): KeyGenParameterSpec.Builder {
         val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
         builder.setBlockModes(KeyProperties.BLOCK_MODE_GCM)
         builder.setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
@@ -117,21 +127,22 @@ object KeyHelper {
         builder.setKeySize(KEY_SIZE)
         builder.setUserAuthenticationRequired(false)
         builder.setRandomizedEncryptionRequired(true)
-        /*
-        // Bad working for samsung
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        // For secret-bearing vaults the master key should be unusable while the device is
+        // locked, so a stolen-but-locked device cannot have its ciphertext decrypted.
+        // Callers that read encrypted prefs in the background while locked must NOT request
+        // this. Reliability across OEMs is enforced by the round-trip self-test in generateKey.
+        if (requireUnlockedDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             builder.setUnlockedDeviceRequired(true)
         }
-         */
         return builder
     }
 
-    private fun getParameterKey(alias: String): KeyGenParameterSpec {
-        return defaultParameterBuilder(alias).build()
+    private fun getParameterKey(alias: String, requireUnlockedDevice: Boolean): KeyGenParameterSpec {
+        return defaultParameterBuilder(alias, requireUnlockedDevice).build()
     }
 
-    private fun getParameterKeyStrongBox(alias: String): KeyGenParameterSpec {
-        val builder = defaultParameterBuilder(alias)
+    private fun getParameterKeyStrongBox(alias: String, requireUnlockedDevice: Boolean): KeyGenParameterSpec {
+        val builder = defaultParameterBuilder(alias, requireUnlockedDevice)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             builder.setIsStrongBoxBacked(true)
         }

@@ -329,6 +329,16 @@ class TonConnectManager(
         try {
             val app = readManifest(tonConnect.manifestUrl)
             appUrl = app.url
+
+            // For in-page (injected) connections, the manifest identity must actually
+            // belong to the page asking to connect. Otherwise any site could present a
+            // well-known dApp's manifest and have the confirmation UI show that dApp's
+            // name/icon (phishing). Remote (QR/deeplink) connections have no WebView
+            // origin to compare against, so this only applies to jsInject.
+            if (tonConnect.jsInject && !isManifestOriginTrusted(tonConnect.origin, app.url)) {
+                return@withContext JsonBuilder.connectEventError(BridgeError.appManifestContentError())
+            }
+
             if (isScam(activity, wallet ?: WalletEntity.EMPTY, app.iconUrl.toUri(), app.url)) {
                 return@withContext JsonBuilder.connectEventError(BridgeError.badRequest("client error"))
             }
@@ -415,6 +425,22 @@ class TonConnectManager(
             return true
         }
         return false
+    }
+
+    /**
+     * The manifest's app URL must share a registrable domain with the page that requested
+     * the connection. Equal hosts pass; a host that is a sub/parent domain of the other
+     * passes (e.g. app.example.com vs example.com); unrelated hosts are rejected.
+     */
+    private fun isManifestOriginTrusted(origin: Uri?, appUrl: Uri): Boolean {
+        val originHost = origin?.host?.lowercase()?.removePrefix("www.")
+        val appHost = appUrl.host?.lowercase()?.removePrefix("www.")
+        if (originHost.isNullOrBlank() || appHost.isNullOrBlank()) {
+            return false
+        }
+        return originHost == appHost ||
+            originHost.endsWith(".$appHost") ||
+            appHost.endsWith(".$originHost")
     }
 
     private suspend fun readManifest(url: String): AppEntity {

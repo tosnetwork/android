@@ -38,6 +38,9 @@ class DevScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_dev, Scr
 
     override val fragmentName: String = "DevScreen"
 
+    // Defense in depth: this screen can reveal secrets, so block screenshots/recording.
+    override val secure: Boolean = true
+
     override val viewModel: DevViewModel by viewModel()
 
     private lateinit var iconsView: RecyclerView
@@ -56,6 +59,12 @@ class DevScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_dev, Scr
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // Last-resort guard: even if some entry point forgets the BuildConfig.DEBUG check,
+        // the developer screen must never render in a production build.
+        if (!BuildConfig.DEBUG) {
+            finish()
+            return
+        }
         val headerView = view.findViewById<HeaderView>(R.id.header)
         headerView.doOnCloseClick = { finish() }
 

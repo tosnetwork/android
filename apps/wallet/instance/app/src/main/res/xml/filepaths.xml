@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!--
+      Share only the app-private external Download directory
+      (Android/data/<pkg>/files/Download), not the world-readable public
+      Downloads folder. Files are exposed one-at-a-time via temporary
+      grantUriPermission, so the shared scope must stay as narrow as possible.
+    -->
     <external-files-path
         name="external_files"
-        path="Download" />
-    <external-path
-        name="external"
         path="Download" />
 </paths>

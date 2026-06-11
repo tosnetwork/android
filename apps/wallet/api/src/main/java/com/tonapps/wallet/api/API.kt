@@ -259,8 +259,16 @@ class API(
         onFailure: ((Throwable) -> Unit)?
     ): Flow<SSEvent> {
         val endpoint = if (testnet) config.tosSSETestnetEndpoint else config.tosSSEEndpoint
-        val url = "$endpoint/sse/traces?account=$accountId&token=${config.tosApiKey}"
-        return seeHttpClient.sse(url, onFailure = onFailure)
+        // Keep the token out of the URL (query strings leak into proxy/server access logs
+        // and Referer headers); send it as a bearer credential instead. The TOS backend
+        // reads the SSE token from the Authorization header.
+        val url = "$endpoint/sse/traces?account=$accountId"
+        val headers = if (config.tosApiKey.isNotEmpty()) {
+            mapOf("Authorization" to "Bearer ${config.tosApiKey}")
+        } else {
+            null
+        }
+        return seeHttpClient.sse(url, headers = headers, onFailure = onFailure)
     }
 
     suspend fun refreshConfig(testnet: Boolean) {
@@ -662,7 +670,7 @@ class API(
         }
         val value = publicKeys.joinToString(",")
         val url = "${bridgeUrl}/events?client_id=$value"
-        return seeHttpClient.sse(url, lastEventId, onFailure).filter { it.type == "message" }
+        return seeHttpClient.sse(url, lastEventId, onFailure = onFailure).filter { it.type == "message" }
     }
 
     fun tonconnectPayload(): String? {

@@ -24,7 +24,9 @@ internal class VaultSource(context: Context) {
         private const val KEY_ALIAS = "_com_tonapps_vault_master_key_"
     }
 
-    private val prefs = Security.pref(context, KEY_ALIAS, NAME)
+    // The vault holds mnemonics and private keys; require an unlocked device so a
+    // stolen-but-locked phone cannot have this ciphertext decrypted.
+    private val prefs = Security.pref(context, KEY_ALIAS, NAME, requireUnlockedDevice = true)
 
     fun getVaultKeys(): String {
         val result = JSONObject()

@@ -43,9 +43,14 @@ object Security {
     }
 
     @Synchronized
-    fun pref(context: Context, keyAlias: String, name: String): SharedPreferences {
+    fun pref(
+        context: Context,
+        keyAlias: String,
+        name: String,
+        requireUnlockedDevice: Boolean = false
+    ): SharedPreferences {
         try {
-            KeyHelper.createIfNotExists(keyAlias)
+            KeyHelper.createIfNotExists(keyAlias, requireUnlockedDevice)
 
             return EncryptedSharedPreferences.create(
                 name,
