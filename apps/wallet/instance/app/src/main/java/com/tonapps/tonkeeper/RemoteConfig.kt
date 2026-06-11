@@ -1,63 +1,34 @@
 package com.tonapps.tonkeeper
 
 import android.content.Context
-import android.util.Log
-import com.google.firebase.remoteconfig.FirebaseRemoteConfig
-import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
 import com.tonapps.wallet.api.API
 
+/**
+ * TOS: feature flags are local constants, not fetched from Firebase Remote Config.
+ * The wallet does not contact any external config service. Kept as a drop-in so the
+ * existing call sites (fetchAndActivate / the flag getters) remain unchanged.
+ */
 class RemoteConfig(context: Context, private val api: API) {
-    private val remoteConfig: FirebaseRemoteConfig = FirebaseRemoteConfig.getInstance()
-
-    private enum class FeatureFlag(val key: String) {
-        IS_DAPPS_DISABLE("isDappsDisable"),
-        HARDCODED_COUNTRY_CODE("hardcodedCountryCode"),
-        IN_APP_UPDATE_AVAILABLE("inAppUpdateAvailable"),
-        IS_COUNTRY_PICKER_DISABLE("isCountryPickerDisable"),
-        NATIVE_ONRAMP_ENABLED("native_onrmap_enabled"),
-        ONBOARDING_STORIES_ENABLED("onboarding_stories_enabled");
-    }
-
-    //
-    init {
-        val configSettings = FirebaseRemoteConfigSettings.Builder()
-            .setMinimumFetchIntervalInSeconds(0)
-            .build()
-        remoteConfig.setConfigSettingsAsync(configSettings)
-
-        val defaults = mapOf(
-            FeatureFlag.IS_DAPPS_DISABLE.key to true,
-            FeatureFlag.ONBOARDING_STORIES_ENABLED.key to true
-        )
-
-        remoteConfig.setDefaultsAsync(defaults)
-    }
 
     fun fetchAndActivate() {
-        remoteConfig.fetchAndActivate().addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                Log.d("RemoteConfig", "Fetched and activated successfully")
-            } else {
-                Log.e("RemoteConfig", "Fetch failed, using defaults")
-            }
-        }
+        // no-op: no remote config service
     }
 
     val inAppUpdateAvailable: Boolean
-        get() = remoteConfig.getBoolean(FeatureFlag.IN_APP_UPDATE_AVAILABLE.key)
+        get() = false
 
     val nativeOnrmapEnabled: Boolean
-        get() = remoteConfig.getBoolean(FeatureFlag.NATIVE_ONRAMP_ENABLED.key)
+        get() = false
 
     val isCountryPickerDisable: Boolean
-        get() = remoteConfig.getBoolean(FeatureFlag.IS_COUNTRY_PICKER_DISABLE.key)
+        get() = false
 
     val hardcodedCountryCode: String?
-        get() = remoteConfig.getString(FeatureFlag.HARDCODED_COUNTRY_CODE.key).takeIf { it.isNotEmpty() }
+        get() = null
 
     val isDappsDisable: Boolean
-        get() = remoteConfig.getBoolean(FeatureFlag.IS_DAPPS_DISABLE.key)
+        get() = true
 
     val isOnboardingStoriesEnabled: Boolean
-        get() = remoteConfig.getBoolean(FeatureFlag.ONBOARDING_STORIES_ENABLED.key)
+        get() = true
 }

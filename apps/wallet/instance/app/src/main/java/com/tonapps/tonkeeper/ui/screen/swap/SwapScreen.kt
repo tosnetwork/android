@@ -29,8 +29,6 @@ import uikit.extensions.getDimensionPixelSize
 import uikit.widget.webview.WebViewFixed
 import uikit.widget.webview.bridge.BridgeWebView
 import androidx.core.view.isGone
-import com.google.firebase.Firebase
-import com.google.firebase.perf.performance
 import com.tonapps.blockchain.ton.extensions.equalsAddress
 import com.tonapps.wallet.data.core.currency.WalletCurrency
 import org.ton.contract.wallet.WalletMessage
@@ -50,13 +48,11 @@ class SwapScreen(wallet: WalletEntity): WalletContextScreen(R.layout.fragment_sw
 
     private val webViewCallback = object : WebViewFixed.Callback() {
 
-        private val swapTrace = Firebase.performance.newTrace("swap_webview")
         private var isAlreadySendTrace = false
 
         override fun onPageFinished(url: String) {
             super.onPageFinished(url)
             if (!isAlreadySendTrace) {
-                swapTrace.stop()
                 isAlreadySendTrace = true
             }
             hideCloseView()
@@ -65,7 +61,6 @@ class SwapScreen(wallet: WalletEntity): WalletContextScreen(R.layout.fragment_sw
         override fun onPageStarted(url: String, favicon: Bitmap?) {
             super.onPageStarted(url, favicon)
             if (!isAlreadySendTrace) {
-                swapTrace.start()
             }
         }
 

@@ -9,7 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.google.mlkit.vision.common.InputImage
 import com.tonapps.blockchain.ton.extensions.isValidTonAddress
 import com.tonapps.blockchain.tron.isValidTronAddress
@@ -152,7 +152,7 @@ class CameraScreen : QRCameraScreen(R.layout.fragment_camera), BaseFragment.Bott
         try {
             imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 

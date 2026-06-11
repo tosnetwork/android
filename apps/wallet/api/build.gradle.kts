@@ -32,7 +32,6 @@ dependencies {
     implementation(project(ProjectModules.Lib.blockchain))
     implementation(project(ProjectModules.Lib.extensions))
     implementation(project(ProjectModules.Lib.icu))
-    implementation(libs.google.play.cronet)
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
 

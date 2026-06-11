@@ -3,7 +3,7 @@ package com.tonapps.wallet.data.rn
 import android.content.Context
 import android.util.Log
 import androidx.fragment.app.FragmentActivity
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.asJSON
 import com.tonapps.wallet.data.rn.data.RNVaultState
 import com.tonapps.wallet.data.rn.expo.SecureStoreModule
@@ -79,7 +79,7 @@ internal class RNSeedStorage(context: Context) {
             readState()
             true
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             false
         }
     }

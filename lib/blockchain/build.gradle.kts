@@ -19,8 +19,6 @@ android {
 }
 
 dependencies {
-    api(platform(libs.firebase.bom))
-    api(libs.firebase.crashlytics)
 
     api(libs.ton.tvm)
     api(libs.ton.crypto)

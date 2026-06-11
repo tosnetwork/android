@@ -2,7 +2,7 @@ package com.tonapps.wallet.data.collectibles
 
 import android.content.Context
 import android.util.Log
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.extensions.equalsAddress
 import com.tonapps.wallet.api.API
 import com.tonapps.wallet.api.withRetry
@@ -72,7 +72,7 @@ class CollectiblesRepository(
                 emit(NftListResult(cache = false, list = remote))
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }.cancellable()
 

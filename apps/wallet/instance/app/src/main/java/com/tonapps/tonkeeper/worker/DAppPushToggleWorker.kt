@@ -7,7 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.Operation
 import androidx.work.WorkerParameters
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.toUriOrNull
 import com.tonapps.tonkeeper.extensions.workManager
 import com.tonapps.tonkeeper.manager.push.PushManager
@@ -37,7 +37,7 @@ class DAppPushToggleWorker(
             }
             Result.success()
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             Result.failure()
         }
     }

@@ -3,12 +3,9 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
     id("kotlin-parcelize")
     id("kotlinx-serialization")
     id("androidx.baselineprofile")
-    id("com.google.firebase.firebase-perf")
 }
 
 val isCI = project.hasProperty("android.injected.signing.store.file")

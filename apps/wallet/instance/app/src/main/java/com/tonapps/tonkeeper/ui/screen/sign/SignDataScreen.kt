@@ -14,7 +14,7 @@ import android.view.View
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.text.color
 import androidx.lifecycle.lifecycleScope
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.connect.TONProof
 import com.tonapps.extensions.getParcelableCompat
 import com.tonapps.tonkeeper.extensions.copyToClipboard
@@ -181,7 +181,7 @@ class SignDataScreen(wallet: WalletEntity): BaseWalletScreen<ScreenContext.Walle
                 putParcelable(SendTransactionScreen.ERROR, error)
             })
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(Throwable("Error: $error\nAppUrl: ${args.appUrl}", e))
+            CrashReporter.recordException(Throwable("Error: $error\nAppUrl: ${args.appUrl}", e))
         }
     }
 

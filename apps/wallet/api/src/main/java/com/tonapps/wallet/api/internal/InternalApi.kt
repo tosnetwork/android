@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.collection.ArrayMap
 import androidx.core.net.toUri
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.isDebug
 import com.tonapps.extensions.locale
 import com.tonapps.extensions.map
@@ -182,7 +182,7 @@ internal class InternalApi(
             if (!fallback) {
                 downloadConfig(testnet, true)
             } else {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 null
             }
         }
@@ -202,7 +202,7 @@ internal class InternalApi(
                 StoryEntity.Stories(id, list.toList())
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
     }
@@ -217,7 +217,7 @@ internal class InternalApi(
                 country.uppercase()
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
     }

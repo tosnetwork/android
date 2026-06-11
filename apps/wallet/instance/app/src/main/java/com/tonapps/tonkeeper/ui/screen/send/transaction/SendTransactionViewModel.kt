@@ -2,7 +2,7 @@ package com.tonapps.tonkeeper.ui.screen.send.transaction
 
 import android.app.Application
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.extensions.EmptyPrivateKeyEd25519
 import com.tonapps.blockchain.ton.extensions.base64
 import com.tonapps.icu.Coins
@@ -183,7 +183,7 @@ class SendTransactionViewModel(
                     isBattery.set(false)
                 }
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(
+                CrashReporter.recordException(
                     APIException.Emulation(
                         boc = message?.createSignedBody(
                             EmptyPrivateKeyEd25519.invoke(),

@@ -2,18 +2,13 @@ package com.tonapps.wallet.api
 
 import android.content.Context
 import android.os.Build
-import com.google.android.gms.net.CronetProviderInstaller
-import com.google.firebase.crashlytics.BuildConfig
 import com.tonapps.extensions.appVersionName
-import com.tonapps.extensions.cacheFolder
 import com.tonapps.extensions.locale
 import com.tonapps.network.interceptor.AcceptLanguageInterceptor
 import com.tonapps.network.interceptor.AuthorizationInterceptor
-import com.tonapps.wallet.api.cronet.CronetInterceptor
 import com.tonapps.wallet.api.entity.ConfigEntity
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import org.chromium.net.CronetEngine
 import java.util.concurrent.TimeUnit
 
 abstract class CoreAPI(private val context: Context) {
@@ -22,10 +17,9 @@ abstract class CoreAPI(private val context: Context) {
 
     private val userAgent = "TOSWallet/${appVersionName} (Linux; Android ${Build.VERSION.RELEASE}; ${Build.MODEL})"
 
-    private var cronetEngine: CronetEngine? = null
-
+    // TOS: plain OkHttp only. Cronet (Google Play Services networking) has been removed
+    // so the wallet has no dependency on Google Play Services for HTTP.
     val defaultHttpClient = baseOkHttpClientBuilder(
-        cronetEngine = { cronetEngine },
         timeoutSeconds = 30,
         interceptors = listOf(
             UserAgentInterceptor(userAgent),
@@ -33,28 +27,18 @@ abstract class CoreAPI(private val context: Context) {
     ).build()
 
     val seeHttpClient = baseOkHttpClientBuilder(
-        cronetEngine = { null },
         timeoutSeconds = 60,
         interceptors = listOf(
             UserAgentInterceptor(userAgent),
         )
     ).build()
 
-    init {
-        if (!BuildConfig.DEBUG) {
-            requestCronet(context, userAgent) {
-                cronetEngine = it
-            }
-        }
-    }
-
     fun tonAPIHttpClient(config: () -> ConfigEntity): OkHttpClient {
         return createTonAPIHttpClient(
             context = context,
             userAgent = userAgent,
             tosApiKey = { config().tosApiKey },
-            allowDomains = { config().domains },
-            cronetEngine = { cronetEngine }
+            allowDomains = { config().domains }
         )
     }
 
@@ -70,7 +54,6 @@ abstract class CoreAPI(private val context: Context) {
         }
 
         private fun baseOkHttpClientBuilder(
-            cronetEngine: () -> CronetEngine?,
             timeoutSeconds: Long = 30,
             interceptors: List<Interceptor> = emptyList()
         ): OkHttpClient.Builder {
@@ -88,19 +71,12 @@ abstract class CoreAPI(private val context: Context) {
                 builder.addInterceptor(interceptor)
             }
 
-            builder.addInterceptor { chain ->
-                cronetEngine()?.let { engine ->
-                    CronetInterceptor.newBuilder(engine).build()
-                }?.intercept(chain) ?: chain.proceed(chain.request())
-            }
-
             return builder
         }
 
         private fun createTonAPIHttpClient(
             userAgent: String,
             context: Context,
-            cronetEngine: () -> CronetEngine?,
             tosApiKey: () -> String,
             allowDomains: () -> List<String>
         ): OkHttpClient {
@@ -114,33 +90,8 @@ abstract class CoreAPI(private val context: Context) {
             )
 
             return baseOkHttpClientBuilder(
-                cronetEngine = cronetEngine,
                 interceptors = interceptors
             ).build()
-        }
-
-        private fun requestCronet(context: Context, userAgent: String, callback: (CronetEngine) -> Unit) {
-            CronetProviderInstaller.installProvider(context).addOnSuccessListener {
-                build(context, userAgent)?.let(callback)
-            }
-        }
-
-        private fun build(context: Context, userAgent: String): CronetEngine? {
-            if (!CronetProviderInstaller.isInstalled()) {
-                return null
-            }
-            return try {
-                CronetEngine.Builder(context)
-                    .setUserAgent(userAgent)
-                    .enableQuic(true)
-                    .enableHttp2(true)
-                    .enableBrotli(true)
-                    .setStoragePath(context.cacheFolder("cronet").absolutePath)
-                    .enableHttpCache(CronetEngine.Builder.HTTP_CACHE_DISK, 500 * 1024 * 1024)
-                    .build()
-            } catch (e: Throwable) {
-                null
-            }
         }
     }
 }

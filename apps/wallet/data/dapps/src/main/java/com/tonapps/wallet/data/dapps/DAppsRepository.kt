@@ -5,7 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.collection.ArrayMap
 import androidx.core.net.toUri
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.extensions.toRawAddress
 import com.tonapps.blockchain.ton.extensions.toUserFriendly
 import com.tonapps.extensions.map
@@ -79,7 +79,7 @@ class DAppsRepository(
                     _connectionsFlow.value = connections
                 }
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 _connectionsFlow.value = emptyList()
             }
         }
@@ -417,7 +417,7 @@ class DAppsRepository(
             try {
                 return@withContext AppEntity(api.get(manifestUrl))
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 continue
             }
         }

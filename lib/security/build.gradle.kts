@@ -32,8 +32,6 @@ android {
 }
 
 dependencies {
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.crashlytics)
 
     implementation(libs.kotlinX.coroutines.android)
     implementation(libs.androidX.security)

@@ -2,7 +2,6 @@ package com.tonapps.wallet.data.rates
 
 import android.content.Context
 import android.util.Log
-import com.google.firebase.annotations.concurrent.Background
 import com.tonapps.icu.Coins
 import com.tonapps.wallet.api.API
 import com.tonapps.wallet.api.entity.TokenEntity

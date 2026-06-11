@@ -5,7 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.collection.ArrayMap
 import androidx.core.net.toUri
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.extensions.equalsAddress
 import com.tonapps.blockchain.ton.connect.TONProof
 import com.tonapps.extensions.appVersionName
@@ -391,7 +391,7 @@ class TonConnectManager(
                 JsonBuilder.connectEventError(BridgeError.appManifestContentError())
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             JsonBuilder.connectEventError(BridgeError.unknown(e.bestMessage))
         }
     }

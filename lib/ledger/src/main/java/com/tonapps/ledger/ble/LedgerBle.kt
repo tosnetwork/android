@@ -2,7 +2,6 @@ package com.tonapps.ledger.ble
 
 import android.content.Context
 import android.util.Log
-import androidx.lifecycle.viewModelScope
 import com.tonapps.ledger.ble.BleManagerFactory
 import com.tonapps.ledger.ble.model.BleDeviceModel
 import com.tonapps.ledger.devices.Devices

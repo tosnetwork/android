@@ -14,7 +14,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.extensions.toRawAddress
 import com.tonapps.extensions.circle
 import com.tonapps.extensions.isLocal
@@ -81,7 +81,7 @@ class WidgetUpdaterWorker(
             }
             Result.success()
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             Result.failure()
         }
     }

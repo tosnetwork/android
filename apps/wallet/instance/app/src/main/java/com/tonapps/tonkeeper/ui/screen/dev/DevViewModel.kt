@@ -3,7 +3,7 @@ package com.tonapps.tonkeeper.ui.screen.dev
 import android.app.Application
 import android.widget.Toast
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.bestMessage
 import com.tonapps.tonkeeper.Environment
 import com.tonapps.tonkeeper.core.DevSettings
@@ -143,7 +143,7 @@ class DevViewModel(
                     }
                 }
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 lines.add(e.bestMessage)
                 systemLongToast("Exception: ${e.bestMessage}")
             }
@@ -158,7 +158,7 @@ class DevViewModel(
             val passcode = try {
                 rnLegacy.exportPasscodeWithBiometry()
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 systemLongToast("Exception: ${e.bestMessage}")
                 null
             }
@@ -205,7 +205,7 @@ class DevViewModel(
                     }
                 }
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 lines.add(e.bestMessage)
                 systemLongToast("Exception: ${e.bestMessage}")
             }

@@ -17,10 +17,7 @@ import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
-import com.google.firebase.Firebase
-import com.google.firebase.crashlytics.FirebaseCrashlytics
-import com.google.firebase.crashlytics.crashlytics
-import com.google.firebase.crashlytics.setCustomKeys
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.extensions.equalsAddress
 import com.tonapps.blockchain.ton.extensions.toAccountId
 import com.tonapps.extensions.MutableEffectFlow
@@ -302,7 +299,7 @@ class RootViewModel(
                 apkManager.download(status.apk)
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 
@@ -323,7 +320,7 @@ class RootViewModel(
                 startUpdateFlow(updateInfo)
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 
@@ -356,7 +353,7 @@ class RootViewModel(
                 signRequest(eventId, tx.connection, signRequest)
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             tonConnectManager.sendBridgeError(tx.connection, BridgeError.unknown(e.bestMessage), eventId)
         }
 
@@ -482,13 +479,8 @@ class RootViewModel(
     }
 
     private fun applyAnalyticsKeys(wallet: WalletEntity) {
-        val crashlytics = Firebase.crashlytics
-        crashlytics.setUserId(wallet.accountId)
-        crashlytics.setCustomKeys {
-            key("testnet", wallet.testnet)
-            key("walletType", wallet.type.name)
-            key("installId", settingsRepository.installId)
-        }
+        // TOS: no external analytics/crash reporting — wallet identity (accountId,
+        // installId, wallet type) is never sent off-device. Intentionally a no-op.
     }
 
     fun signOut() {

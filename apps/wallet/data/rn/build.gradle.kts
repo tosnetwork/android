@@ -8,8 +8,6 @@ android {
 }
 
 dependencies {
-    api(platform(libs.firebase.bom))
-    api(libs.firebase.crashlytics)
 
     implementation(libs.androidX.biometric)
     implementation(libs.ton.crypto)

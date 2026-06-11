@@ -7,7 +7,7 @@ import androidx.annotation.LayoutRes
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.query
 import com.tonapps.tonkeeper.extensions.isLightTheme
 import com.tonapps.tonkeeper.extensions.removeAllFragments
@@ -281,7 +281,7 @@ class MainScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_main, S
             Log.d("MainScreenLog", "Set fragment: $fragment")
         } catch (e: Throwable) {
             Log.e("MainScreenLog", "Failed to set fragment", e)
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             postDelayed(1000) {
                 setFragment(fragment, forceScrollUp, from,extra, attempt + 1)
             }

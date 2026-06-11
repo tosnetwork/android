@@ -2,7 +2,7 @@ package com.tonapps.wallet.api
 
 import android.os.SystemClock
 import android.util.Log
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.network.OkHttpError
 import io.infrastructure.ClientError
 import io.infrastructure.ClientException
@@ -41,7 +41,7 @@ fun <R> withRetry(
             if (statusCode >= 500 || statusCode == 404 || statusCode == 400) {
                 return null
             }
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
 
     } while (index < times)

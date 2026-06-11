@@ -10,7 +10,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.getParcelableCompat
 import com.tonapps.extensions.whileTimeoutOrNull
 import com.tonapps.tonkeeper.App
@@ -128,7 +128,7 @@ object WidgetManager {
             val provider = ComponentName(context, cls)
             return AppWidgetManager.getInstance(context).getAppWidgetIds(provider).sortedArray()
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             return intArrayOf()
         }
     }
@@ -158,7 +158,7 @@ object WidgetManager {
                 else -> null
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             return null
         }
     }

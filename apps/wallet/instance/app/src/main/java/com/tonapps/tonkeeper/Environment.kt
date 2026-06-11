@@ -1,8 +1,6 @@
 package com.tonapps.tonkeeper
 
 import android.content.Context
-import com.google.android.gms.common.ConnectionResult
-import com.google.android.gms.common.GoogleApiAvailability
 import com.tonapps.tonkeeper.core.DevSettings
 import com.tonapps.tonkeeper.extensions.isDarkMode
 import com.tonapps.tonkeeper.os.AppInstall
@@ -103,11 +101,8 @@ class Environment(
         installerSource == AppInstall.Source.GOOGLE_PLAY
     }
 
-    val isGooglePlayServicesAvailable: Boolean by lazy {
-        val googleApiAvailability = GoogleApiAvailability.getInstance()
-        val resultCode = googleApiAvailability.isGooglePlayServicesAvailable(context)
-        resultCode == ConnectionResult.SUCCESS
-    }
+    // TOS: the wallet does not depend on Google Play Services.
+    val isGooglePlayServicesAvailable: Boolean by lazy { false }
 
     private companion object {
         private fun fixCountryCode(country: String): String {

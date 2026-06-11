@@ -14,9 +14,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.kotlin.multiplatform.library) apply false
     alias(libs.plugins.kotlin.compose) apply false
-    alias(libs.plugins.firebase.services) apply false
-    alias(libs.plugins.firebase.crashlytics) apply false
-    alias(libs.plugins.firebase.performance) apply false
     alias(libs.plugins.ksp) apply false
 }
 

@@ -10,7 +10,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.bestMessage
 import com.tonapps.extensions.isUIThread
 import com.tonapps.tonkeeper.extensions.loading
@@ -99,7 +99,7 @@ abstract class BaseWalletVM(
         try {
             navigation?.add(screen)
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 }

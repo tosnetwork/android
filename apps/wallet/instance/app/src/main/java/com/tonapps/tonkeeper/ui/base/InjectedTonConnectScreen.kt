@@ -5,7 +5,7 @@ import android.net.Uri
 import android.webkit.WebResourceRequest
 import androidx.annotation.LayoutRes
 import androidx.core.net.toUri
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.appVersionName
 import com.tonapps.extensions.bestMessage
 import com.tonapps.extensions.filterList
@@ -180,7 +180,7 @@ abstract class InjectedTonConnectScreen(@LayoutRes layoutId: Int, wallet: Wallet
                 } catch (e: BridgeException) {
                     JsonBuilder.responseError(id, BridgeError.badRequest(e.bestMessage))
                 } catch (e: Throwable) {
-                    FirebaseCrashlytics.getInstance().recordException(e)
+                    CrashReporter.recordException(e)
                     JsonBuilder.responseError(id, BridgeError.unknown(e.bestMessage))
                 }
             } else {
@@ -188,7 +188,7 @@ abstract class InjectedTonConnectScreen(@LayoutRes layoutId: Int, wallet: Wallet
             }
         } catch (e: Throwable) {
             navigation?.toast(e.bestMessage)
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             return JsonBuilder.responseError(id, BridgeError.unknown(e.bestMessage))
         }
     }

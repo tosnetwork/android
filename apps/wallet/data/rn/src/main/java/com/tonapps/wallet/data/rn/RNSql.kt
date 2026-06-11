@@ -5,7 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.os.Build
 import android.os.SystemClock
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.sqlite.SQLiteHelper
 import org.json.JSONArray
 import org.json.JSONObject
@@ -47,7 +47,7 @@ internal class RNSql(context: Context): SQLiteHelper(context, DATABASE_NAME, DAT
             cursor.close()
             return value
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             if (attempt > 3) {
                 return null
             }
@@ -69,7 +69,7 @@ internal class RNSql(context: Context): SQLiteHelper(context, DATABASE_NAME, DAT
             val db = writableDatabase
             db.insertWithOnConflict(KV_TABLE_NAME, null, values, SQLiteDatabase.CONFLICT_REPLACE)
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             if (attempt > 3) {
                 return
             }
@@ -83,7 +83,7 @@ internal class RNSql(context: Context): SQLiteHelper(context, DATABASE_NAME, DAT
         return try {
             string.asJSON()
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
     }
@@ -93,7 +93,7 @@ internal class RNSql(context: Context): SQLiteHelper(context, DATABASE_NAME, DAT
         return try {
             JSONArray(string)
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
     }
@@ -108,7 +108,7 @@ internal class RNSql(context: Context): SQLiteHelper(context, DATABASE_NAME, DAT
             field.isAccessible = true
             field.set(null, 100 * 1024 * 1024) //the 100MB is the new size
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 

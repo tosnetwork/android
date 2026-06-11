@@ -3,7 +3,7 @@ package com.tonapps.tonkeeper.ui.screen.send.main
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.TonAddressTags
 import com.tonapps.blockchain.ton.contract.WalletFeature
 import com.tonapps.blockchain.ton.extensions.equalsAddress
@@ -1271,7 +1271,7 @@ class SendViewModel(
                 if (e is CancellationException) {
                     _uiEventFlow.tryEmit(SendEvent.Canceled)
                 } else {
-                    FirebaseCrashlytics.getInstance().recordException(e)
+                    CrashReporter.recordException(e)
                     _uiEventFlow.tryEmit(SendEvent.Failed(e))
                 }
             }

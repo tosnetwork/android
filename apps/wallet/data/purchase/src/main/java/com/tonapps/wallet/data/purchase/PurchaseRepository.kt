@@ -2,7 +2,6 @@ package com.tonapps.wallet.data.purchase
 
 import android.content.Context
 import android.util.Log
-import com.google.firebase.BuildConfig
 import com.tonapps.extensions.getParcelable
 import com.tonapps.extensions.prefs
 import com.tonapps.extensions.putParcelable

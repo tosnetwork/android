@@ -3,7 +3,7 @@ package com.tonapps.wallet.data.passcode
 import android.content.Context
 import android.util.Log
 import androidx.biometric.BiometricPrompt
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.logError
 import com.tonapps.wallet.data.account.AccountRepository
 import com.tonapps.wallet.data.passcode.dialog.PasscodeDialog
@@ -64,7 +64,7 @@ class PasscodeManager(
                 rnLegacy.hasPinCode()
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             false
         }
     }
@@ -88,7 +88,7 @@ class PasscodeManager(
             try {
                 migration(context, code)
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 context.logError(e)
                 false
             }
@@ -109,7 +109,7 @@ class PasscodeManager(
                     }
                     true
                 } catch (e: Throwable) {
-                    FirebaseCrashlytics.getInstance().recordException(e)
+                    CrashReporter.recordException(e)
                     context.logError(e)
                     false
                 }
@@ -153,7 +153,7 @@ class PasscodeManager(
                 PasscodeBiometric.showPrompt(context, title)
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             false
         }
     }
@@ -188,7 +188,7 @@ class PasscodeManager(
         try {
             return rnLegacy.exportPasscodeWithBiometry()
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             return null
         }
     }
@@ -203,7 +203,7 @@ class PasscodeManager(
                 null
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
 
@@ -214,7 +214,7 @@ class PasscodeManager(
                 null
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
         try {
@@ -224,7 +224,7 @@ class PasscodeManager(
             }
             migration(context, passcode)
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             context.logError(e)
             false
         }

@@ -13,7 +13,7 @@ import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.getParcelableCompat
 import com.tonapps.tonkeeper.core.history.list.HistoryAdapter
 import com.tonapps.tonkeeper.extensions.getTitle
@@ -211,7 +211,7 @@ class RemoveExtensionScreen(
                 putParcelable(ERROR, error)
             })
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance()
+            CrashReporter
                 .recordException(Throwable("Error: $error", e))
         }
     }

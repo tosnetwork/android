@@ -1,6 +1,6 @@
 package com.tonapps.tonkeeper.extensions
 
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.security.tryCallGC
 import com.tonapps.tonkeeper.ui.screen.send.main.SendException
 import com.tonapps.wallet.data.account.AccountRepository
@@ -42,7 +42,7 @@ suspend fun AccountRepository.requestPrivateKey(
             PrivateKeyEd25519(seed)
         }
     } catch (e: Throwable) {
-        FirebaseCrashlytics.getInstance().recordException(e)
+        CrashReporter.recordException(e)
         null
     }
 }

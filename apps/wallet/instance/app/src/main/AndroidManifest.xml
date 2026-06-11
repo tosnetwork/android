@@ -197,22 +197,6 @@
                 android:name="autoStoreLocales"
                 android:value="true" />
         </service>
-        <service
-            android:name="com.tonapps.tonkeeper.manager.push.FirebasePush"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_color"
-            android:resource="@color/constantBlue" />
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_push" />
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="@string/default_push_channel_id" />
         <meta-data
             android:name="network.tos.wallet.BUILD_TYPE"
             android:value="${build_type}" />
@@ -226,15 +210,6 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
-        <service android:name="com.google.android.gms.metadata.ModuleDependencies"
-            android:enabled="false"
-            android:exported="false"
-            tools:ignore="MissingClass">
-            <intent-filter>
-                <action android:name="com.google.android.gms.metadata.MODULE_DEPENDENCIES" />
-            </intent-filter>
-            <meta-data android:name="photopicker_activity:0:required" android:value="" />
-        </service>
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

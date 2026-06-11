@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Parcel
 import android.os.Parcelable
 import android.util.Log
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.cacheFolder
 import com.tonapps.extensions.file
 import com.tonapps.extensions.folder
@@ -43,7 +43,7 @@ class ScreenCacheSource(
             }
             return file.readBytes()
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             return byteArrayOf()
         }
     }

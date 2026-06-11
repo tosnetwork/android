@@ -1,6 +1,6 @@
 package com.tonapps.wallet.data.token.source
 
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.wallet.api.API
 import com.tonapps.wallet.api.entity.BalanceEntity
 import com.tonapps.wallet.api.entity.TokenEntity
@@ -38,7 +38,7 @@ internal class RemoteDataSource(
                 )
             )
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
     }

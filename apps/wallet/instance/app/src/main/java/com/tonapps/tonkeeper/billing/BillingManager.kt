@@ -16,7 +16,7 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.consumePurchase
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.MutableEffectFlow
 import com.tonapps.extensions.filterList
 import com.tonapps.tonkeeper.Environment
@@ -123,7 +123,7 @@ class BillingManager(
             getProductDetails(client, params)
         } catch (e: Throwable) {
             log("Failed to get products", e)
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             emptyList()
         }
     }
@@ -134,7 +134,7 @@ class BillingManager(
         } else {
             Log.e("BillingManager", e.message ?: msg)
             Log.e("BillingManager", msg, e)
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 

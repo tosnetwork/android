@@ -1,6 +1,6 @@
 package com.tonapps.tonkeeper.core.entities
 
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.TONOpCode
 import com.tonapps.blockchain.ton.TonSendMode
 import com.tonapps.blockchain.ton.TonTransferHelper
@@ -407,7 +407,7 @@ data class TransferEntity(
                 val hexString = hex(value)
                 BigInteger(hexString, 16)
             } catch (e: Throwable) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                CrashReporter.recordException(e)
                 BigInteger.ZERO
             }
         }

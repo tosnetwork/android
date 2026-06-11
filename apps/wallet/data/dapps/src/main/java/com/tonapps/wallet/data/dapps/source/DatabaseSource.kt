@@ -10,7 +10,7 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.core.database.sqlite.transaction
 import androidx.core.net.toUri
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.extensions.toRawAddress
 import com.tonapps.extensions.getParcelable
 import com.tonapps.extensions.prefs
@@ -213,7 +213,7 @@ internal class DatabaseSource(
             prefs.remove(LAST_EVENT_ID_KEY)
             true
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             false
         }
     }
@@ -247,7 +247,7 @@ internal class DatabaseSource(
                 encryptedPrefs.putString(prefixProofPayload(prefix, connection.appUrl), connection.proofPayload)
             }
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 
@@ -316,7 +316,7 @@ internal class DatabaseSource(
                 proofPayload = encryptedPrefs.getString(prefixProofPayload(prefix, appUrl), null),
             )
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             return null
         }
     }

@@ -2,7 +2,7 @@ package com.tonapps.wallet.data.core
 
 import android.content.Context
 import android.os.Parcelable
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.cacheFolder
 import com.tonapps.extensions.file
 import com.tonapps.extensions.toByteArray
@@ -47,7 +47,7 @@ abstract class BlobDataSource<D>(
                         val string = String(bytes)
                         Serializer.fromJSON(string)
                     } catch (e: Throwable) {
-                        FirebaseCrashlytics.getInstance().recordException(e)
+                        CrashReporter.recordException(e)
                         null
                     }
                 }
@@ -79,7 +79,7 @@ abstract class BlobDataSource<D>(
             val bytes = onMarshall(value)
             file.writeBytes(bytes)
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
         }
     }
 
@@ -103,7 +103,7 @@ abstract class BlobDataSource<D>(
             val bytes = file.readBytes()
             if (bytes.isEmpty()) null else bytes
         } catch (e: IOException) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
     }

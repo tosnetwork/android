@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.Operation
 import androidx.work.WorkerParameters
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.tonkeeper.extensions.workManager
 import com.tonapps.tonkeeper.manager.assets.AssetsManager
 import com.tonapps.wallet.data.account.AccountRepository
@@ -31,7 +31,7 @@ class TotalBalancesWorker(
             }
             return Result.success()
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             return Result.failure()
         }
     }

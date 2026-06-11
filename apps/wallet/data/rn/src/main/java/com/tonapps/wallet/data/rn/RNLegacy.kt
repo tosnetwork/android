@@ -3,7 +3,7 @@ package com.tonapps.wallet.data.rn
 import android.content.Context
 import android.util.Log
 import androidx.fragment.app.FragmentActivity
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.extensions.bestMessage
 import com.tonapps.extensions.map
 import com.tonapps.wallet.data.rn.data.RNDecryptedData
@@ -139,7 +139,7 @@ class RNLegacy(
         return try {
             seedStorage.get(passcode)
         } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            CrashReporter.recordException(e)
             null
         }
     }

@@ -4,9 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.annotation.UiThread
-import com.aptabase.Aptabase
-import com.aptabase.InitOptions
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.TonAddressTags
 import com.tonapps.extensions.hostOrNull
 import com.tonapps.extensions.toUriOrNull
@@ -68,8 +66,7 @@ class AnalyticsHelper(
                 it.value
             }
         }.toMutableMap()
-        fixedProps["firebase_user_id"] = installId
-        Aptabase.instance.trackEvent(eventName, fixedProps)
+        // TOS: no external analytics — events are dropped, never sent off-device.
     }
 
     @UiThread
@@ -396,16 +393,10 @@ class AnalyticsHelper(
         appKey: String,
         host: String
     ) {
-        try {
-            val options = InitOptions(
-                host = host
-            )
-            Aptabase.instance.initialize(context, appKey, options)
-            if (isInitialized.compareAndSet(false, true)) {
-                processEventQueue()
-            }
-        } catch (e: Throwable) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+        // TOS: no external analytics backend (Aptabase removed). Mark initialized so
+        // the queued events drain to the no-op sink instead of accumulating.
+        if (isInitialized.compareAndSet(false, true)) {
+            processEventQueue()
         }
     }
 }
