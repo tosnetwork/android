@@ -3,3 +3,4 @@ source 'https://rubygems.org'
 ruby ">= 2.6.10"
 gem "fastlane"
 gem "fastlane-plugin-increment_version_code"
+gem "bundler-audit", require: false
