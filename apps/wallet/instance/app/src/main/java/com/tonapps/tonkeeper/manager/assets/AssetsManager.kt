@@ -103,7 +103,7 @@ class AssetsManager(
                 ?: return emptyList()
         tokens.firstOrNull()?.let {
             if (wallet.initialized != it.balance.initializedAccount) {
-                accountRepository.setInitialized(wallet.accountId, it.balance.initializedAccount)
+                accountRepository.setInitialized(wallet.id, it.balance.initializedAccount)
             }
         }
         return if (safeMode) {

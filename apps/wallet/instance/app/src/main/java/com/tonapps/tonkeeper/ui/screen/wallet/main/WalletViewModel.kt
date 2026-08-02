@@ -291,8 +291,6 @@ class WalletViewModel(
             }
         }.launchIn(viewModelScope)
 
-        loadAlertNotifications()
-
         autoRefreshJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 checkAutoRefresh()
@@ -321,12 +319,6 @@ class WalletViewModel(
 
     private fun hasPendingTransaction(): Boolean {
         return _statusFlow.value == Status.SendingTransaction
-    }
-
-    private fun loadAlertNotifications() {
-        viewModelScope.launch(Dispatchers.IO) {
-            alertNotificationsFlow.value = api.getAlertNotifications()
-        }
     }
 
     fun nextWallet() {
