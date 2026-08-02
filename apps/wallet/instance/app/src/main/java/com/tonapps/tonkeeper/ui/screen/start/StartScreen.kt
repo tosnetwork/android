@@ -5,6 +5,7 @@ import android.view.View
 import android.widget.Button
 import com.tonapps.tonkeeper.ui.screen.add.AddWalletScreen
 import com.tonapps.tonkeeper.ui.screen.dev.DevScreen
+import com.tonapps.tonkeeper.helper.BrowserHelper
 import com.tonapps.tonkeeperx.BuildConfig
 import com.tonapps.tonkeeper.ui.screen.init.InitArgs
 import com.tonapps.tonkeeper.ui.screen.init.InitScreen
@@ -38,6 +39,10 @@ class StartScreen: BaseFragment(R.layout.fragment_intro) {
         val importWalletButton = view.findViewById<Button>(R.id.import_wallet)
         importWalletButton.setOnClickListener {
             navigation?.add(AddWalletScreen.newInstance(false))
+        }
+
+        view.findViewById<View>(R.id.terms).setOnClickListener {
+            BrowserHelper.open(requireContext(), "https://tos.network/terms.html")
         }
     }
 

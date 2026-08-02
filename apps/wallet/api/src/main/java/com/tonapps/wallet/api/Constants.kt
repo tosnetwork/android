@@ -42,7 +42,7 @@ internal object Constants {
     // --- Support / legal links (placeholders) ---
     const val TOS_SUPPORT_URL = "mailto:support@tos.network"
     const val TOS_PRIVACY_URL = "https://tos.network/privacy"
-    const val TOS_TERMS_URL = "https://tos.network/terms"
+    const val TOS_TERMS_URL = "https://tos.network/terms.html"
 
     // Legacy-reference compatibility: swap is disabled by default; keep an empty string to avoid NPEs.
     const val SWAP_PREFIX = ""

@@ -3,13 +3,22 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <androidx.appcompat.widget.AppCompatImageView
-        android:id="@+id/logo"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:scaleType="centerCrop"
-        android:src="@drawable/bg_intro_blue"/>
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/logo"
+            android:layout_width="220dp"
+            android:layout_height="220dp"
+            android:layout_gravity="center_horizontal|bottom"
+            android:layout_marginBottom="80dp"
+            android:contentDescription="@null"
+            android:scaleType="fitCenter"
+            android:src="@drawable/tos_intro_logo"/>
+
+    </FrameLayout>
 
     <uikit.widget.ColumnLayout
         android:layout_width="match_parent"
@@ -40,6 +49,17 @@
             android:layout_marginTop="@dimen/offsetMedium"
             android:textAppearance="@style/TextAppearance.Label1"
             android:text="@string/start_import_wallet"/>
+
+        <TextView
+            android:id="@+id/terms"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/offsetMedium"
+            android:gravity="center"
+            android:paddingVertical="8dp"
+            android:text="@string/terms_of_use"
+            android:textColor="?attr/textAccentColor"
+            android:textSize="14sp"/>
 
     </uikit.widget.ColumnLayout>
 
