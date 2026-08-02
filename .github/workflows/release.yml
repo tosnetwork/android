@@ -14,51 +14,43 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
-      - name: Set up ruby env
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: 3.2
-          bundler-cache: true
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 20.0.2+9
+          java-version: '17'
+          cache: gradle
 
       - name: Decode signing certificate into a file
         env:
           CERTIFICATE_BASE64: ${{ secrets.ANDROID_DIST_SIGNING_KEY }}
         run: |
-          echo $CERTIFICATE_BASE64 | base64 --decode > google-release.keystore
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > google-release.keystore
 
-      - name: Build android beta
-        run: bundle exec fastlane android beta
+      - name: Build signed release artifacts
+        run: |
+          ./gradlew :apps:wallet:instance:main:assembleSiteRelease \
+            -Pandroid.injected.signing.store.file="$KEYSTORE_FILE" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD" \
+            -PisApk=true
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/google-release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.TOS_UPLOAD_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.TOS_UPLOAD_KEY_ALIAS}}
+          KEY_ALIAS: ${{ secrets.TOS_UPLOAD_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.TOS_UPLOAD_KEY_PASSWORD }}
-          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.ANDROID_PUBLISHER_CREDENTIALS }}
-
-      - name: Upload android aab to artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: TOS Wallet aab ${{ env.VERSION_CODE }}
-          path: |
-            ${{ env.AAB_OUTPUT_PATH }}
 
       - name: Upload android apk to artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TOS Wallet apk ${{ env.VERSION_CODE }}
-          path: |
-            ${{ env.APK_OUTPUT_PATH }}
+          name: TOS-Wallet-${{ github.ref_name }}-apk
+          path: apps/wallet/instance/main/build/outputs/apk/site/release/main-site-release.apk
 
       - name: Fix filename
         run: |
           mkdir -p release
-          cp "$APK_OUTPUT_PATH" release/TOS-Wallet.apk
+          cp apps/wallet/instance/main/build/outputs/apk/site/release/main-site-release.apk release/TOS-Wallet.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -75,8 +67,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: apk }
 
-      - uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: TOS-Wallet.apk
+          generate_release_notes: true
