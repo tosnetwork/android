@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.tonapps.extensions.CrashReporter
 import com.tonapps.blockchain.ton.TonAddressTags
 import com.tonapps.blockchain.ton.contract.WalletFeature
+import com.tonapps.blockchain.ton.extensions.EmptyPrivateKeyEd25519
 import com.tonapps.blockchain.ton.extensions.equalsAddress
 import com.tonapps.blockchain.ton.extensions.isValidTonAddress
 import com.tonapps.blockchain.tron.TronTransfer
@@ -53,6 +54,7 @@ import com.tonapps.wallet.data.battery.entity.BatteryBalanceEntity
 import com.tonapps.wallet.data.collectibles.CollectiblesRepository
 import com.tonapps.wallet.data.collectibles.entities.NftEntity
 import com.tonapps.wallet.data.rates.RatesRepository
+import com.tonapps.wallet.data.rates.entity.RatesEntity
 import com.tonapps.wallet.data.settings.BatteryTransaction
 import com.tonapps.wallet.data.settings.SettingsRepository
 import com.tonapps.wallet.data.settings.entities.PreferredFeeMethod
@@ -206,7 +208,7 @@ class SendViewModel(
         )
 
     private val ratesTokenFlow = selectedTokenFlow.map { token ->
-        ratesRepository.getRates(currency, token.address)
+        RatesEntity.empty(currency)
     }.state(viewModelScope)
 
     val uiInputAddressErrorFlow =
@@ -499,23 +501,27 @@ class SendViewModel(
             return@withContext SendDestination.NotFound
         }
 
-        val accountDeferred = async { api.resolveAccount(userInput, wallet.testnet) }
-        val publicKeyDeferred = async { api.safeGetPublicKey(userInput, wallet.testnet) }
-
-        val account = accountDeferred.await() ?: return@withContext SendDestination.NotFound
-        val publicKey = publicKeyDeferred.await()
-
-        if (account.isScam == true) {
-            return@withContext SendDestination.Scam
-        }
+        val address = runCatching { AddrStd.parse(userInput) }.getOrNull()
+            ?: return@withContext SendDestination.NotFound
+        val state = runCatching { api.tos.getAccountState(userInput, wallet.testnet) }.getOrNull()
+            ?: return@withContext SendDestination.NotFound
+        val walletInfo = runCatching {
+            api.tos.getWalletInformation(userInput, wallet.testnet)
+        }.getOrNull()
 
         SendDestination.TonAccount(
             userInput = userInput,
-            isUserInputAddress = userInput.isValidTonAddress(),
-            publicKey = publicKey,
-            account = account,
+            isUserInputAddress = true,
+            publicKey = EmptyPrivateKeyEd25519.publicKey(),
+            address = address,
+            memoRequired = false,
+            isSuspended = false,
+            isWallet = walletInfo?.isWallet == true,
+            name = null,
+            existing = state.status == "active" || state.status == "frozen",
             testnet = wallet.testnet,
-            tonAddressTags = tonAddressTags
+            tonAddressTags = tonAddressTags,
+            isBounce = tonAddressTags.isBounceable && state.status == "active",
         )
     }
 
@@ -786,68 +792,7 @@ class SendViewModel(
 
     private suspend fun calculateFee(
         transfer: TransferEntity,
-    ): SendFee = withContext(Dispatchers.IO) {
-        val wallet = transfer.wallet
-        val withRelayer = shouldAttemptWithRelayer(transfer)
-        val tonProofToken = accountRepository.requestTonProofToken(wallet)
-        val batteryConfig = batteryRepository.getConfig(wallet.testnet)
-        val tokenAddress = transfer.token.token.address
-        val excessesAddress = batteryConfig.excessesAddress
-        val isGaslessToken = !transfer.token.isTon && batteryConfig.rechargeMethods.any {
-            it.supportGasless && it.jettonMaster == tokenAddress
-        }
-
-        val isSupportsGasless =
-            wallet.isSupportedFeature(WalletFeature.GASLESS) && tonProofToken != null && excessesAddress != null && isGaslessToken
-
-        val tonDeferred = async { calculateFeeDefault(transfer) }
-        val gaslessDeferred = async {
-            if (isSupportsGasless) {
-                calculateFeeGasless(
-                    transfer,
-                    excessesAddress,
-                    tonProofToken,
-                    tokenAddress,
-                )
-            } else null
-        }
-        val batteryDeferred = async {
-            if (withRelayer && tonProofToken != null && excessesAddress != null) {
-                calculateFeeBattery(transfer, excessesAddress, tonProofToken)
-            } else null
-        }
-
-        val tonFeeResult = tonDeferred.await()
-        gaslessFee = gaslessDeferred.await()
-        batteryFee = batteryDeferred.await()
-
-        if (tonFeeResult.error is InsufficientBalanceError) {
-            tonFee = null
-        } else {
-            tonFee = tonFeeResult
-        }
-
-        // preferred fee method logic
-        val preferredFeeMethod = settingsRepository.getPreferredFeeMethod(wallet.id)
-        if (preferredFeeMethod == PreferredFeeMethod.BATTERY && batteryFee != null) {
-            return@withContext batteryFee!!
-        }
-        if (preferredFeeMethod == PreferredFeeMethod.GASLESS && gaslessFee != null) {
-            return@withContext gaslessFee!!
-        }
-        if (preferredFeeMethod == PreferredFeeMethod.TON && tonFee != null) {
-            return@withContext tonFee!!
-        }
-
-        // unspecified preferred fee method logic
-        if (batteryFee != null) {
-            return@withContext batteryFee!!
-        } else if (gaslessFee != null && tonFee == null) {
-            return@withContext gaslessFee!!
-        }
-
-        return@withContext tonFeeResult
-    }
+    ): SendFee = calculateFeeDefault(transfer)
 
     private suspend fun calculateFeeBattery(
         transfer: TransferEntity,
@@ -1001,7 +946,11 @@ class SendViewModel(
     private suspend fun calculateFeeDefault(
         transfer: TransferEntity,
     ): SendFee.Ton {
-        val jettonTransferAmount = getJettonTransferAmount(transfer)
+        val jettonTransferAmount = if (transfer.token.isTon) {
+            TransferEntity.BASE_FORWARD_AMOUNT
+        } else {
+            getJettonTransferAmount(transfer)
+        }
         val emulated = emulationUseCase(
             message = transfer.getEmulationBody(jettonTransferAmount),
             params = true,

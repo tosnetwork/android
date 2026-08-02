@@ -139,18 +139,11 @@ class TokenRepository(
         currency: WalletCurrency, accountId: String, tronAddress: String?, testnet: Boolean
     ): List<AccountTokenEntity>? = withContext(Dispatchers.IO) {
         val balances = load(currency, accountId, tronAddress, testnet) ?: return@withContext null
-        if (testnet) {
-            return@withContext buildTokens(
-                currency = currency,
-                balances = balances,
-                fiatRates = RatesEntity.empty(currency),
-                testnet = true
-            )
-        }
-
-        val fiatRates = ratesRepository.getRates(currency, balances.map { it.token.address })
         buildTokens(
-            currency = currency, balances = balances, fiatRates = fiatRates, testnet = false
+            currency = currency,
+            balances = balances,
+            fiatRates = RatesEntity.empty(currency),
+            testnet = testnet
         )
     }
 
@@ -158,24 +151,12 @@ class TokenRepository(
         currency: WalletCurrency, accountId: String, testnet: Boolean
     ): List<AccountTokenEntity> = withContext(Dispatchers.IO) {
         val balances = cache(accountId, testnet) ?: return@withContext emptyList()
-        if (testnet) {
-            return@withContext buildTokens(
-                currency = currency,
-                balances = balances,
-                fiatRates = RatesEntity.empty(currency),
-                testnet = true
-            )
-        }
-
-        val fiatRates = ratesRepository.cache(currency, balances.map { it.token.address })
-
-        if (fiatRates.isEmpty) {
-            emptyList()
-        } else {
-            buildTokens(
-                currency = currency, balances = balances, fiatRates = fiatRates, testnet = false
-            )
-        }
+        buildTokens(
+            currency = currency,
+            balances = balances,
+            fiatRates = RatesEntity.empty(currency),
+            testnet = testnet
+        )
     }
 
     private fun buildTokens(
@@ -238,85 +219,15 @@ class TokenRepository(
         return localDataSource.getCache(key)
     }
 
-    private fun updateRates(currency: WalletCurrency, tokens: List<String>) {
-        ratesRepository.load(currency, tokens.toMutableList())
-    }
-
     private suspend fun load(
         currency: WalletCurrency, accountId: String, tronAddress: String?, testnet: Boolean
     ): List<BalanceEntity>? = withContext(Dispatchers.IO) {
-        val tonBalanceDeferred = async { remoteDataSource.loadTON(currency, accountId, testnet) }
-        val jettonsDeferred = async { remoteDataSource.loadJettons(currency, accountId, testnet) }
-        val tronUsdtDeferred = async {
-            if (tronAddress != null && !testnet) {
-                remoteDataSource.loadTronUsdt(tronAddress)
-            } else {
-                null
-            }
-        }
-
-        val tonBalance = tonBalanceDeferred.await() ?: return@withContext null
-
-        val jettons = jettonsDeferred.await()?.toMutableList() ?: mutableListOf()
-
-        val tronUsdt = tronUsdtDeferred.await()
-
-        val usdtIndex = jettons.indexOfFirst {
-            it.token.address == TokenEntity.USDT.address
-        }
-
-        val usdeIndex = jettons.indexOfFirst {
-            it.token.address == TokenEntity.USDE.address
-        }
-
-        val entities = mutableListOf<BalanceEntity>()
-        entities.add(tonBalance)
-
-        if (tronUsdt != null && (!api.config.flags.disableTron || tronUsdt.value.isPositive)) {
-            entities.add(tronUsdt)
-        }
-
-        if (usdtIndex == -1 && !testnet) {
-            entities.add(
-                BalanceEntity(
-                    token = TokenEntity.USDT,
-                    value = Coins.ZERO,
-                    walletAddress = accountId,
-                    initializedAccount = tonBalance.initializedAccount,
-                    isRequestMinting = false,
-                    isTransferable = true
-                )
-            )
-        } else if (usdtIndex >= 0) {
-            jettons[usdtIndex] = jettons[usdtIndex].copy(
-                token = TokenEntity.USDT
-            )
-        }
-
-        if (usdeIndex == -1 && !testnet && !api.config.flags.disableUsde) {
-            entities.add(
-                BalanceEntity(
-                    token = TokenEntity.USDE,
-                    value = Coins.ZERO,
-                    walletAddress = accountId,
-                    initializedAccount = tonBalance.initializedAccount,
-                    isRequestMinting = false,
-                    isTransferable = true
-                )
-            )
-        } else if (usdeIndex >= 0) {
-            jettons[usdeIndex] = jettons[usdeIndex].copy(
-                token = TokenEntity.USDE
-            )
-        }
-
-        entities.addAll(jettons)
-
-        updateRates(currency, listOf(TokenEntity.TON.symbol))
-        bindRates(currency, entities)
+        val tonBalance = remoteDataSource.loadTON(currency, accountId, testnet)
+            ?: return@withContext null
+        val entities = listOf(tonBalance)
         localDataSource.setCache(cacheKey(accountId, testnet), entities)
         totalBalanceCache.remove(cacheKey(accountId, testnet))
-        entities.toList()
+        entities
     }
 
     private fun cacheKey(accountId: String, testnet: Boolean): String {

@@ -193,7 +193,8 @@ class SendScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_s
         amountView.setOnDoneActionListener { commentInput.requestFocus() }
 
         convertedView = view.findViewById(R.id.converted)
-        convertedView.setOnClickListener { viewModel.swap() }
+        convertedView.visibility = View.GONE
+        view.findViewById<View>(R.id.swap).visibility = View.GONE
 
         swapView = view.findViewById(R.id.swap)
         swapView.setOnClickListener { viewModel.swap() }
@@ -653,8 +654,7 @@ class SendScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_s
         }
         reviewRecipientAmountView.visibility = View.VISIBLE
         reviewRecipientAmountView.value = amount.format.withCustomSymbol(requireContext())
-        reviewRecipientAmountView.description =
-            amount.convertedFormat.withCustomSymbol(requireContext())
+        reviewRecipientAmountView.description = ""
     }
 
     private fun reviewRecipientAddressTitle(): AppCompatTextView {
@@ -774,6 +774,9 @@ class SendScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_s
                 }
 
                 else -> {}
+            }
+            if (event.fee is SendFee.Ton) {
+                reviewRecipientFeeView.description = ""
             }
 
             if (event.showToggle) {

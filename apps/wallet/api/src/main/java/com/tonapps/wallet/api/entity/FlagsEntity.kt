@@ -52,6 +52,6 @@ data class FlagsEntity(
         disableUsde = true,
         disableNativeSwap = true,
         disableOnboardingStory = true,
-        disableNfts = false
+        disableNfts = true
     )
 }

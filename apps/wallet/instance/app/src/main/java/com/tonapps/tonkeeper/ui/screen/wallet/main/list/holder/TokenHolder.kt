@@ -33,9 +33,7 @@ class TokenHolder(parent: ViewGroup): Holder<Item.Token>(parent, R.layout.view_c
 
     override fun onBind(item: Item.Token) {
         itemView.background = item.position.drawable(context)
-        itemView.setOnClickListener {
-            openToken(item)
-        }
+        itemView.setOnClickListener(if (item.isTON) null else View.OnClickListener { openToken(item) })
         if (item.blacklist) {
             titleView.text = getString(Localization.fake)
             iconView.clear(null)
@@ -60,7 +58,7 @@ class TokenHolder(parent: ViewGroup): Holder<Item.Token>(parent, R.layout.view_c
             item.balanceFormat.withCustomSymbol(context)
         }
 
-        if (item.testnet) {
+        if (item.testnet || item.isTON) {
             rateView.visibility = View.GONE
             balanceFiatView.visibility = View.GONE
         } else {

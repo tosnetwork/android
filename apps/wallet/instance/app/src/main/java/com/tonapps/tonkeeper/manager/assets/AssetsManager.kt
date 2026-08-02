@@ -55,44 +55,7 @@ class AssetsManager(
         refresh: Boolean,
     ): List<AssetsEntity>? {
         val tokens = getTokens(wallet, currency, refresh)
-        var staked = getStaked(wallet, tokens.map { it.token }, currency, refresh)
-
-        val filteredTokens = tokens.filter { !it.token.isLiquid && !it.token.isUSDe }.toMutableList()
-        val tokenTsUsde =
-            tokens.firstOrNull { it.token.address.equalsAddress(TokenEntity.TON_TS_USDE) }?.token
-        val tokenUsde =
-            tokens.firstOrNull { it.token.address.equalsAddress(TokenEntity.TON_USDE) }?.token
-        tokenUsde?.let {
-            if (tokenTsUsde != null) {
-                val rates = ratesRepository.getRates(
-                    currency,
-                    listOf(it.address, tokenTsUsde.address)
-                )
-                val stakedUsde = rates.convert(
-                    from = WalletCurrency.TS_USDE_TON_ETHENA,
-                    value = tokenTsUsde.balance.value,
-                    to = WalletCurrency.USDE_TON_ETHENA
-                )
-                val balance =
-                    it.balance.copy(value = it.balance.value + stakedUsde)
-                filteredTokens.add(
-                    AssetsEntity.Token(
-                        token = it.copy(
-                            balance = balance,
-                            fiatRate = TokenRateEntity(
-                                currency = currency,
-                                fiat = rates.convert(it.address, balance.value),
-                                rate = rates.getRate(it.address),
-                                rateDiff24h = rates.getDiff24h(it.address)
-                            )
-                        )
-                    )
-                )
-            } else {
-                filteredTokens.add(AssetsEntity.Token(token = it))
-            }
-        }
-        val list = (filteredTokens + staked).sortedBy { it.fiat }.reversed()
+        val list = tokens.filter { it.token.isTon }
         if (list.isEmpty()) {
             return null
         }
@@ -135,12 +98,8 @@ class AssetsManager(
         refresh: Boolean,
     ): List<AssetsEntity.Token> {
         val safeMode = settingsRepository.isSafeModeEnabled(api)
-        val tronAddress =
-            if (wallet.hasPrivateKey && !wallet.testnet) {
-                accountRepository.getTronAddress(wallet.id)
-            } else null
         val tokens =
-            tokenRepository.get(currency, wallet.accountId, wallet.testnet, refresh, tronAddress)
+            tokenRepository.get(currency, wallet.accountId, wallet.testnet, refresh)
                 ?: return emptyList()
         tokens.firstOrNull()?.let {
             if (wallet.initialized != it.balance.initializedAccount) {

@@ -29,6 +29,7 @@ import com.tonapps.wallet.data.core.ScreenCacheSource
 import com.tonapps.wallet.data.core.currency.WalletCurrency
 import com.tonapps.wallet.data.plugins.PluginsRepository
 import com.tonapps.wallet.data.rates.RatesRepository
+import com.tonapps.wallet.data.rates.entity.RatesEntity
 import com.tonapps.wallet.data.settings.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -144,8 +145,6 @@ class WalletViewModel(
                 setStatus(Status.NoInternet)
                 delay(3000)
                 setStatus(Status.LastUpdated)
-            } else {
-                updateCuntryByIP()
             }
         }
 
@@ -179,7 +178,7 @@ class WalletViewModel(
             val localAssets = getAssets(walletCurrency, false)
             if (localAssets != null) {
                 val batteryBalance = getBatteryBalance(wallet)
-                val plugins = pluginsRepository.getPlugins(wallet.accountId, wallet.testnet)
+                val plugins = emptyList<io.tonapi.models.WalletPlugin>()
                 val state = State.Main(
                     wallet = wallet,
                     assets = localAssets,
@@ -208,7 +207,7 @@ class WalletViewModel(
             if (isRequestUpdate) {
                 val remoteAssets = getAssets(walletCurrency, true)
                 val batteryBalance = getBatteryBalance(wallet, true)
-                val plugins = pluginsRepository.getPlugins(wallet.accountId, wallet.testnet, true)
+                val plugins = emptyList<io.tonapi.models.WalletPlugin>()
                 if (remoteAssets != null) {
                     val state = State.Main(
                         wallet,
@@ -302,12 +301,6 @@ class WalletViewModel(
         }
     }
 
-    private fun updateCuntryByIP() {
-        viewModelScope.launch {
-            environment.setCountryByIPAddress(api.resolveCountry())
-        }
-    }
-
     fun refresh() {
         requestDnsExpiring()
         _statusFlow.value = Status.Updating
@@ -315,11 +308,7 @@ class WalletViewModel(
     }
 
     private fun requestDnsExpiring() {
-        viewModelScope.launch {
-            val period = if (DevSettings.dnsAll) 366 else 30
-            _domainRenewFlow.value =
-                collectiblesRepository.getDnsSoonExpiring(wallet.accountId, wallet.testnet, period)
-        }
+        _domainRenewFlow.value = emptyList()
     }
 
     private suspend fun checkAutoRefresh() {
@@ -365,21 +354,7 @@ class WalletViewModel(
     private suspend fun getBatteryBalance(
         wallet: WalletEntity,
         ignoreCache: Boolean = false
-    ): Coins = withContext(Dispatchers.IO) {
-        if (wallet.hasPrivateKey) {
-            val tonProofToken =
-                accountRepository.requestTonProofToken(wallet) ?: return@withContext Coins.ZERO
-            val battery = batteryRepository.getBalance(
-                tonProofToken = tonProofToken,
-                publicKey = wallet.publicKey,
-                testnet = wallet.testnet,
-                ignoreCache = ignoreCache
-            )
-            battery.balance
-        } else {
-            Coins.ZERO
-        }
-    }
+    ): Coins = Coins.ZERO
 
     private suspend fun getAssets(
         currency: WalletCurrency,
@@ -390,7 +365,7 @@ class WalletViewModel(
                 currency = currency,
                 list = it.sort(wallet, settingsRepository),
                 fromCache = !refresh,
-                rates = ratesRepository.getTONRates(currency)
+                rates = RatesEntity.empty(currency)
             )
         }
     }

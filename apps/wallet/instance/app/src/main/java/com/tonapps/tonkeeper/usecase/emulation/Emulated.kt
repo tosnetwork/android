@@ -40,31 +40,12 @@ data class Emulated(
             batteryRepository: BatteryRepository,
             ratesRepository: RatesRepository
         ): SendFee {
-            return if (withBattery && consequences != null) {
-                val extra = consequences.event.extra
-                val chargesBalance = BatteryHelper.getBatteryCharges(wallet, accountRepository, batteryRepository)
-                val batteryConfig = batteryRepository.getConfig(wallet.testnet)
-                val charges = BatteryMapper.calculateChargesAmount(
-                    Coins.of(abs(extra)).value,
-                    batteryConfig.chargeCost
-                )
-                val excessesAddress = batteryConfig.excessesAddress
-                SendFee.Battery(
-                    charges = charges,
-                    chargesBalance = chargesBalance,
-                    extra = extra,
-                    excessesAddress = excessesAddress!!,
-                )
-            } else {
-                val fee = Fee(extra.value, extra.isRefund)
-                val rates = ratesRepository.getTONRates(currency)
-                val converted = rates.convertTON(fee.value)
-                SendFee.Ton(
-                    amount = fee,
-                    fiatAmount = converted,
-                    fiatCurrency = currency,
-                )
-            }
+            val fee = Fee(extra.value, extra.isRefund)
+            return SendFee.Ton(
+                amount = fee,
+                fiatAmount = Coins.ZERO,
+                fiatCurrency = currency,
+            )
         }
     }
 

@@ -68,24 +68,21 @@ sealed class State {
             get() = list.size
 
         fun getTotalBalanceFiat(wallet: WalletEntity): Coins {
-            return if (wallet.testnet) {
-                list.first().fiat
-            } else {
-                list.map { it.fiat }.sumOf { it }
-            }
+            return list.filterIsInstance<AssetsEntity.Token>()
+                .firstOrNull { it.token.isTon }
+                ?.balance
+                ?: Coins.ZERO
         }
 
         fun getBalanceType(wallet: WalletEntity): Int {
-            val balanceFiat = getTotalBalanceFiat(wallet)
-            val balanceTON = rates.convertFromFiat(TokenEntity.TON.address, balanceFiat)
-            return BalanceType.getBalanceType(balanceTON)
+            return BalanceType.getBalanceType(getTotalBalanceFiat(wallet))
         }
 
         fun getTotalBalanceFormat(
             wallet: WalletEntity,
         ): CharSequence {
             val total = getTotalBalanceFiat(wallet)
-            return CurrencyFormatter.formatFiat(currency.code, total)
+            return CurrencyFormatter.format(TokenEntity.TON.symbol, total)
         }
     }
 
@@ -155,7 +152,6 @@ sealed class State {
                 }
             }
             uiItems.add(Item.Space(true))
-            uiItems.add(Item.Manage(wallet))
             return uiItems.toList()
         }
 

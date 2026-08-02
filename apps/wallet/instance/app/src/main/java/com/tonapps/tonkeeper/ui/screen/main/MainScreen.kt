@@ -131,38 +131,17 @@ class MainScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_main, S
             }
         }
         collectFlow(viewModel.childBottomScrolled) {
-            if (bottomTabsView.selectedItemId == R.id.browser) {
-                bottomTabsView.setDivider(false)
-            } else {
-                bottomTabsView.setDivider(it)
-            }
+            bottomTabsView.setDivider(it)
         }
         rootViewModel.eventFlow.filterIsInstance<RootEvent.OpenTab>().onEach {
-            val itemId = resolveId(it.link.toString())
+            val itemId = R.id.wallet
             bottomTabsView.selectedItemId = itemId
-            val extra = if (itemId == R.id.browser) {
-                it.link.query("category")
-            } else {
-                null
-            }
-            setFragment(itemId, it.wallet, it.from, extra, true)
+            setFragment(itemId, it.wallet, it.from, null, true)
             parentClearState()
         }.launchIn(lifecycleScope)
-
-        collectFlow(rootViewModel.eventFlow.filterIsInstance<RootEvent.Swap>()) {
-            navigation?.add(SwapScreen.newInstance(
-                wallet = it.wallet,
-                nativeSwap = context?.serverFlags?.disableNativeSwap != true,
-                uri = it.uri
-            ))
-        }
         collectFlow(viewModel.selectedWalletFlow) { wallet ->
             applyWallet(wallet)
             setFragment(bottomTabsView.selectedItemId, wallet, "wallet",null, false)
-        }
-
-        collectFlow(viewModel.disbleNftsFlow) {
-            bottomTabsView.toggleItem(R.id.collectibles, !it)
         }
     }
 
@@ -193,20 +172,11 @@ class MainScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_main, S
 
         bottomTabsView.doOnClick = { itemId ->
             setFragment(itemId, wallet, "wallet",null, false)
-            if (itemId == R.id.browser) {
-                analytics?.simpleTrackEvent("browser_click")
-            }
         }
     }
 
     private fun getCurrentFrom(): String {
-        return when(bottomTabsView.selectedItemId) {
-            R.id.wallet -> "wallet"
-            R.id.activity -> "activity"
-            R.id.collectibles -> "collectibles"
-            R.id.browser -> "browser"
-            else -> "unknown"
-        }
+        return "wallet"
     }
 
     private fun getFragment(itemId: Int, wallet: WalletEntity): Fragment {
@@ -216,15 +186,8 @@ class MainScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_main, S
     }
 
     private fun createFragment(itemId: Int, wallet: WalletEntity): Fragment {
-        val fragment = when(itemId) {
-            R.id.wallet -> WalletScreen.newInstance(wallet)
-            // R.id.activity -> EventsScreen.newInstance(wallet)
-            R.id.activity -> TxEventsScreen.newInstance(wallet)
-            R.id.collectibles -> CollectiblesScreen.newInstance(wallet)
-            R.id.browser -> BrowserBaseScreen.newInstance(wallet)
-            else -> throw IllegalArgumentException("Unknown itemId: $itemId")
-        }
-        return fragment
+        require(itemId == R.id.wallet) { "Unknown itemId: $itemId" }
+        return WalletScreen.newInstance(wallet)
     }
 
     private fun setFragment(itemId: Int, wallet: WalletEntity, from: String, extra: String?, forceScrollUp: Boolean) {
@@ -297,18 +260,6 @@ class MainScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_main, S
     override fun onResume() {
         super.onResume()
         window?.setBackgroundDrawable(requireContext().constantBlackColor.drawable)
-    }
-
-    private fun resolveId(deeplink: String): Int {
-        if (deeplink.startsWith("tonkeeper://activity")) {
-            return R.id.activity
-        } else if (deeplink.startsWith("tonkeeper://browser")) {
-            return R.id.browser
-        } else if (deeplink.startsWith("tonkeeper://collectibles")) {
-            return R.id.collectibles
-        }
-        return R.id.wallet
-
     }
 
     companion object {

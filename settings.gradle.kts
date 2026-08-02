@@ -17,7 +17,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TON Apps"
+rootProject.name = "TOS Wallet"
 
 include(":apps:signer")
 
