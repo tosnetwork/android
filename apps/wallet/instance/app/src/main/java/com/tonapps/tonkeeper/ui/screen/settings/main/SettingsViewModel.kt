@@ -1,13 +1,10 @@
 package com.tonapps.tonkeeper.ui.screen.settings.main
 
 import android.app.Application
-import android.os.Build
-import androidx.core.net.toUri
 import androidx.lifecycle.viewModelScope
 import com.tonapps.blockchain.ton.contract.BaseWalletContract
 import com.tonapps.blockchain.ton.contract.WalletVersion
 import com.tonapps.blockchain.ton.extensions.toAccountId
-import com.tonapps.extensions.appVersionCode
 import com.tonapps.tonkeeper.Environment
 import com.tonapps.tonkeeper.core.AnalyticsHelper
 import com.tonapps.tonkeeper.core.FirebaseHelper
@@ -113,6 +110,23 @@ class SettingsViewModel(
         val engine = searchEngine ?: SearchEngine.GOOGLE
         settingsRepository.searchEngine = engine
         FirebaseHelper.searchEngine(engine.title)
+    }
+
+    fun setRpcEndpoint(value: String): String {
+        val endpoint = api.setCustomTosRpcEndpoint(value)
+        updateRpcItem(endpoint)
+        return endpoint
+    }
+
+    fun resetRpcEndpoint() {
+        api.resetCustomTosRpcEndpoint()
+        updateRpcItem(api.tosRpcEndpoint(wallet.testnet))
+    }
+
+    private fun updateRpcItem(endpoint: String) {
+        _uiItemsFlow.value = _uiItemsFlow.value.map { item ->
+            if (item is Item.RpcNode) Item.RpcNode(endpoint, item.position) else item
+        }
     }
 
     fun signOut(callback: () -> Unit) {
@@ -263,6 +277,9 @@ class SettingsViewModel(
             secondCellPosition = ListCell.Position.MIDDLE
         }
 
+        uiItems.add(Item.RpcNode(api.tosRpcEndpoint(wallet.testnet), secondCellPosition))
+        secondCellPosition = ListCell.Position.MIDDLE
+
         if (wallet.isTonConnectSupported) {
             uiItems.add(Item.SearchEngine(searchEngine, secondCellPosition))
             uiItems.add(Item.ConnectedApps(ListCell.Position.MIDDLE))
@@ -285,14 +302,12 @@ class SettingsViewModel(
         uiItems.add(Item.Theme(ListCell.Position.LAST))
 
         uiItems.add(Item.Space)
-        uiItems.add(Item.FAQ(ListCell.Position.FIRST, api.config.faqUrl))
-        uiItems.add(Item.Support(ListCell.Position.MIDDLE, getSupportUrl()))
-        uiItems.add(Item.News(ListCell.Position.MIDDLE, api.config.tonkeeperNewsUrl))
-        uiItems.add(Item.Contact(ListCell.Position.MIDDLE, api.config.supportLink))
         if (environment.isGooglePlayServicesAvailable) {
-            uiItems.add(Item.Rate(ListCell.Position.MIDDLE))
+            uiItems.add(Item.Rate(ListCell.Position.FIRST))
+            uiItems.add(Item.Legal(ListCell.Position.LAST))
+        } else {
+            uiItems.add(Item.Legal(ListCell.Position.SINGLE))
         }
-        uiItems.add(Item.Legal(ListCell.Position.LAST))
 
         uiItems.add(Item.Space)
         if (wallet.type == Wallet.Type.Watch) {
@@ -304,13 +319,6 @@ class SettingsViewModel(
         uiItems.add(Item.Logo(environment.installerSource))
 
         _uiItemsFlow.value = uiItems
-    }
-
-    private fun getSupportUrl(): String {
-        val startParams = "android${Build.VERSION.SDK_INT}app${context.appVersionCode}"
-        val builder = api.config.directSupportUrl.toUri().buildUpon()
-        builder.appendQueryParameter("start", startParams)
-        return builder.toString()
     }
 
     private suspend fun getBatteryCharges(): Int = withContext(Dispatchers.IO) {

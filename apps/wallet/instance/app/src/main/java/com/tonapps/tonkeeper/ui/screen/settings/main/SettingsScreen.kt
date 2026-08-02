@@ -3,6 +3,9 @@ package com.tonapps.tonkeeper.ui.screen.settings.main
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import androidx.appcompat.app.AlertDialog as AppCompatAlertDialog
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.core.net.toUri
 import com.google.android.play.core.review.ReviewInfo
 import com.google.android.play.core.review.ReviewManager
@@ -28,6 +31,7 @@ import com.tonapps.tonkeeper.ui.screen.settings.main.list.Item
 import com.tonapps.tonkeeper.ui.screen.settings.security.SecurityScreen
 import com.tonapps.tonkeeper.ui.screen.settings.theme.ThemeScreen
 import com.tonapps.tonkeeper.ui.screen.stories.w5.W5StoriesScreen
+import com.tonapps.tonkeeperx.R
 import com.tonapps.uikit.icon.UIKitIcon
 import com.tonapps.wallet.data.account.entities.WalletEntity
 import com.tonapps.wallet.data.core.SearchEngine
@@ -83,10 +87,6 @@ class SettingsScreen(
             is Item.Widget -> installWidget()
             is Item.Security -> navigation?.add(SecurityScreen.newInstance(screenContext.wallet))
             is Item.Legal -> navigation?.add(LegalScreen.newInstance())
-            is Item.News -> navigation?.openURL(item.url)
-            is Item.Support -> navigation?.openURL(item.url)
-            is Item.Contact -> navigation?.openURL(item.url)
-            is Item.Tester -> navigation?.openURL(item.url)
             is Item.W5 -> navigation?.add(W5StoriesScreen.newInstance(!screenContext.wallet.isW5))
             is Item.Battery -> navigation?.add(BatteryScreen.newInstance(screenContext.wallet, from = "settings"))
             is Item.Logout -> if (item.delete) deleteAccount() else showSignOutDialog()
@@ -97,10 +97,41 @@ class SettingsScreen(
             is Item.Rate -> openRate()
             is Item.V4R2 -> viewModel.createV4R2Wallet()
             is Item.Notifications -> navigation?.add(NotificationsManageScreen.newInstance(screenContext.wallet))
-            is Item.FAQ -> navigation?.openURL(item.url)
             is Item.TronToggle -> viewModel.toggleTron()
+            is Item.RpcNode -> showRpcNodeDialog(item)
             else -> return
         }
+    }
+
+    private fun showRpcNodeDialog(item: Item.RpcNode) {
+        val input = AppCompatEditText(requireContext()).apply {
+            setText(item.value)
+            hint = getString(R.string.rpc_node_address)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_URI
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setSelectAllOnFocus(true)
+        }
+        val dialog = AppCompatAlertDialog.Builder(requireContext())
+            .setTitle(R.string.rpc_node)
+            .setMessage(R.string.rpc_node_hint)
+            .setView(input)
+            .setPositiveButton(R.string.rpc_node_save, null)
+            .setNeutralButton(R.string.rpc_node_reset) { _, _ -> viewModel.resetRpcEndpoint() }
+            .setNegativeButton(Localization.cancel, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AppCompatAlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    viewModel.setRpcEndpoint(input.text?.toString().orEmpty())
+                    dialog.dismiss()
+                } catch (_: IllegalArgumentException) {
+                    input.error = getString(R.string.rpc_node_invalid)
+                }
+            }
+        }
+        dialog.show()
+        input.requestFocus()
     }
 
     private fun openRate() {

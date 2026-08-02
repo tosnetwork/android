@@ -127,7 +127,6 @@ class BalanceHolder(
         setWalletState(
             state = item.status,
             wallet = item.wallet,
-            lastUpdatedFormat = item.lastUpdatedFormat,
             showYourAddress = item.prefixYourAddress
         )
     }
@@ -135,18 +134,17 @@ class BalanceHolder(
     private fun setWalletState(
         state: Item.Status,
         wallet: WalletEntity,
-        lastUpdatedFormat: String,
         showYourAddress: Boolean,
     ) {
         when (state) {
             Item.Status.LastUpdated -> {
                 walletLoaderView.visibility = View.GONE
-                walletAddressView.text = context.getString(Localization.last_updated, lastUpdatedFormat)
+                setWalletAddressWithType(wallet.address.shortAddress, wallet.type, wallet.version, showYourAddress)
                 walletAddressView.setTextColor(context.textSecondaryColor)
             }
             Item.Status.Updating -> {
                 walletLoaderView.visibility = View.VISIBLE
-                walletAddressView.setText(Localization.updating)
+                setWalletAddressWithType(wallet.address.shortAddress, wallet.type, wallet.version, showYourAddress)
                 walletAddressView.setTextColor(context.textSecondaryColor)
             }
             Item.Status.SendingTransaction -> {

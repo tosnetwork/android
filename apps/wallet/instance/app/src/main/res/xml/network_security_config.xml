@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- TOS: release traffic goes to the TOS node over HTTPS only. No cleartext is
-         permitted (the previous *.ton cleartext rule has been removed). Local-dev
-         cleartext to the emulator localnet is allowed only by the debug-flavor config. -->
-    <base-config cleartextTrafficPermitted="false" />
+    <!-- A user may explicitly configure a private/LAN JSON-RPC node by IP address.
+         Such nodes commonly expose HTTP only, so cleartext must be permitted at the
+         platform layer. App-owned production endpoints remain HTTPS. -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

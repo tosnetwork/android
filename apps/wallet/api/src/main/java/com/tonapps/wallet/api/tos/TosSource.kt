@@ -23,8 +23,8 @@ import java.math.BigInteger
  *   events) are not available from a bare TOS node, so they degrade explicitly
  *   (return empty + TODO) until a TOS indexer or client-side indexing is wired in.
  *
- * Usage: API.tos.getAccountState(addr). The base url comes from Constants;
- * point Constants.TOS_API_* at http://127.0.0.1:<json-rpc-port> to use a local node.
+ * Usage: API.tos.getAccountState(addr). The base URL is resolved dynamically from
+ * the user's RPC setting, falling back to the application default.
  */
 class TosSource(
     httpClient: OkHttpClient,

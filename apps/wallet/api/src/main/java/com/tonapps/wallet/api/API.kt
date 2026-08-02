@@ -34,6 +34,7 @@ import com.tonapps.wallet.api.internal.ConfigRepository
 import com.tonapps.wallet.api.internal.InternalApi
 import com.tonapps.wallet.api.internal.SwapApi
 import com.tonapps.wallet.api.tos.TosSource
+import com.tonapps.wallet.api.tos.TosRpcSettings
 import com.tonapps.wallet.api.tron.TronApi
 import io.Serializer
 import io.batteryapi.apis.DefaultApi
@@ -81,6 +82,7 @@ class API(
     private val internalApi = InternalApi(context, defaultHttpClient, appVersionName)
     private val swapApi = SwapApi(defaultHttpClient)
     private val configRepository = ConfigRepository(context, scope, internalApi)
+    private val tosRpcSettings = TosRpcSettings(context)
 
     val config: ConfigEntity
         get() = configRepository.configEntity
@@ -92,20 +94,29 @@ class API(
         tonAPIHttpClient { config }
     }
 
-    /**
-     * TOS node JSON-RPC access (Phase 1 skeleton).
-     * The base url comes from config.tonapi{Mainnet,Testnet}Host (pointed at TOS in Phase 0).
-     * From Phase 1.5 on, the data layer gradually replaces io.tonapi.apis.* calls with api.tos.*.
-     */
+    /** TOS JSON-RPC access. A user-selected node takes precedence over app defaults. */
     val tos: TosSource by lazy {
         TosSource(
             httpClient = tonAPIHttpClient,
             baseUrlProvider = { testnet ->
-                if (testnet) config.tosApiTestnetHost else config.tosApiMainnetHost
+                tosRpcEndpoint(testnet)
             },
-            apiKeyProvider = { config.tosApiKey.takeIf { it.isNotBlank() } },
+            // Never disclose the bundled service key to a user-selected node.
+            apiKeyProvider = {
+                config.tosApiKey.takeIf { customTosRpcEndpoint == null && it.isNotBlank() }
+            },
         )
     }
+
+    val customTosRpcEndpoint: String?
+        get() = tosRpcSettings.customEndpoint
+
+    fun tosRpcEndpoint(testnet: Boolean): String = customTosRpcEndpoint
+        ?: if (testnet) config.tosApiTestnetHost else config.tosApiMainnetHost
+
+    fun setCustomTosRpcEndpoint(value: String): String = tosRpcSettings.setEndpoint(value)
+
+    fun resetCustomTosRpcEndpoint() = tosRpcSettings.reset()
 
     private val bridgeUrl: String
         get() = "${config.tonConnectBridgeHost}/bridge"

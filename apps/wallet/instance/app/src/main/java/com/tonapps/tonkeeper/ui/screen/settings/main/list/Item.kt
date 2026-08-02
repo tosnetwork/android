@@ -69,6 +69,16 @@ sealed class Item(type: Int, val name: String): BaseListItem(type) {
         name = "currency"
     )
 
+    class RpcNode(
+        endpoint: String,
+        position: ListCell.Position
+    ): Text(
+        titleRes = R.string.rpc_node,
+        value = endpoint,
+        position = position,
+        name = "rpc_node"
+    )
+
     data class ConnectedApps(
         override val position: ListCell.Position
     ): Icon(
@@ -128,62 +138,6 @@ sealed class Item(type: Int, val name: String): BaseListItem(type) {
         secondaryIcon = false,
         dot = !hasBackup,
         name = "backup"
-    )
-
-    data class Support(
-        override val position: ListCell.Position,
-        val url: String
-    ): Icon(
-        titleRes = Localization.support,
-        iconRes = UIKitIcon.ic_message_bubble_28,
-        position = position,
-        secondaryIcon = false,
-        name = "support"
-    )
-
-    data class FAQ(
-        override val position: ListCell.Position,
-        val url: String
-    ): Icon(
-        titleRes = Localization.faq,
-        iconRes = UIKitIcon.ic_question_28,
-        position = position,
-        secondaryIcon = false,
-        name = "faq"
-    )
-
-    data class Tester(
-        override val position: ListCell.Position,
-        val url: String
-    ): Icon(
-        titleRes = Localization.testers_chat,
-        iconRes = R.drawable.ic_telegram_28,
-        position = position,
-        secondaryIcon = false,
-        dot = true,
-        name = "tester"
-    )
-
-    data class News(
-        override val position: ListCell.Position,
-        val url: String
-    ): Icon(
-        titleRes = Localization.tonkeeper_news,
-        iconRes = R.drawable.ic_telegram_28,
-        position = position,
-        secondaryIcon = true,
-        name = "news"
-    )
-
-    data class Contact(
-        override val position: ListCell.Position,
-        val url: String
-    ): Icon(
-        titleRes = Localization.contact_us,
-        iconRes = R.drawable.ic_envelope_28,
-        position = position,
-        secondaryIcon = true,
-        name = "contact"
     )
 
     data class Legal(

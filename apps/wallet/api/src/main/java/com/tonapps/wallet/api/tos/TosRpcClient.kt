@@ -16,8 +16,8 @@ import java.util.concurrent.atomic.AtomicLong
  *   success:      { "ok":true,  "jsonrpc":"2.0", "id":<n>, "result":<obj|array> }
  *   failure:      { "ok":false, "jsonrpc":"2.0", "id":<n>, "error":"...", "code":-32xxx }
  *
- * The base url comes from the Constants TOS endpoints; point it at http://127.0.0.1:<port>
- * when running a local node.
+ * The base URL provider is evaluated for every request so a newly selected node takes
+ * effect immediately without restarting the app.
  */
 class TosRpcException(val code: Int, message: String) : Exception(message)
 

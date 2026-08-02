@@ -35,10 +35,8 @@ sealed class State {
     private enum class SetupType {
         Push,
         Biometry,
-        Telegram,
         Backup,
         SafeMode,
-        OnboardingStories,
     }
 
     data class Battery(
@@ -191,7 +189,6 @@ sealed class State {
 
         private fun uiItemsSetup(
             walletId: String,
-            config: ConfigEntity,
             setupTypes: List<SetupType>
         ): List<Item> {
             val uiItems = mutableListOf<Item>()
@@ -211,24 +208,6 @@ sealed class State {
                         blue = false,
                         walletId = wallet.id,
                         settingsType = Item.SetupLink.TYPE_NONE
-                    )
-                    SetupType.Telegram -> Item.SetupLink(
-                        position = position,
-                        iconRes = UIKitIcon.ic_telegram_28,
-                        textRes = Localization.setup_finish_telegram,
-                        link = config.tonkeeperNewsUrl,
-                        blue = true,
-                        walletId = wallet.id,
-                        settingsType = Item.SetupLink.TYPE_TELEGRAM_CHANNEL
-                    )
-                    SetupType.OnboardingStories -> Item.SetupLink(
-                        position = position,
-                        iconRes = UIKitIcon.ic_stories_44,
-                        textRes = Localization.setup_onboarding,
-                        link = "tonkeeper://stories/onboarding",
-                        blue = false,
-                        walletId = wallet.id,
-                        settingsType = Item.SetupLink.TYPE_STORIES
                     )
                     SetupType.Biometry -> Item.SetupSwitch(
                         position = position,
@@ -274,14 +253,8 @@ sealed class State {
             if (!setup.biometryEnabled && isAvailableBiometric(App.instance)) {
                 setupTypes.add(SetupType.Biometry)
             }
-            if (setup.showTelegramChannel) {
-                setupTypes.add(SetupType.Telegram)
-            }
             if (setup.safeModeBlock) {
                 setupTypes.add(SetupType.SafeMode)
-            }
-            if (setup.onboardingStoriesEnabled) {
-                setupTypes.add(SetupType.OnboardingStories)
             }
 
             return setupTypes.toList()
@@ -333,7 +306,7 @@ sealed class State {
             setup?.let {
                 val setupTypes = createSetupTypes(it)
                 if (setupTypes.isNotEmpty()) {
-                    uiItems.addAll(uiItemsSetup(wallet.id, config, setupTypes))
+                    uiItems.addAll(uiItemsSetup(wallet.id, setupTypes))
                 }
             }
 

@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="default_push_channel_id" translatable="false">default</string>
+    <string name="rpc_node">RPC Node</string>
+    <string name="rpc_node_address">RPC URL or IP address</string>
+    <string name="rpc_node_hint">Domain or IP address, optionally with a port. For an emulator connected to this computer, use 10.0.2.2:18545. HTTP connections are not encrypted.</string>
+    <string name="rpc_node_save">Save</string>
+    <string name="rpc_node_reset">Restore default</string>
+    <string name="rpc_node_invalid">Enter a valid HTTP or HTTPS RPC address</string>
 </resources>

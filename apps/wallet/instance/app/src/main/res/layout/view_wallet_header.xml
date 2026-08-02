@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <merge xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <androidx.appcompat.widget.AppCompatImageView
-        android:id="@+id/support"
+    <Space
         android:layout_width="@dimen/iconSize"
-        android:layout_height="@dimen/iconSize"
-        android:layout_gravity="center"
-        android:tint="?attr/iconSecondaryColor"
-        android:src="@drawable/ic_question_message_outline_28"/>
+        android:layout_height="@dimen/iconSize" />
 
     <FrameLayout
         android:layout_width="0dp"
