@@ -22,7 +22,6 @@ class AddWalletViewModel(
             uiItems.add(Item.header(Localization.import_wallet, Localization.import_wallet_subtitle))
         }
         uiItems.add(Item.import)
-        uiItems.add(Item.watch)
         uiItems.toList()
     }
 }

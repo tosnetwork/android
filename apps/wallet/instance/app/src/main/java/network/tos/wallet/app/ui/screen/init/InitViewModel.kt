@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import network.tos.blockchain.MnemonicHelper
+import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.ton.AndroidSecureRandom
 import network.tos.blockchain.ton.EntropyHelper
 import network.tos.blockchain.ton.TonMnemonic
@@ -269,8 +270,9 @@ class InitViewModel(
     }
 
     suspend fun setMnemonic(words: List<String>): Boolean {
-        if (resolveWallets(words)) {
-            savedState.mnemonic = words
+        val normalized = TosV1Mnemonic.normalize(words)
+        if (TosV1Mnemonic.isValid(normalized) && resolveWallets(normalized)) {
+            savedState.mnemonic = normalized
             return true
         }
         return false
@@ -737,7 +739,7 @@ class InitViewModel(
             }
 
             val mnemonic = savedState.mnemonic ?: throw IllegalStateException("Mnemonic is not set")
-            if (!TonMnemonic.isValid(mnemonic)) {
+            if (!TosV1Mnemonic.isValid(mnemonic)) {
                 throw IllegalStateException("Invalid mnemonic")
             }
 

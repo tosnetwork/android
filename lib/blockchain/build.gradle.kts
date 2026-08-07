@@ -20,6 +20,8 @@ android {
 
 dependencies {
 
+    testImplementation(libs.junit)
+
     api(libs.ton.tvm)
     api(libs.ton.crypto)
     api(libs.ton.tlb)
@@ -38,5 +40,4 @@ dependencies {
     }
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
 }
-
 

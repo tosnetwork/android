@@ -240,6 +240,10 @@ open class BaseFragment(
             }
         }
         view.setOnClickListener {  }
+        // The root consumes background taps but is not an actionable control. Excluding only
+        // this container keeps its named descendants in the accessibility tree and prevents
+        // screen readers from announcing an empty, full-screen button.
+        view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         return view
     }
 

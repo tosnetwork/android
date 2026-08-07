@@ -44,7 +44,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| BRD-01 | Application label and onboarding identify TOS Wallet | Static + UI | Partial | Resource/build review exists; no emulator UI assertion |
+| BRD-01 | Application label and onboarding identify TOS Wallet | Static + UI | Passed | Static brand gate plus `cleanLaunchUsesTosBrandAndOnlyV1EntryPoints` on the emulator |
 | BRD-02 | Native asset symbol is TOS on balance, receive, send, confirmation, and history | Unit + UI | Partial | Source uses TOS; complete screen assertions are absent |
 | BRD-03 | Reachable V1 screens contain no TON or Tonkeeper product branding | Static + UI | Not covered | Protocol/attribution allowlist exists; reachability-aware UI scan is absent |
 | BRD-04 | No TRON/TRC20 entry point is reachable | Static + UI | Partial | Offline defaults disable TRON; no emulator reachability inventory |
@@ -56,7 +56,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| APP-01 | Clean emulator launch reaches TOS onboarding | Emulator UI | Not covered | No instrumentation test suite exists |
+| APP-01 | Clean emulator launch reaches TOS onboarding | Emulator UI | Passed | `V1ProductUiTest.cleanLaunchUsesTosBrandAndOnlyV1EntryPoints` starts the real activity from cleared app data |
 | APP-02 | Seeded wallet cold launch reaches wallet home | Emulator UI | Not covered | Deterministic seed fixture and test hook are absent |
 | APP-03 | Relaunch preserves wallet and RPC settings | Emulator UI | Not covered | No persistence scenario exists |
 | APP-04 | Background and foreground protect sensitive content | Emulator UI | Not covered | No lifecycle/privacy-shield automation exists |
@@ -67,14 +67,14 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| WAL-01 | Create Wallet opens passcode setup | Emulator UI | Not covered | No instrumentation test |
+| WAL-01 | Create Wallet opens passcode setup | Emulator UI | Passed | `createWalletOpensPasscodeAndCancelLeavesNoWallet` exercises the real onboarding flow |
 | WAL-02 | Matching passcode creates a wallet; mismatch and cancel do not | Unit + UI | Not covered | No complete creation state-machine test |
 | WAL-03 | Generated recovery phrase has valid words, count, and checksum | Unit | Not covered | Blockchain helper has no dedicated test |
 | WAL-04 | Recovery phrase display and confirmation are authentication-gated | Emulator UI | Not covered | No secret-display UI test |
 | WAL-05 | Valid deterministic TOS phrase imports to the expected address | Unit + UI | Not covered | No end-to-end deterministic import assertion |
-| WAL-06 | Whitespace and capitalization normalize safely | Unit | Not covered | No mnemonic normalization vectors |
-| WAL-07 | Invalid word count, unknown words, and invalid checksum are rejected | Unit + UI | Not covered | No malformed mnemonic matrix |
-| WAL-08 | Cancelled creation/import leaves no partial wallet or secret | Emulator storage | Not covered | No storage inspection fixture |
+| WAL-06 | Whitespace and capitalization normalize safely | Unit | Passed | `TosV1MnemonicTest` pins canonical whitespace/case normalization |
+| WAL-07 | Invalid word count, unknown words, and invalid checksum are rejected | Unit + UI | Passed | JVM vectors plus three isolated malformed-phrase emulator scenarios cover all three classes |
+| WAL-08 | Cancelled creation/import leaves no partial wallet or secret | Emulator storage | Partial | Creation cancellation returns to clean onboarding; import storage cancellation still needs a complete assertion |
 
 ## E. Passcode and secret protection
 
@@ -85,7 +85,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | SEC-03 | Recovery phrase requires authentication | Emulator UI | Not covered | No instrumentation coverage |
 | SEC-04 | Secret and passcode never appear in logs or clipboard unexpectedly | Static + runtime | Not covered | No logcat/clipboard secret scanner |
 | SEC-05 | Stored secrets use expected Android Keystore protections | Unit + emulator | Not covered | TOS-native aliases exist; cryptographic policy is not asserted |
-| SEC-06 | Sodium encryption and decryption execute through JNI | Native unit | Not covered | Native library builds, but no round-trip runtime test exists |
+| SEC-06 | Sodium encryption and decryption execute through JNI | Native unit | Passed | Emulator JNI round trip; regression also pins the exact plaintext length after MAC removal |
 
 ## F. Native TOS home and receive
 
@@ -118,7 +118,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| HIS-01 | Native account events map incoming/outgoing amounts and counterparties | Unit | Partial | Mapper unit test passes; local-node test is skipped when no endpoint is configured |
+| HIS-01 | Native account events map incoming/outgoing amounts and counterparties | Unit | Passed | Fixture mapper vectors plus mandatory real-transaction mapping in `test_v1_localnet.sh` |
 | HIS-02 | History renders pending, confirmed, and failed states | Unit + UI | Partial | Mapper coverage exists; screen assertions are absent |
 | HIS-03 | Details show exact timestamp, fee, address, amount, and comment | Unit + UI | Not covered | No complete details fixture |
 | HIS-04 | Pagination has no duplicate or missing records | Unit + integration | Not covered | No multipage dataset test |
@@ -126,7 +126,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | RPC-01 | RPC endpoint parsing and JSON-RPC path normalization are correct | Unit | Passed | `TosRpcEndpointTest` |
 | RPC-02 | TOS address encoding and decoding are stable | Unit | Passed | `TosAddressCodecTest` |
 | RPC-03 | Malformed responses, node errors, timeouts, and reconnects are safe | Unit | Not covered | Client failure matrix is absent |
-| RPC-04 | Three local validators converge before and after transfer | Localnet integration | Not covered | No Android-controlled three-node test |
+| RPC-04 | Three local validators converge before and after transfer | Localnet integration | Passed | `test_v1_localnet.sh` requires identical heads, performs a faucet transfer, and requires replicated balances on ports 18545-18547 |
 
 ## I. Settings, quality, and build
 
@@ -135,7 +135,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | SET-01 | Settings opens and contains only retained V1 controls | Emulator UI | Not covered | No settings inventory test |
 | SET-02 | RPC endpoint validates, persists, resets, and is used | Unit + UI | Partial | Endpoint unit tests pass; persistence and routing are untested |
 | SET-03 | Delete wallet requires confirmation and returns to clean onboarding | Emulator storage | Not covered | No destructive-flow test fixture |
-| QLT-01 | Every reachable V1 control has a usable accessibility label | Emulator UI | Not covered | No recursive accessibility inventory |
+| QLT-01 | Every reachable V1 control has a usable accessibility label | Emulator UI | Partial | Onboarding reachable-control inventory passes; retained wallet screens remain to be crawled |
 | QLT-02 | Supported screen sizes, font scales, themes, and locales do not clip or crash | Emulator matrix | Not covered | No multi-configuration suite |
 | QLT-03 | Launch, memory, and repeated refresh/send remain within budgets | Performance | Not covered | No encoded performance budgets |
 | QLT-04 | Runtime logs and telemetry contain no fixture secret | Runtime scan | Not covered | No logcat gate |
@@ -162,6 +162,8 @@ make test_brand_boundary
 make test_v1_static
 make test_unit
 make compile
+make test_v1_localnet
+make test_v1_emulator
 make test_release_artifacts
 make test_v1_acceptance
 ```
@@ -173,6 +175,9 @@ not implied success.
 ## Current evidence
 
 - Unit tests: `apps/wallet/api/src/test/`
+- Mnemonic tests: `lib/blockchain/src/test/`
+- Emulator suite: `apps/wallet/instance/main/src/androidTest/`
+- Three-validator gate: `scripts/test_v1_localnet.sh`
 - Brand gate: `scripts/test_brand_boundary.sh`
 - V1 static gate: `scripts/test_v1_static.sh`
 - Protocol boundary: `docs/inherited-protocol-boundary.md`

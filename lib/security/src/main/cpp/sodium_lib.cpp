@@ -261,6 +261,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoS
     jsize boxlen = 0;
     jsize nonelen = 0;
     jsize keylen = 0;
+    jsize plainlen = 0;
     int result = -1;
 
     if (!box || !none || !key) {
@@ -271,6 +272,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoS
     boxlen = env->GetArrayLength(box);
     nonelen = env->GetArrayLength(none);
     keylen = env->GetArrayLength(key);
+    plainlen = boxlen - crypto_secretbox_MACBYTES;
 
     if (nonelen != crypto_secretbox_NONCEBYTES || keylen != crypto_secretbox_KEYBYTES || boxlen < crypto_secretbox_MACBYTES) {
         env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "Invalid input lengths");
@@ -302,8 +304,8 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoS
         goto cleanup;
     }
 
-    out = (char *)malloc(boxlen);
-    if (!out || sodium_mlock(out, boxlen) != 0) {
+    out = (char *)malloc(plainlen);
+    if (!out || sodium_mlock(out, plainlen) != 0) {
         env->ThrowNew(env->FindClass("java/lang/OutOfMemoryError"), "Failed to allocate output buffer");
         goto cleanup;
     }
@@ -321,18 +323,18 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoS
         goto cleanup;
     }
 
-    jplain = env->NewByteArray(boxlen);
+    jplain = env->NewByteArray(plainlen);
     if (!jplain) {
         env->ThrowNew(env->FindClass("java/lang/OutOfMemoryError"), "Failed to create output array");
         goto cleanup;
     }
 
-    env->SetByteArrayRegion(jplain, 0, boxlen, (jbyte *)out);
+    env->SetByteArrayRegion(jplain, 0, plainlen, (jbyte *)out);
 
     cleanup:
     if (out) {
-        sodium_memzero(out, boxlen);
-        sodium_munlock(out, boxlen);
+        sodium_memzero(out, plainlen);
+        sodium_munlock(out, plainlen);
         free(out);
     }
     if (native_box) {

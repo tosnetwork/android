@@ -67,7 +67,6 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
     private lateinit var loaderView: LoaderView
     private lateinit var suggestionsView: RowLayout
     private lateinit var words24View: AppCompatTextView
-    private lateinit var words12View: AppCompatTextView
     private lateinit var titleView: TextHeaderView
 
     private val isVisibleSuggestions: Boolean
@@ -83,13 +82,6 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
         words24View.setOnClickListener {
             if (initViewModel.wordsCount != WORDS24) {
                 setWordsCount(WORDS24)
-            }
-        }
-
-        words12View = view.findViewById(R.id.words_12)
-        words12View.setOnClickListener {
-            if (initViewModel.wordsCount != WORDS12) {
-                setWordsCount(WORDS12)
             }
         }
 
@@ -145,12 +137,7 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
     }
 
     private fun getCountFromClipboard() {
-        val count = TonMnemonic.parseMnemonic(requireContext().clipboardText()).size
-        if (count == 12 || count == 24) {
-            setWordsCount(count)
-        } else {
-            setWordsCount(initViewModel.wordsCount)
-        }
+        setWordsCount(WORDS24)
     }
 
     private fun isLastIndex(index: Int): Boolean {
@@ -158,19 +145,12 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
     }
 
     private fun setWordsCount(count: Int) {
-        if (count != WORDS24 && count != WORDS12) {
+        if (count != WORDS24) {
             return
         }
-        if (count == WORDS24) {
-            words24View.setBackgroundResource(uikit.R.drawable.bg_content_tint_16)
-            words12View.background = null
-            initViewModel.wordsCount = count
-            wordInputs[11].imeOptions = EditorInfo.IME_ACTION_NEXT
-        } else {
-            words12View.setBackgroundResource(uikit.R.drawable.bg_content_tint_16)
-            words24View.background = null
-            wordInputs[23].imeOptions = EditorInfo.IME_ACTION_NEXT
-        }
+        words24View.setBackgroundResource(uikit.R.drawable.bg_content_tint_16)
+        initViewModel.wordsCount = count
+        wordInputs[11].imeOptions = EditorInfo.IME_ACTION_NEXT
         initViewModel.wordsCount = count
         wordInputs[count - 1].imeOptions = EditorInfo.IME_ACTION_DONE
         updateVisibleInputs()
@@ -368,7 +348,6 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
     companion object {
 
         private const val WORDS24 = 24
-        private const val WORDS12 = 12
 
         private const val ARG_TESTNET = "testnet"
 

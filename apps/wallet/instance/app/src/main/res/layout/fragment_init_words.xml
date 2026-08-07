@@ -41,16 +41,6 @@
                     android:gravity="center"
                     android:text="@string/words24"/>
 
-                <androidx.appcompat.widget.AppCompatTextView
-                    android:id="@+id/words_12"
-                    android:layout_width="wrap_content"
-                    android:layout_height="32dp"
-                    android:textColor="?attr/textPrimaryColor"
-                    android:textAppearance="@style/TextAppearance.Label2"
-                    android:paddingHorizontal="14dp"
-                    android:gravity="center"
-                    android:text="@string/words12"/>
-
             </uikit.widget.RowLayout>
 
             <uikit.widget.ColumnLayout

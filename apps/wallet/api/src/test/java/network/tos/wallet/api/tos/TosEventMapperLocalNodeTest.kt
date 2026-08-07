@@ -22,7 +22,9 @@ class TosEventMapperLocalNodeTest {
             .put("jsonrpc", "2.0")
             .put("id", 1)
             .put("method", "getTransactions")
-            .put("params", JSONObject().put("address", address).put("limit", 20))
+            // One real transaction is sufficient for the mapper contract and keeps this
+            // health gate independent of an ever-growing local validator history.
+            .put("params", JSONObject().put("address", address).put("limit", 1))
 
         val connection = URL(endpoint).openConnection() as HttpURLConnection
         connection.requestMethod = "POST"

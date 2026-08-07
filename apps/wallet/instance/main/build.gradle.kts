@@ -111,6 +111,7 @@ dependencies {
     androidTestImplementation(libs.androidX.test.core)
     androidTestImplementation(libs.androidX.test.espresso)
     androidTestImplementation(libs.androidX.test.uiautomator)
+    androidTestImplementation(project(ProjectModules.Lib.security))
 
     implementation(libs.androidX.profileinstaller)
     baselineProfile(project(":baselineprofile:main"))
