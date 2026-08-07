@@ -231,8 +231,6 @@ class SettingsViewModel(
         searchEngine: SearchEngine,
         hasBackup: Boolean
     ) {
-        val hasW5 = hasW5()
-        val hasV4R2 = hasV4R2()
         val uiItems = mutableListOf<Item>()
         uiItems.add(Item.Account(displayWallet))
 
@@ -262,16 +260,6 @@ class SettingsViewModel(
             ListCell.Position.FIRST
         }
 
-        if (wallet.hasPrivateKey) {
-            if (!hasW5) {
-                uiItems.add(Item.W5(secondCellPosition))
-                secondCellPosition = ListCell.Position.MIDDLE
-            }
-            if (!hasV4R2) {
-                uiItems.add(Item.V4R2(secondCellPosition))
-                secondCellPosition = ListCell.Position.MIDDLE
-            }
-        }
         if (!wallet.testnet) {
             uiItems.add(Item.Currency(currency.code, secondCellPosition))
             secondCellPosition = ListCell.Position.MIDDLE
@@ -280,14 +268,6 @@ class SettingsViewModel(
         uiItems.add(Item.RpcNode(api.tosRpcEndpoint(wallet.testnet), secondCellPosition))
         secondCellPosition = ListCell.Position.MIDDLE
 
-        if (wallet.isTonConnectSupported) {
-            uiItems.add(Item.SearchEngine(searchEngine, secondCellPosition))
-            uiItems.add(Item.ConnectedApps(ListCell.Position.MIDDLE))
-            if (hasInstalledExtensions() && (wallet.hasPrivateKey || wallet.signer)) {
-                uiItems.add(Item.InstalledExtensions(ListCell.Position.MIDDLE))
-            }
-        }
-
         uiItems.add(Item.Language(language.nameLocalized.ifEmpty {
             getString(Localization.system)
         }.capitalized, ListCell.Position.MIDDLE))
@@ -295,9 +275,6 @@ class SettingsViewModel(
         val batteryCharges = getBatteryCharges()
         if (wallet.hasPrivateKey && (!api.config.flags.disableBattery || batteryCharges > 0)) {
             uiItems.add(Item.Battery(ListCell.Position.MIDDLE))
-        }
-        if (WidgetManager.isRequestPinAppWidgetSupported) {
-            uiItems.add(Item.Widget(ListCell.Position.MIDDLE))
         }
         uiItems.add(Item.Theme(ListCell.Position.LAST))
 

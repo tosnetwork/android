@@ -4,6 +4,9 @@ import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,6 +17,7 @@ import androidx.test.uiautomator.Until
 import kotlinx.coroutines.runBlocking
 import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.icu.CurrencyFormatter
+import network.tos.qr.QR
 import network.tos.security.Sodium
 import network.tos.wallet.api.API
 import network.tos.wallet.data.account.AccountRepository
@@ -31,6 +35,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.security.KeyStore
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.common.HybridBinarizer
 
 @RunWith(AndroidJUnit4::class)
 class V1ProductUiTest {
@@ -149,13 +157,57 @@ class V1ProductUiTest {
     }
 
     @Test
+    fun walletWindowProtectsSensitiveContentAcrossBackgroundAndForeground() {
+        launch()
+        assertTrue(waitText("TOS", 30_000))
+        assertSecureWalletWindow()
+        device.pressHome()
+        SystemClock.sleep(500)
+        launch()
+        assertTrue(waitText("TOS", 30_000))
+        assertSecureWalletWindow()
+        assertNoFatalCrash()
+    }
+
+    @Test
+    fun rpcSettingValidatesPersistsAndRoutesToSecondLocalValidator() {
+        val api = GlobalContext.get().get<API>()
+        assertEquals(SECOND_LOCAL_RPC, api.setCustomTosRpcEndpoint(" 10.0.2.2:18546/jsonRPC/ "))
+        assertEquals(SECOND_LOCAL_RPC, api.customTosRpcEndpoint)
+        assertTrue(runCatching { api.setCustomTosRpcEndpoint("file:///not-an-rpc") }.isFailure)
+        assertNotNull(api.getTosBalance(currentWallet().accountId, false, "USD"))
+
+        launch()
+        clickResource("settings")
+        assertTrue(waitText("Settings"))
+        assertTrue(waitText(SECOND_LOCAL_RPC))
+    }
+
+    @Test
+    fun persistedRpcSettingSurvivesColdProcessAndResets() {
+        val api = GlobalContext.get().get<API>()
+        assertEquals(SECOND_LOCAL_RPC, api.customTosRpcEndpoint)
+        assertNotNull(api.getTosBalance(currentWallet().accountId, false, "USD"))
+        api.resetCustomTosRpcEndpoint()
+        assertEquals(null, api.customTosRpcEndpoint)
+        assertTrue(api.tosRpcEndpoint(false).contains("10.0.2.2:18545"))
+
+        launch()
+        clickResource("settings")
+        assertTrue(waitText("Settings"))
+        assertTrue(waitTextContaining("10.0.2.2:18545", 10_000))
+    }
+
+    @Test
     fun receiveCopiesSharesAndEncodesExactNativeTosAddress() {
         launch()
         assertTrue(waitText("Receive", 30_000))
         clickText("Receive")
         assertTrue(waitText("Receive TOS", 10_000))
         assertTrue(waitText(FIXTURE_ADDRESS))
-        assertEquals("tos://transfer/$FIXTURE_ADDRESS", QRScreen(currentWallet()).getQrContent(FIXTURE_ADDRESS, TokenEntity.TON))
+        val qrPayload = "tos://transfer/$FIXTURE_ADDRESS"
+        assertEquals(qrPayload, QRScreen(currentWallet()).getQrContent(FIXTURE_ADDRESS, TokenEntity.TON))
+        assertEquals(qrPayload, decodeQr(QR.Builder(qrPayload).setSize(512).build()))
         assertEquals(FIXTURE_ADDRESS, QRScreen.shareIntent(FIXTURE_ADDRESS).getStringExtra(Intent.EXTRA_TEXT))
 
         clickText("Copy")
@@ -168,6 +220,80 @@ class V1ProductUiTest {
         SystemClock.sleep(500)
         assertNoFatalCrash()
         device.pressBack()
+    }
+
+    @Test
+    fun walletSendAndSettingsExposeOnlyNativeV1Controls() {
+        launch()
+        clickText("Send")
+        assertTrue(waitText("Address or name", 10_000))
+        for (label in listOf("TOS", "Continue")) {
+            assertTrue("Missing native send control: $label", waitText(label))
+        }
+        for (id in listOf("amount", "comment", "button")) {
+            assertTrue("Missing native send control: $id", device.hasObject(By.res(APP_ID, id)))
+        }
+        assertNoReachableDeferredCopy()
+        launch()
+
+        clickResource("settings")
+        assertTrue(waitText("Settings"))
+        for (label in listOf("Backup", "Security", "Currency", "RPC Node", "Language", "Appearance", "Legal")) {
+            assertTrue("Missing retained V1 setting: $label", waitText(label))
+        }
+        for (label in listOf("Search", "Connected Apps", "Widget", "Wallet v4R2", "Wallet W5", "Battery")) {
+            assertFalse("Deferred setting is reachable: $label", hasText(label))
+        }
+        assertNoReachableDeferredCopy()
+        assertNoFatalCrash()
+    }
+
+    @Test
+    fun sendValidationConfirmationAndCancelDoNotBroadcast() {
+        val api = GlobalContext.get().get<API>()
+        val wallet = currentWallet()
+        val beforeSeqno = api.getAccountSeqno(wallet.accountId, wallet.testnet)
+
+        launch()
+        clickText("Send")
+        assertTrue(waitResource("address", 10_000))
+        val textInputs = device.findObjects(By.res(APP_ID, "input_field"))
+        assertTrue("Address/comment input fields are missing", textInputs.size >= 2)
+        val address = textInputs.first()
+        val amount = device.wait(Until.findObject(By.res(APP_ID, "coin_input")), 10_000)
+        val comment = textInputs.last()
+        val continueButton = device.wait(Until.findObject(By.res(APP_ID, "button")), 10_000)
+        assertNotNull(amount)
+        assertNotNull(continueButton)
+
+        address.text = "not-an-address"
+        amount.text = "1"
+        SystemClock.sleep(1_500)
+        assertFalse("Invalid address enabled Continue", continueButton.isEnabled)
+
+        address.text = RECIPIENT_ADDRESS
+        amount.text = "0"
+        SystemClock.sleep(1_500)
+        assertFalse("Zero amount enabled Continue", continueButton.isEnabled)
+        amount.text = "999999"
+        SystemClock.sleep(1_500)
+        assertFalse("Over-balance amount enabled Continue", continueButton.isEnabled)
+
+        amount.text = "0.01"
+        comment.text = UNICODE_COMMENT
+        assertTrue("Valid native transfer did not enable Continue", waitEnabled("button", 30_000))
+        continueButton.click()
+        assertTrue("Confirmation did not open", waitResource("review_title", 30_000))
+        assertTrue(waitTextContaining("0.01", 10_000))
+        assertTrue(waitTextContaining(UNICODE_COMMENT, 10_000))
+        assertTrue(device.hasObject(By.res(APP_ID, "review_recipient_address")))
+        assertTrue(device.hasObject(By.res(APP_ID, "review_fee")))
+
+        device.pressBack()
+        launch()
+        val afterSeqno = api.getAccountSeqno(wallet.accountId, wallet.testnet)
+        assertEquals("Cancelling confirmation broadcast a transaction", beforeSeqno, afterSeqno)
+        assertNoFatalCrash()
     }
 
     @Test
@@ -303,8 +429,48 @@ class V1ProductUiTest {
         target.click()
     }
 
+    private fun clickResource(id: String) {
+        val target = device.wait(Until.findObject(By.res(APP_ID, id)), 10_000)
+        assertNotNull("Missing UI resource: $id", target)
+        target.click()
+    }
+
+    private fun decodeQr(bitmap: Bitmap): String {
+        val readable = if (bitmap.config == Bitmap.Config.HARDWARE) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            bitmap
+        }
+        val quietZone = 48
+        val padded = Bitmap.createBitmap(
+            readable.width + quietZone * 2,
+            readable.height + quietZone * 2,
+            Bitmap.Config.ARGB_8888,
+        )
+        Canvas(padded).apply {
+            drawColor(Color.WHITE)
+            drawBitmap(readable, quietZone.toFloat(), quietZone.toFloat(), null)
+        }
+        val pixels = IntArray(padded.width * padded.height)
+        padded.getPixels(pixels, 0, padded.width, 0, 0, padded.width, padded.height)
+        val source = RGBLuminanceSource(padded.width, padded.height, pixels)
+        return MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source))).text
+    }
+
     private fun waitText(text: String, timeout: Long = 10_000): Boolean =
         device.wait(Until.hasObject(By.text(text)), timeout)
+
+    private fun waitResource(id: String, timeout: Long): Boolean =
+        device.wait(Until.hasObject(By.res(APP_ID, id)), timeout)
+
+    private fun waitEnabled(id: String, timeout: Long): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + timeout
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (device.findObject(By.res(APP_ID, id))?.isEnabled == true) return true
+            SystemClock.sleep(250)
+        }
+        return false
+    }
 
     private fun hasText(text: String, ignoreCase: Boolean = false): Boolean {
         val pattern = if (ignoreCase) Regex.escape(text).toRegex(RegexOption.IGNORE_CASE).toPattern()
@@ -329,11 +495,23 @@ class V1ProductUiTest {
         assertFalse(output.contains("Process: $APP_ID"))
     }
 
+    private fun assertSecureWalletWindow() {
+        val windows = device.executeShellCommand("dumpsys window windows")
+        val walletWindow = Regex(
+            "Window\\{[^\\n]*network\\.tos\\.wallet/network\\.tos\\.wallet\\.app\\.ui\\.screen\\.root\\.RootActivity[\\s\\S]{0,1200}?fl=([^\\n]+)"
+        ).find(windows)
+        assertNotNull("Active wallet window was not found", walletWindow)
+        assertTrue("Wallet window does not set FLAG_SECURE", walletWindow!!.groupValues[1].contains("SECURE"))
+    }
+
     companion object {
         private const val APP_ID = "network.tos.wallet"
         private const val ROOT_ACTIVITY = "network.tos.wallet.app.ui.screen.root.RootActivity"
         private const val FIXTURE_ADDRESS = "UQCJFahawZUzYka4uzFTeWns-oQNfoa0VNVOAn8e8BJnXPZe"
         private const val FIXTURE_RAW_ADDRESS = "0:8915a85ac195336246b8bb31537969ecfa840d7e86b454d54e027f1ef012675c"
+        private const val SECOND_LOCAL_RPC = "http://10.0.2.2:18546"
+        private const val RECIPIENT_ADDRESS = "Ef8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAU"
+        private const val UNICODE_COMMENT = "TOS V1 测试 🌌"
         private const val FIXTURE_MNEMONIC = "mansion chef affair ancient announce police snap machine vanish liberty peace tennis effort recall law limit mosquito tornado toward advance vibrant bachelor auction voice"
     }
 }

@@ -10,6 +10,7 @@ import android.os.Handler
 import android.provider.Browser
 import android.util.Log
 import android.view.View
+import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -113,6 +114,7 @@ class RootActivity : BaseWalletActivity() {
         setTheme(theme)
         supportFragmentManager.fragmentFactory = WalletFragmentFactory()
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         if (theme.isSystem) {
             setAppearanceLight(!isDarkMode)

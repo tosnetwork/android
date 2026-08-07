@@ -44,6 +44,20 @@ if grep -R -I -n -F '"ton://transfer/' apps/wallet/instance/app/src/main/java; t
   fail "first-party wallet code still emits a TON payment link"
 fi
 
+settings_vm='apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/settings/main/SettingsViewModel.kt'
+for deferred_item in 'Item.SearchEngine(' 'Item.ConnectedApps(' 'Item.InstalledExtensions(' 'Item.Widget(' 'Item.W5(' 'Item.V4R2('; do
+  if grep -Fq "uiItems.add(${deferred_item}" "$settings_vm"; then
+    echo "v1-static: deferred settings entry is reachable: ${deferred_item}" >&2
+    exit 1
+  fi
+done
+
+grep -Fq 'window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)' \
+  apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/root/RootActivity.kt || {
+  echo 'v1-static: wallet window must protect sensitive content with FLAG_SECURE' >&2
+  exit 1
+}
+
 if grep -R -I -n -E 'git@github\.com:tonkeeper/|github\.com/tonkeeper/[^ )"[:space:]]+\.git' .github/workflows; then
   fail "workflow pushes to or checks out an upstream Tonkeeper repository"
 fi

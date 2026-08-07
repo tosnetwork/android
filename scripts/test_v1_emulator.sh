@@ -54,7 +54,12 @@ done
 persistent_methods=(
   deterministicFundedWalletFixtureReachesHomeAndPersists
   persistedWalletColdLaunchShowsExactNativeBalanceAndAddress
+  walletWindowProtectsSensitiveContentAcrossBackgroundAndForeground
+  rpcSettingValidatesPersistsAndRoutesToSecondLocalValidator
+  persistedRpcSettingSurvivesColdProcessAndResets
   receiveCopiesSharesAndEncodesExactNativeTosAddress
+  walletSendAndSettingsExposeOnlyNativeV1Controls
+  sendValidationConfirmationAndCancelDoNotBroadcast
   passcodeThrottleKeystoreAndRuntimeSecretPolicyHold
 )
 run_method "${persistent_methods[0]}" true

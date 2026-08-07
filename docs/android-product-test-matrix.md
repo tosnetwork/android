@@ -58,8 +58,8 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | --- | --- | --- | --- | --- |
 | APP-01 | Clean emulator launch reaches TOS onboarding | Emulator UI | Passed | `V1ProductUiTest.cleanLaunchUsesTosBrandAndOnlyV1EntryPoints` starts the real activity from cleared app data |
 | APP-02 | Seeded wallet cold launch reaches wallet home | Emulator UI | Passed | Real Keystore/vault/account-repository fixture reaches the native funded wallet home |
-| APP-03 | Relaunch preserves wallet and RPC settings | Emulator UI | Partial | A separate instrumentation process proves wallet persistence; RPC-setting persistence remains to be asserted |
-| APP-04 | Background and foreground protect sensitive content | Emulator UI | Not covered | No lifecycle/privacy-shield automation exists |
+| APP-03 | Relaunch preserves wallet and RPC settings | Emulator integration | Passed | Separate instrumentation processes prove encrypted-wallet persistence and custom RPC persistence before reset |
+| APP-04 | Background and foreground protect sensitive content | Static + emulator | Passed | Root wallet window is pinned to `FLAG_SECURE`; runtime asserts the active window remains secure across home/resume |
 | APP-05 | Offline launch shows a recoverable error | Emulator integration | Not covered | No local fault proxy or UI assertion exists |
 | APP-06 | Reconnect refreshes native balance and history | Emulator integration | Not covered | No controlled reconnect scenario exists |
 
@@ -69,7 +69,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | --- | --- | --- | --- | --- |
 | WAL-01 | Create Wallet opens passcode setup | Emulator UI | Passed | `createWalletOpensPasscodeAndCancelLeavesNoWallet` exercises the real onboarding flow |
 | WAL-02 | Matching passcode creates a wallet; mismatch and cancel do not | Unit + UI | Not covered | No complete creation state-machine test |
-| WAL-03 | Generated recovery phrase has valid words, count, and checksum | Unit | Not covered | Blockchain helper has no dedicated test |
+| WAL-03 | Generated recovery phrase has valid words, count, and checksum | Unit | Passed | Repeated generator vectors assert uniqueness, 24 dictionary words, and native checksum validity |
 | WAL-04 | Recovery phrase display and confirmation are authentication-gated | Emulator UI | Not covered | No secret-display UI test |
 | WAL-05 | Valid deterministic TOS phrase imports to the expected address | Unit + UI | Passed | Repository import through the encrypted vault derives and asserts the funded fixture address, then renders its home |
 | WAL-06 | Whitespace and capitalization normalize safely | Unit | Passed | `TosV1MnemonicTest` pins canonical whitespace/case normalization |
@@ -95,7 +95,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | RCV-02 | Zero balance and empty history render correctly | Emulator UI | Not covered | No zero-state UI test |
 | RCV-03 | Refresh updates balance after a local native transfer | Emulator + localnet | Not covered | No localnet controller wired to Android tests |
 | RCV-04 | TOS formatting covers zero, fractions, and supported maximum | Unit | Not covered | No formatter boundary suite |
-| RCV-05 | Receive shows the exact address and a decodable QR payload | Emulator + QR decoder | Partial | Exact address and canonical `tos://transfer/` payload are asserted; image decode remains |
+| RCV-05 | Receive shows the exact address and a decodable QR payload | Emulator + QR decoder | Passed | Exact address is asserted and the generated `tos://transfer/` bitmap round-trips through ZXing decoding |
 | RCV-06 | Copy and share contain the exact address | Emulator UI | Passed | Emulator clipboard assertion plus share-intent payload and reachable share-control checks |
 | RCV-07 | Receive exposes native TOS only | Static + UI | Passed | Receive UI asserts `Receive TOS`, exact native address, and no deferred token selector |
 
@@ -103,16 +103,16 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| SND-01 | Send opens a native TOS recipient/amount/comment form | Emulator UI | Not covered | No instrumentation test |
-| SND-02 | Valid typed/pasted addresses are accepted and invalid addresses rejected | Unit + UI | Not covered | No address-input matrix |
-| SND-03 | Whole/fractional amounts work; zero, negative, overflow, overprecision, and over-balance fail | Unit + UI | Not covered | No amount boundary matrix |
+| SND-01 | Send opens a native TOS recipient/amount/comment form | Emulator UI | Passed | `walletSendAndSettingsExposeOnlyNativeV1Controls` asserts recipient, amount, comment, TOS, and continue controls |
+| SND-02 | Valid typed/pasted addresses are accepted and invalid addresses rejected | Emulator UI | Partial | Invalid text and a valid active localnet address are covered; the clipboard-paste path remains |
+| SND-03 | Whole/fractional amounts work; zero, negative, overflow, overprecision, and over-balance fail | Emulator UI | Partial | Fractional valid, zero, and over-balance cases are covered; remaining numeric boundaries are absent |
 | SND-04 | Max amount reserves the required fee | Unit + localnet | Not covered | No fee/send-all scenario |
-| SND-05 | Optional Unicode comment round-trips exactly | Unit + localnet | Not covered | No payload/event round-trip test |
-| SND-06 | Confirmation shows exact recipient, amount, fee, and comment | Emulator UI | Not covered | No confirmation assertion |
-| SND-07 | Cancel never broadcasts | Emulator + localnet | Not covered | No before/after event-ID assertion |
+| SND-05 | Optional Unicode comment round-trips exactly | Unit + localnet | Partial | Unicode survives form-to-confirmation; chain event round-trip remains |
+| SND-06 | Confirmation shows exact recipient, amount, fee, and comment | Emulator UI | Partial | Amount/comment and recipient/fee fields render; exact normalized recipient and fee values remain |
+| SND-07 | Cancel never broadcasts | Emulator + localnet | Passed | Confirmation cancellation preserves the funded wallet's local-node seqno exactly |
 | SND-08 | Passcode signs and broadcasts one native transfer | Emulator + localnet | Not covered | No end-to-end send scenario |
 | SND-09 | Timeout/retry does not duplicate transfer and relaunch reconciles pending state | Emulator + fault proxy | Not covered | No deterministic response-drop/delay proxy |
-| SND-10 | Send exposes no token, NFT, or TRC20 selector | Static + UI | Partial | Deferred defaults pass; UI inventory absent |
+| SND-10 | Send exposes no token, NFT, or TRC20 selector | Static + UI | Passed | Real funded-wallet send-form inventory plus the deferred-copy guard asserts native TOS-only UI |
 
 ## H. Native TOS transaction history and RPC
 
@@ -132,8 +132,8 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| SET-01 | Settings opens and contains only retained V1 controls | Emulator UI | Not covered | No settings inventory test |
-| SET-02 | RPC endpoint validates, persists, resets, and is used | Unit + UI | Partial | Endpoint unit tests pass; persistence and routing are untested |
+| SET-01 | Settings opens and contains only retained V1 controls | Static + emulator UI | Passed | UI inventory asserts retained controls and rejects DApp, widget, battery, and wallet-version migration entries; static gate pins removal |
+| SET-02 | RPC endpoint validates, persists, resets, and is used | Unit + emulator + localnet | Passed | Invalid input is rejected; custom validator 18546 is displayed, used, persisted across a process, then reset to validator 18545 |
 | SET-03 | Delete wallet requires confirmation and returns to clean onboarding | Emulator storage | Not covered | No destructive-flow test fixture |
 | QLT-01 | Every reachable V1 control has a usable accessibility label | Emulator UI | Partial | Onboarding reachable-control inventory passes; retained wallet screens remain to be crawled |
 | QLT-02 | Supported screen sizes, font scales, themes, and locales do not clip or crash | Emulator matrix | Not covered | No multi-configuration suite |

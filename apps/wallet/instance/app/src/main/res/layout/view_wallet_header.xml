@@ -59,6 +59,7 @@
             android:layout_width="@dimen/iconSize"
             android:layout_height="@dimen/iconSize"
             android:layout_marginRight="@dimen/offsetMedium"
+            android:contentDescription="@string/settings"
             android:tint="?attr/iconSecondaryColor"
             android:src="@drawable/ic_gear_outline_28"/>
 
