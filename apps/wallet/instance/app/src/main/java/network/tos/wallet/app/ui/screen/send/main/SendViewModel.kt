@@ -63,6 +63,8 @@ import network.tos.wallet.data.token.entities.AccountTokenEntity
 import network.tos.wallet.localization.Localization
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +79,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
@@ -91,11 +94,10 @@ import uikit.extensions.collectFlow
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.math.RoundingMode
-import java.util.concurrent.CancellationException
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.seconds
 
-@OptIn(FlowPreview::class)
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class SendViewModel(
     app: Application,
     private val wallet: WalletEntity,
@@ -171,6 +173,8 @@ class SendViewModel(
         tronAvailableFlow,
         selectedTokenFlow
     ) { userInput, isTronAvailable, selectedToken ->
+        Triple(userInput, isTronAvailable, selectedToken)
+    }.mapLatest { (userInput, isTronAvailable, selectedToken) ->
         if (userInput.isEmpty()) {
             SendDestination.Empty
         } else if (isTronAvailable && userInput.isValidTronAddress()) {
@@ -503,11 +507,21 @@ class SendViewModel(
 
         val address = runCatching { AddrStd.parse(userInput) }.getOrNull()
             ?: return@withContext SendDestination.NotFound
-        val state = runCatching { api.tos.getAccountState(userInput, wallet.testnet) }.getOrNull()
+        val state = try {
+            api.tos.getAccountState(userInput, wallet.testnet)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
             ?: return@withContext SendDestination.NotFound
-        val walletInfo = runCatching {
+        val walletInfo = try {
             api.tos.getWalletInformation(userInput, wallet.testnet)
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
 
         SendDestination.TonAccount(
             userInput = userInput,

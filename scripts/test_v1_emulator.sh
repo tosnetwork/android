@@ -70,6 +70,7 @@ persistent_methods=(
   receiveCopiesSharesAndEncodesExactNativeTosAddress
   walletSendAndSettingsExposeOnlyNativeV1Controls
   sendValidationConfirmationAndCancelDoNotBroadcast
+  rapidRecipientReplacementKeepsOnlyLatestResolvedState
   nativeTransferSignsBroadcastsAndRoundTripsUnicodeComment
   nativeHistoryDetailsShowExactChainFields
   timeoutRetryBroadcastsOnlyOnceAndRelaunchReconcilesHistory

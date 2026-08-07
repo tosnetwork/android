@@ -3,7 +3,7 @@
 - Product: TOS Wallet for Android
 - Release scope: V1, native TOS only
 - Baseline date: 2026-08-07
-- Code baseline: `codex/tos-native-architecture`
+- Code baseline: `codex/institutional-ui`
 - Execution boundary: every row is decidable by source checks, JVM tests, an Android emulator, a local TOS network, or build-artifact inspection; no physical device, Play Console, distribution signing, external production service, or human visual judgment is included
 - Brand rule: reachable product copy, first-party packages, links, persisted identifiers, and assets use TOS Wallet and TOS; inherited names are allowed only at the documented external-protocol boundary
 
@@ -143,6 +143,21 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | BLD-02 | Standalone signer Debug APK builds | Build | Passed | Included in `make compile` |
 | BLD-03 | JVM unit suite passes | Unit | Passed | `make test_unit`; 12 tests, 0 failures, 1 optional local-node test skipped on 2026-08-07 |
 | BLD-04 | Unsigned release APKs build with R8 and retain expected application IDs and native ABIs | Build artifact | Passed | `test_release_artifacts.sh`; wallet and signer Release builds passed on 2026-08-07 |
+
+## J. UI robustness and system-boundary resilience
+
+| ID | Automated requirement | Test layer | Status | Evidence or missing automation |
+| --- | --- | --- | --- | --- |
+| ROB-01 | The final merged wallet APK contains only permissions required by reachable V1 features | Static + build artifact | Passed | Source policy removes permissions contributed by deferred camera, Bluetooth, location, NFC, notification, billing, updater, and background features; the Release gate extracts and allowlists merged APK permissions with `aapt2`, retaining only network, vibration, and biometric capability checks used during startup/settings |
+| ROB-02 | Structured JSON-RPC business errors remain distinct from transport, timeout, and malformed-response failures | Unit | Passed | `TosRpcClientFailureTest` preserves node codes independently from timeout, malformed JSON, and reconnect behavior |
+| ROB-03 | A local recipient validation failure cannot poison wallet-wide history or connectivity UI | Emulator UI | Passed | Send validation keeps the error local and the rapid-replacement test rejects any global `Unknown error` presentation |
+| ROB-04 | Rapid recipient edits cancel stale network work and only the latest address may update the form | Emulator UI | Passed | Send resolution uses `mapLatest`, propagates `CancellationException`, and `rapidRecipientReplacementKeepsOnlyLatestResolvedState` requires the latest valid address with no stale error |
+| ROB-05 | Loading, timeout, malformed response, retry, and reconnect states are bounded and deterministic | Unit + emulator | Passed | RPC failure tests and closed-endpoint History automation require a bounded error, explicit retry, restored data, and cleared error UI |
+| ROB-06 | Background, foreground, process death, and relaunch preserve secrets and recover stable UI state | Emulator + storage | Passed | `FLAG_SECURE`, encrypted persistence, passcode relaunch, endpoint persistence, and pending-transfer reconciliation are exercised across separate processes |
+| ROB-07 | Ambiguous broadcast failure, retry, and relaunch cannot duplicate a native transfer | Unit + emulator + localnet | Passed | The fault proxy drops one accepted response; seqno and history must show exactly one transaction before and after relaunch |
+| ROB-08 | Repeated refresh, Send open/cancel, and navigation remain crash-free within encoded time and memory budgets | Emulator performance | Passed | Mandatory performance automation repeats retained actions, scans fatal crashes, and enforces launch, duration, and PSS limits |
+| ROB-09 | Robustness failures are checked from final artifacts and runtime UI, not inferred from compilation | Build artifact + emulator | Passed | Merged Manifest inspection, emulator permission/runtime paths, UI state assertions, logcat scanning, and local-node observations are all release-gate dependencies |
+| ROB-10 | Every robustness regression fails the aggregate autonomous acceptance command | Test orchestration | Passed | Permission policy, RPC taxonomy, rapid-input, offline/reconnect, lifecycle, and duplicate-send coverage are wired into `make test_v1_acceptance` |
 
 ## Excluded human and external validation
 

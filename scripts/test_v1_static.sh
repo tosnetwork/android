@@ -37,6 +37,14 @@ grep -Fq '<data android:scheme="tos"' "$manifest" || fail "tos:// is not registe
 if grep -Fq '<data android:scheme="tonkeeper"' "$manifest"; then
   fail "unreleased wallet registers the legacy Tonkeeper scheme"
 fi
+for permission in POST_NOTIFICATIONS CAMERA NFC BLUETOOTH BLUETOOTH_ADMIN ACCESS_COARSE_LOCATION ACCESS_FINE_LOCATION BLUETOOTH_CONNECT BLUETOOTH_SCAN ACCESS_WIFI_STATE FOREGROUND_SERVICE FOREGROUND_SERVICE_DATA_SYNC REQUEST_INSTALL_PACKAGES READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE WAKE_LOCK RECEIVE_BOOT_COMPLETED; do
+  grep -Eq "android.permission.${permission}[^>]*tools:node=\"remove\"" "$manifest" \
+    || fail "deferred permission $permission is not removed from the merged V1 manifest"
+done
+for permission in com.android.vending.BILLING com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE com.android.launcher.permission.INSTALL_SHORTCUT com.android.launcher.permission.UNINSTALL_SHORTCUT; do
+  grep -F "android:name=\"${permission}\"" "$manifest" | grep -Fq 'tools:node="remove"' \
+    || fail "deferred permission $permission is not removed from the merged V1 manifest"
+done
 
 qr_screen='apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/qr/QRScreen.kt'
 grep -Fq '"tos://transfer/${address}"' "$qr_screen" || fail "receive QR does not emit the TOS payment scheme"

@@ -451,6 +451,26 @@ class V1ProductUiTest {
     }
 
     @Test
+    fun rapidRecipientReplacementKeepsOnlyLatestResolvedState() {
+        launch()
+        clickText("Send")
+        assertTrue(waitResource("address", 10_000))
+        val address = device.findObjects(By.res(APP_ID, "input_field")).first()
+        val amount = device.wait(Until.findObject(By.res(APP_ID, "coin_input")), 60_000)
+        assertNotNull("Native amount input did not finish loading", amount)
+
+        address.text = "not-an-address"
+        address.text = RECIPIENT_ADDRESS
+        amount.text = "0.01"
+
+        assertTrue("Latest valid recipient did not enable Continue", waitEnabled("button", 30_000))
+        assertEquals("A stale recipient request replaced the latest input", RECIPIENT_ADDRESS, address.text)
+        assertFalse("A stale recipient error remained visible", hasText("Invalid wallet address."))
+        assertFalse("Recipient validation polluted global history state", hasText("Unknown error"))
+        assertNoFatalCrash()
+    }
+
+    @Test
     fun nativeTransferSignsBroadcastsAndRoundTripsUnicodeComment() {
         val api = GlobalContext.get().get<API>()
         val wallet = currentWallet()
