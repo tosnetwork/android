@@ -119,7 +119,8 @@ class BottomSheetLayout @JvmOverloads constructor(
     }
 
     fun setContentView(view: View) {
-        view.roundTop(context.getDimensionPixelSize(R.dimen.cornerMedium))
+        view.roundTop(context.getDimensionPixelSize(R.dimen.cornerLarge))
+        view.elevation = 12.dp.toFloat()
         contentView.setView(view)
     }
 
