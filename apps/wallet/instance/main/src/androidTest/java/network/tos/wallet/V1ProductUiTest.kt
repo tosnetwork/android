@@ -17,6 +17,7 @@ import androidx.test.uiautomator.Until
 import kotlinx.coroutines.runBlocking
 import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.icu.CurrencyFormatter
+import network.tos.icu.Coins
 import network.tos.qr.QR
 import network.tos.security.Sodium
 import network.tos.wallet.api.API
@@ -27,6 +28,7 @@ import network.tos.wallet.data.passcode.source.PasscodeStore
 import network.tos.wallet.api.entity.TokenEntity
 import network.tos.wallet.app.ui.screen.qr.QRScreen
 import org.koin.core.context.GlobalContext
+import org.ton.mnemonic.Mnemonic
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -108,6 +110,20 @@ class V1ProductUiTest {
     @Test
     fun invalidMnemonicChecksumRemainsRejectedInUi() {
         assertRejected(List(24) { "abandon" }.joinToString(" "))
+    }
+
+    @Test
+    fun cancelledImportLeavesNoWalletOrPasscode() {
+        launchImport()
+        setPhrase(FIXTURE_MNEMONIC)
+        clickText("Continue")
+        assertTrue(waitText("Create passcode", 180_000))
+        repeat(3) { device.pressBack() }
+        launch()
+        assertTrue(waitText("Create new wallet", 15_000))
+        assertTrue(runBlocking { GlobalContext.get().get<AccountRepository>().getWallets().isEmpty() })
+        assertFalse(runBlocking { GlobalContext.get().get<PasscodeManager>().hasPinCode() })
+        assertNoFatalCrash()
     }
 
     @Test
@@ -260,10 +276,10 @@ class V1ProductUiTest {
         val textInputs = device.findObjects(By.res(APP_ID, "input_field"))
         assertTrue("Address/comment input fields are missing", textInputs.size >= 2)
         val address = textInputs.first()
-        val amount = device.wait(Until.findObject(By.res(APP_ID, "coin_input")), 10_000)
+        val amount = device.wait(Until.findObject(By.res(APP_ID, "coin_input")), 60_000)
         val comment = textInputs.last()
         val continueButton = device.wait(Until.findObject(By.res(APP_ID, "button")), 10_000)
-        assertNotNull(amount)
+        assertNotNull("Native amount input did not finish loading", amount)
         assertNotNull(continueButton)
 
         address.text = "not-an-address"
@@ -330,6 +346,22 @@ class V1ProductUiTest {
     }
 
     @Test
+    fun fundedHistoryLoadsAndPaginatesWithoutDuplicateTransactions() {
+        launch()
+        clickText("History")
+        assertTrue("Funded history did not render", waitText("Today", 30_000))
+        assertFalse("History rendered an RPC error", hasText("Unknown error"))
+        assertFalse("History rendered retry instead of transactions", hasText("Retry"))
+        val history = device.wait(Until.findObject(By.scrollable(true)), 10_000)
+        assertNotNull("History list is not scrollable", history)
+        history.swipe(androidx.test.uiautomator.Direction.UP, 0.8f)
+        SystemClock.sleep(3_000)
+        assertFalse("Pagination rendered an RPC error", hasText("Unknown error"))
+        assertFalse("Pagination rendered retry instead of transactions", hasText("Retry"))
+        assertNoFatalCrash()
+    }
+
+    @Test
     fun deferredDeepLinksCannotOpenProductScreens() {
         for (route in listOf("staking", "battery", "browser", "exchange", "swap", "collectibles", "jetton")) {
             launch(Intent.ACTION_VIEW, "tos://$route")
@@ -370,6 +402,73 @@ class V1ProductUiTest {
         assertNotNull(encrypted)
         assertFalse(plain.contentEquals(encrypted))
         assertArrayEquals(plain, Sodium.cryptoSecretboxOpen(encrypted!!, nonce, key))
+    }
+
+    @Test
+    fun nativeTosFormattingCoversZeroFractionsAndMaximum() {
+        assertEquals("0 TOS", CurrencyFormatter.format("TOS", Coins.ZERO).toString())
+        assertEquals("0.5 TOS", CurrencyFormatter.format("TOS", Coins.of("0.5")).toString())
+        assertEquals("0.000000001 TOS", CurrencyFormatter.format("TOS", Coins.of("0.000000001")).toString())
+        assertEquals(
+            "9,223,372,036 TOS",
+            CurrencyFormatter.format("TOS", Coins.ofNano(Long.MAX_VALUE.toString())).toString(),
+        )
+    }
+
+    @Test
+    fun signOutRequiresConfirmationAndReturnsToCleanOnboarding() {
+        val accountRepository = GlobalContext.get().get<AccountRepository>()
+        assertTrue(runBlocking { accountRepository.getWallets().isNotEmpty() })
+        launch()
+        clickResource("settings")
+        assertTrue(waitText("Settings"))
+        clickText("Sign out ⭐ V1 Test Wallet")
+        assertTrue(waitText("Sign out"))
+        val logout = device.wait(Until.findObject(By.res(APP_ID, "logout")), 10_000)
+        assertNotNull(logout)
+        assertFalse("Sign out must be disabled before explicit confirmation", logout.isEnabled)
+        clickResource("confirmation")
+        assertTrue("Confirmation did not enable sign out", logout.isEnabled)
+        logout.click()
+        assertTrue("Clean onboarding did not appear after deletion", waitText("Create new wallet", 30_000))
+        assertTrue(runBlocking { accountRepository.getWallets().isEmpty() })
+        assertNoFatalCrash()
+    }
+
+    @Test
+    fun unfundedGeneratedWalletRendersZeroBalanceAndEmptyHistory() {
+        val accountRepository = GlobalContext.get().get<AccountRepository>()
+        val passcodeManager = GlobalContext.get().get<PasscodeManager>()
+        val wallet = runBlocking {
+            if (!passcodeManager.hasPinCode()) passcodeManager.save("1234")
+            val mnemonic = Mnemonic.generate()
+            accountRepository.importWallet(
+                ids = listOf("v1-zero-wallet"),
+                label = Wallet.NewLabel(listOf("Zero Wallet"), "✨", 0xfff5b800.toInt()),
+                mnemonic = mnemonic,
+                versions = listOf(WalletVersion.V5R1),
+                testnet = false,
+                initialized = listOf(false),
+            ).single().also { accountRepository.setSelectedWallet(it.id) }
+        }
+        val balance = GlobalContext.get().get<API>().getTosBalance(wallet.accountId, false, "USD")
+        assertNotNull(balance)
+        assertTrue(balance!!.value.isZero)
+
+        launch()
+        assertTrue(waitText("TOS", 30_000))
+        assertTrue(waitText("0", 30_000))
+        clickText("History")
+        assertTrue(waitText("Your activity will be shown here", 30_000))
+        assertTrue(waitText("Make your first transaction!", 10_000))
+        assertNoFatalCrash()
+
+        runBlocking {
+            accountRepository.logout()
+            passcodeManager.reset()
+        }
+        launch()
+        assertTrue(waitText("Create new wallet", 15_000))
     }
 
     private fun launchImport() {

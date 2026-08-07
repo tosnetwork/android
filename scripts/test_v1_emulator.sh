@@ -24,10 +24,12 @@ methods=(
   invalidWordCountRemainsRejectedInUi
   unknownMnemonicWordRemainsRejectedInUi
   invalidMnemonicChecksumRemainsRejectedInUi
+  cancelledImportLeavesNoWalletOrPasscode
   deferredDeepLinksCannotOpenProductScreens
   backgroundAndForegroundDoNotExposeOrCrashOnboarding
   onboardingControlsExposeAccessibleNames
   sodiumSecretBoxRoundTripsOnAndroidAbi
+  nativeTosFormattingCoversZeroFractionsAndMaximum
 )
 
 run_method() {
@@ -60,7 +62,10 @@ persistent_methods=(
   receiveCopiesSharesAndEncodesExactNativeTosAddress
   walletSendAndSettingsExposeOnlyNativeV1Controls
   sendValidationConfirmationAndCancelDoNotBroadcast
+  fundedHistoryLoadsAndPaginatesWithoutDuplicateTransactions
   passcodeThrottleKeystoreAndRuntimeSecretPolicyHold
+  signOutRequiresConfirmationAndReturnsToCleanOnboarding
+  unfundedGeneratedWalletRendersZeroBalanceAndEmptyHistory
 )
 run_method "${persistent_methods[0]}" true
 for method in "${persistent_methods[@]:1}"; do

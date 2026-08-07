@@ -22,7 +22,7 @@ internal class RemoteDataSource(
     suspend fun events(query: TxFetchQuery): List<TxEvent> = coroutineScope {
         val fetchLimit = query.limit
         val tonDeferred = async {
-            tonEvents(query.tonAddress, query.beforeTimestamp, query.afterTimestamp, fetchLimit)
+            tonEvents(query.tonAddress, query.beforeLt, query.beforeHash, query.beforeTimestamp, query.afterTimestamp, fetchLimit)
         }
 
         val tronDeferred = async {
@@ -38,6 +38,8 @@ internal class RemoteDataSource(
 
     suspend fun tonEvents(
         address: BlockchainAddress,
+        beforeLt: Long?,
+        beforeHash: String?,
         beforeTimestamp: Timestamp?,
         afterTimestamp: Timestamp?,
         limit: Int,
@@ -45,6 +47,8 @@ internal class RemoteDataSource(
         val events = api.fetchTosEvents(
             accountId =  address.value,
             testnet = address.testnet,
+            beforeLt = beforeLt,
+            beforeHash = beforeHash,
             beforeTimestamp = beforeTimestamp,
             afterTimestamp = afterTimestamp,
             limit = limit

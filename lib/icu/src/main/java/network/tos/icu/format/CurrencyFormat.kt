@@ -129,7 +129,6 @@ internal class CurrencyFormat(val locale: Locale) {
             return when {
                 value >= BigDecimal("1000") -> 0
                 value >= BigDecimal.ONE -> 2
-                BigDecimal("0.0000001") >= value -> 0
                 else -> {
                     val plainString = value.stripTrailingZeros().toPlainString()
                     val dotIndex = plainString.indexOf('.')

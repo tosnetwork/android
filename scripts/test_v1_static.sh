@@ -58,6 +58,18 @@ grep -Fq 'window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)' \
   exit 1
 }
 
+bottom_tabs='apps/wallet/instance/app/src/main/res/menu/bottom_tabs.xml'
+grep -Fq 'android:id="@+id/activity"' "$bottom_tabs" || {
+  echo 'v1-static: native TOS History tab is missing' >&2
+  exit 1
+}
+for deferred_tab in browser collectibles; do
+  if grep -Fq "android:id=\"@+id/${deferred_tab}\"" "$bottom_tabs"; then
+    echo "v1-static: deferred bottom tab is reachable: ${deferred_tab}" >&2
+    exit 1
+  fi
+done
+
 if grep -R -I -n -E 'git@github\.com:tonkeeper/|github\.com/tonkeeper/[^ )"[:space:]]+\.git' .github/workflows; then
   fail "workflow pushes to or checks out an upstream Tonkeeper repository"
 fi

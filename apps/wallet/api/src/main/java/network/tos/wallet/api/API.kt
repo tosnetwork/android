@@ -359,6 +359,7 @@ class API(
         accountId: String,
         testnet: Boolean,
         beforeLt: Long? = null,
+        beforeHash: String? = null,
         beforeTimestamp: Timestamp? = null,
         afterTimestamp: Timestamp? = null,
         limit: Int,
@@ -370,8 +371,9 @@ class API(
         val txs = withRetry {
             tos.getTransactions(
                 address = accountId,
-                limit = limit,
+                limit = limit.coerceAtMost(5),
                 beforeLt = beforeLt,
+                hash = beforeHash,
                 testnet = testnet,
             )
         } ?: throw Exception("Failed to get events")

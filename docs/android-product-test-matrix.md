@@ -74,7 +74,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | WAL-05 | Valid deterministic TOS phrase imports to the expected address | Unit + UI | Passed | Repository import through the encrypted vault derives and asserts the funded fixture address, then renders its home |
 | WAL-06 | Whitespace and capitalization normalize safely | Unit | Passed | `TosV1MnemonicTest` pins canonical whitespace/case normalization |
 | WAL-07 | Invalid word count, unknown words, and invalid checksum are rejected | Unit + UI | Passed | JVM vectors plus three isolated malformed-phrase emulator scenarios cover all three classes |
-| WAL-08 | Cancelled creation/import leaves no partial wallet or secret | Emulator storage | Partial | Creation cancellation returns to clean onboarding; import storage cancellation still needs a complete assertion |
+| WAL-08 | Cancelled creation/import leaves no partial wallet or secret | Emulator storage | Passed | Creation and valid-phrase import cancellation both return to clean onboarding with no account and no saved passcode |
 
 ## E. Passcode and secret protection
 
@@ -92,9 +92,9 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
 | RCV-01 | Home shows exact fixture address, TOS symbol, and balance | Emulator integration | Passed | Cold launch reads the fixture balance from the local node, formats it with the product formatter, and asserts the exact UI value plus address and TOS symbol |
-| RCV-02 | Zero balance and empty history render correctly | Emulator UI | Not covered | No zero-state UI test |
+| RCV-02 | Zero balance and empty history render correctly | Emulator + localnet | Passed | A generated, unfunded V5R1 wallet is confirmed zero on the node and renders `0`, `Your activity will be shown here`, and `Make your first transaction!` |
 | RCV-03 | Refresh updates balance after a local native transfer | Emulator + localnet | Not covered | No localnet controller wired to Android tests |
-| RCV-04 | TOS formatting covers zero, fractions, and supported maximum | Unit | Not covered | No formatter boundary suite |
+| RCV-04 | TOS formatting covers zero, fractions, and supported maximum | Emulator unit | Passed | Exact formatter vectors cover zero, fractions down to one nanoTOS, and the signed-long nano maximum |
 | RCV-05 | Receive shows the exact address and a decodable QR payload | Emulator + QR decoder | Passed | Exact address is asserted and the generated `tos://transfer/` bitmap round-trips through ZXing decoding |
 | RCV-06 | Copy and share contain the exact address | Emulator UI | Passed | Emulator clipboard assertion plus share-intent payload and reachable share-control checks |
 | RCV-07 | Receive exposes native TOS only | Static + UI | Passed | Receive UI asserts `Receive TOS`, exact native address, and no deferred token selector |
@@ -121,8 +121,8 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | HIS-01 | Native account events map incoming/outgoing amounts and counterparties | Unit | Passed | Fixture mapper vectors plus mandatory real-transaction mapping in `test_v1_localnet.sh` |
 | HIS-02 | History renders pending, confirmed, and failed states | Unit + UI | Partial | Mapper coverage exists; screen assertions are absent |
 | HIS-03 | Details show exact timestamp, fee, address, amount, and comment | Unit + UI | Not covered | No complete details fixture |
-| HIS-04 | Pagination has no duplicate or missing records | Unit + integration | Not covered | No multipage dataset test |
-| HIS-05 | Empty, loading, error, and retry states are deterministic | Unit + UI | Not covered | No fault-state matrix |
+| HIS-04 | Pagination has no duplicate or missing records | Localnet + emulator UI | Passed | Three-node gate verifies the node's inclusive `lt` + `hash` cursor, a strict descending second page, and exactly one cursor overlap; the PagingSource filters that overlap and the emulator scrolls the funded history without an error/retry state |
+| HIS-05 | Empty, loading, error, and retry states are deterministic | Unit + UI | Partial | Empty history is covered on an unfunded local-node wallet and funded loading succeeds; controlled error/retry recovery remains absent |
 | RPC-01 | RPC endpoint parsing and JSON-RPC path normalization are correct | Unit | Passed | `TosRpcEndpointTest` |
 | RPC-02 | TOS address encoding and decoding are stable | Unit | Passed | `TosAddressCodecTest` |
 | RPC-03 | Malformed responses, node errors, timeouts, and reconnects are safe | Unit | Not covered | Client failure matrix is absent |
@@ -134,11 +134,11 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | --- | --- | --- | --- | --- |
 | SET-01 | Settings opens and contains only retained V1 controls | Static + emulator UI | Passed | UI inventory asserts retained controls and rejects DApp, widget, battery, and wallet-version migration entries; static gate pins removal |
 | SET-02 | RPC endpoint validates, persists, resets, and is used | Unit + emulator + localnet | Passed | Invalid input is rejected; custom validator 18546 is displayed, used, persisted across a process, then reset to validator 18545 |
-| SET-03 | Delete wallet requires confirmation and returns to clean onboarding | Emulator storage | Not covered | No destructive-flow test fixture |
+| SET-03 | Delete wallet requires confirmation and returns to clean onboarding | Emulator storage | Passed | Sign-out remains disabled before confirmation, then deletes the persisted wallet and returns to clean onboarding |
 | QLT-01 | Every reachable V1 control has a usable accessibility label | Emulator UI | Partial | Onboarding reachable-control inventory passes; retained wallet screens remain to be crawled |
 | QLT-02 | Supported screen sizes, font scales, themes, and locales do not clip or crash | Emulator matrix | Not covered | No multi-configuration suite |
 | QLT-03 | Launch, memory, and repeated refresh/send remain within budgets | Performance | Not covered | No encoded performance budgets |
-| QLT-04 | Runtime logs and telemetry contain no fixture secret | Runtime scan | Not covered | No logcat gate |
+| QLT-04 | Runtime logs and telemetry contain no fixture secret | Runtime scan | Passed | Mandatory emulator gate scans runtime logcat and clipboard for the complete fixture phrase and passcode |
 | BLD-01 | Wallet Debug APK builds | Build | Passed | `make compile` / `assembleDefaultDebug` |
 | BLD-02 | Standalone signer Debug APK builds | Build | Passed | Included in `make compile` |
 | BLD-03 | JVM unit suite passes | Unit | Passed | `make test_unit`; 12 tests, 0 failures, 1 optional local-node test skipped on 2026-08-07 |

@@ -85,9 +85,9 @@ class TxEventsViewModel(
 
     private val pager = Pager(
         config = PagingConfig(
-            initialLoadSize = 15,
-            prefetchDistance = 5,
-            pageSize = 30,
+            initialLoadSize = 5,
+            prefetchDistance = 2,
+            pageSize = 5,
             enablePlaceholders = false,
             maxSize = PagingConfig.MAX_SIZE_UNBOUNDED,
             jumpThreshold = Int.MIN_VALUE,

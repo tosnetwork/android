@@ -21,6 +21,17 @@ data class TxPage(
     val isCached: Boolean
         get() = source == Source.LOCAL
 
-    val nextKey: Timestamp?
-        get() = events.minByOrNull { it.timestamp.value }?.timestamp
+    val nextKey: TxCursor?
+        get() {
+            val tosEvent = events
+                .filter { it.blockchain == network.tos.wallet.api.entity.value.Blockchain.TON }
+                .minByOrNull { it.lt }
+            val beforeTimestamp = events.minByOrNull { it.timestamp.value }?.timestamp
+            if (tosEvent == null && beforeTimestamp == null) return null
+            return TxCursor(
+                beforeLt = tosEvent?.lt,
+                beforeHash = tosEvent?.hash,
+                beforeTimestamp = beforeTimestamp,
+            )
+        }
 }

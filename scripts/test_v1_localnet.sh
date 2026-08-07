@@ -57,8 +57,26 @@ for _ in {1..45}; do
 done
 [[ "$replicated" == true ]] || { echo 'v1-localnet: transfer did not replicate to all validators' >&2; exit 1; }
 
+history_params="$(jq -cn --arg address "$address" '{address:$address,limit:5}')"
+first_page="$(rpc 18545 getTransactions "$history_params")"
+first_page_count="$(jq -r '.result | length' <<<"$first_page")"
+(( first_page_count == 5 )) || { echo 'v1-localnet: expected a full first history page' >&2; exit 1; }
+cursor_lt="$(jq -er '.result[-1].transaction_id.lt' <<<"$first_page")"
+cursor_hash="$(jq -er '.result[-1].transaction_id.hash' <<<"$first_page")"
+next_params="$(jq -cn --arg address "$address" --arg lt "$cursor_lt" --arg hash "$cursor_hash" \
+  '{address:$address,limit:5,lt:$lt,hash:$hash}')"
+second_page="$(rpc 18545 getTransactions "$next_params")"
+second_page_count="$(jq -r '.result | length' <<<"$second_page")"
+(( second_page_count > 1 )) || { echo 'v1-localnet: expected a second history page' >&2; exit 1; }
+duplicate_count="$(jq -n --argjson first "$(jq '[.result[].transaction_id.hash]' <<<"$first_page")" \
+  --argjson second "$(jq '[.result[].transaction_id.hash]' <<<"$second_page")" \
+  '$first - ($first - $second) | length')"
+(( duplicate_count == 1 )) || { echo 'v1-localnet: history pages contain unexpected duplicates' >&2; exit 1; }
+jq -e --arg lt "$cursor_lt" \
+  '[.result[1:][].transaction_id.lt | tonumber] | all(. < ($lt | tonumber))' <<<"$second_page" >/dev/null
+
 TOS_TEST_ADDRESS="$address" TOS_TEST_RPC='http://127.0.0.1:18545/jsonRPC' \
   ./gradlew :apps:wallet:api:testDebugUnitTest \
   --tests 'network.tos.wallet.api.tos.TosEventMapperLocalNodeTest'
 
-echo "v1-localnet: PASS (3 validators, transfer replication, history mapping)"
+echo "v1-localnet: PASS (3 validators, transfer replication, cursor pagination, history mapping)"

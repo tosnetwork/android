@@ -176,7 +176,11 @@ class MainScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_main, S
     }
 
     private fun getCurrentFrom(): String {
-        return "wallet"
+        return when (bottomTabsView.selectedItemId) {
+            R.id.wallet -> "wallet"
+            R.id.activity -> "activity"
+            else -> "unknown"
+        }
     }
 
     private fun getFragment(itemId: Int, wallet: WalletEntity): Fragment {
@@ -186,8 +190,11 @@ class MainScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_main, S
     }
 
     private fun createFragment(itemId: Int, wallet: WalletEntity): Fragment {
-        require(itemId == R.id.wallet) { "Unknown itemId: $itemId" }
-        return WalletScreen.newInstance(wallet)
+        return when (itemId) {
+            R.id.wallet -> WalletScreen.newInstance(wallet)
+            R.id.activity -> TxEventsScreen.newInstance(wallet)
+            else -> throw IllegalArgumentException("Unknown itemId: $itemId")
+        }
     }
 
     private fun setFragment(itemId: Int, wallet: WalletEntity, from: String, extra: String?, forceScrollUp: Boolean) {

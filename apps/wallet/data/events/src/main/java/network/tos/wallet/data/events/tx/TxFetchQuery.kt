@@ -7,6 +7,8 @@ data class TxFetchQuery(
     val tonAddress: BlockchainAddress,
     val tronAddress: BlockchainAddress?,
     val tonProofToken: String?,
+    val beforeLt: Long?,
+    val beforeHash: String?,
     val beforeTimestamp: Timestamp?,
     val afterTimestamp: Timestamp?,
     val limit: Int

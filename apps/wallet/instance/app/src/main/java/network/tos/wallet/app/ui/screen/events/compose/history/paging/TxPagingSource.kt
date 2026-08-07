@@ -8,6 +8,7 @@ import network.tos.wallet.data.account.AccountRepository
 import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.wallet.data.events.EventsRepository
 import network.tos.wallet.data.events.tx.TxFetchQuery
+import network.tos.wallet.data.events.tx.TxCursor
 import network.tos.wallet.data.events.tx.TxPage
 import network.tos.wallet.data.events.tx.model.TxEvent
 import network.tos.wallet.data.settings.SettingsRepository
@@ -23,7 +24,7 @@ internal class TxPagingSource(
     private val eventsRepository: EventsRepository,
     private val settingsRepository: SettingsRepository,
     private val uiMapper: TxUiMapper,
-): PagingSource<Timestamp, UiEvent.Item>() {
+): PagingSource<TxCursor, UiEvent.Item>() {
 
     companion object {
         private val cache = ConcurrentHashMap<String, TxEvent>()
@@ -40,14 +41,14 @@ internal class TxPagingSource(
     private val processedEventIds = mutableSetOf<String>()
 
     override suspend fun load(
-        params: LoadParams<Timestamp>
-    ): LoadResult<Timestamp, UiEvent.Item> = withContext(Dispatchers.IO) {
+        params: LoadParams<TxCursor>
+    ): LoadResult<TxCursor, UiEvent.Item> = withContext(Dispatchers.IO) {
         try {
-            val beforeTimestamp = params.key
-            val data = if (params is LoadParams.Refresh && beforeTimestamp == null) {
+            val cursor = params.key
+            val data = if (params is LoadParams.Refresh && cursor == null) {
                 initialLoad(params.loadSize)
             } else {
-                nextLoad(beforeTimestamp ?: Timestamp.now, params.loadSize)
+                nextLoad(cursor ?: TxCursor(null, null, Timestamp.now), params.loadSize)
             }
             if (data.isEmpty) {
                 LoadResult.Page(emptyList(), null, null)
@@ -71,6 +72,8 @@ internal class TxPagingSource(
     private suspend fun query(
         afterTimestamp: Timestamp? = null,
         beforeTimestamp: Timestamp? = null,
+        beforeLt: Long? = null,
+        beforeHash: String? = null,
         limit: Int
     ): TxFetchQuery {
         val tronParams = tronParamsProvider.get()
@@ -78,15 +81,19 @@ internal class TxPagingSource(
             tonAddress = wallet.blockchainAddress,
             tronAddress = tronParams?.address,
             tonProofToken = tronParams?.tonProofToken,
+            beforeLt = beforeLt,
+            beforeHash = beforeHash,
             beforeTimestamp = beforeTimestamp,
             afterTimestamp = afterTimestamp,
             limit = limit
         )
     }
 
-    private suspend fun nextLoad(beforeTimestamp: Timestamp, limit: Int): TxPage {
+    private suspend fun nextLoad(cursor: TxCursor, limit: Int): TxPage {
         val query = query(
-            beforeTimestamp = beforeTimestamp,
+            beforeTimestamp = cursor.beforeTimestamp,
+            beforeLt = cursor.beforeLt,
+            beforeHash = cursor.beforeHash,
             limit = limit
         )
         return processEvents(eventsRepository.fetch(query))
@@ -124,5 +131,5 @@ internal class TxPagingSource(
         return filtered
     }
 
-    override fun getRefreshKey(state: PagingState<Timestamp, UiEvent.Item>) = null
+    override fun getRefreshKey(state: PagingState<TxCursor, UiEvent.Item>) = null
 }
