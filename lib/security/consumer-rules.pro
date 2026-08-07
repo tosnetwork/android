@@ -1,3 +1,3 @@
--keep class com.tonapps.security.Sodium {
+-keep class network.tos.security.Sodium {
     *;
 }

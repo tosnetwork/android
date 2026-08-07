@@ -5,7 +5,7 @@ import android.view.View
 import androidx.annotation.LayoutRes
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
-import com.tonapps.uikit.color.backgroundPageColor
+import network.tos.uikit.color.backgroundPageColor
 
 abstract class SimpleFragment<P: BaseFragment>(
     @LayoutRes layoutId: Int

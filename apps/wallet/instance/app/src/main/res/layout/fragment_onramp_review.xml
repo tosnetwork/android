@@ -20,13 +20,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
-                <com.tonapps.tonkeeper.ui.screen.onramp.main.view.ReviewInputView
+                <network.tos.wallet.app.ui.screen.onramp.main.view.ReviewInputView
                     android:id="@+id/review_send"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/send"/>
 
-                <com.tonapps.tonkeeper.ui.screen.onramp.main.view.ReviewInputView
+                <network.tos.wallet.app.ui.screen.onramp.main.view.ReviewInputView
                     android:id="@+id/review_receive"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

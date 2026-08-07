@@ -3,7 +3,7 @@ package uikit.drawable
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import com.tonapps.uikit.color.accentRedColor
+import network.tos.uikit.color.accentRedColor
 import uikit.base.BaseDrawable
 import uikit.extensions.dp
 

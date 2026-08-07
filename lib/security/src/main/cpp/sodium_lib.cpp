@@ -3,19 +3,19 @@
 #include <string>
 #include <sodium.h>
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_init(JNIEnv *, jobject) {
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_init(JNIEnv *, jobject) {
     return sodium_init();
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxMacBytes(JNIEnv *, jobject) {
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxMacBytes(JNIEnv *, jobject) {
     return crypto_box_macbytes();
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxNonceBytes(JNIEnv *, jobject) {
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxNonceBytes(JNIEnv *, jobject) {
     return crypto_box_noncebytes();
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxEasy (
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxEasy (
         JNIEnv *env,
         jobject,
         jbyteArray dst_cipher,
@@ -50,7 +50,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxEasy
     return result;
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxOpenEasy (
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxOpenEasy (
         JNIEnv *env,
         jobject,
         jbyteArray dst_plain,
@@ -85,7 +85,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxOpen
     return result;
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxKeyPair (
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxKeyPair (
         JNIEnv *env,
         jobject,
         jbyteArray remote_public_key,
@@ -106,7 +106,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxKeyP
 
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_argon2IdHash (
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_argon2IdHash (
         JNIEnv *env,
         jobject,
         jcharArray passwd,
@@ -169,7 +169,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_argon2I
     return jhash;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_scryptHash(
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_scryptHash(
         JNIEnv *env,
         jobject,
         jbyteArray password,
@@ -246,7 +246,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_scryptH
     return jhash;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoSecretboxOpen(
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoSecretboxOpen(
         JNIEnv *env,
         jobject,
         jbyteArray box,
@@ -354,7 +354,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoS
     return jplain;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoSecretbox(
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoSecretbox(
         JNIEnv *env,
         jobject /* this */,
         jbyteArray message,

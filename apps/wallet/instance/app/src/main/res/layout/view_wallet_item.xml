@@ -11,7 +11,7 @@
         android:layout_height="44dp"
         android:background="@drawable/bg_oval">
         
-        <com.tonapps.emoji.ui.EmojiView
+        <network.tos.emoji.ui.EmojiView
             android:id="@+id/wallet_emoji"
             android:layout_width="24dp"
             android:layout_height="24dp"

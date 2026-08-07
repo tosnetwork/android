@@ -1,0 +1,48 @@
+package network.tos.wallet.app.ui.screen.onramp.picker.currency.fiat
+
+import network.tos.wallet.app.ui.base.picker.QueryReceiver
+import network.tos.wallet.app.ui.base.picker.currency.CurrencyPickerScreen
+import network.tos.wallet.app.ui.screen.onramp.picker.currency.OnRampPickerScreen
+import network.tos.wallet.app.ui.screen.onramp.picker.currency.OnRampPickerViewModel
+import network.tos.wallet.data.core.currency.WalletCurrency
+
+class OnRampFiatScreen: CurrencyPickerScreen(), QueryReceiver {
+
+    private val mainViewModel: OnRampPickerViewModel
+        get() = OnRampPickerScreen.parentViewModel(requireParentFragment())
+
+    override val currencies: List<WalletCurrency>
+        get() {
+            val array = arguments?.getParcelableArrayList<WalletCurrency>(ARG_CURRENCIES)
+            return array?.toList() ?: emptyList()
+        }
+
+    override val extras: List<String>
+        get() = arguments?.getStringArrayList(ARG_EXTRAS) ?: emptyList()
+
+    override fun onSelected(currency: WalletCurrency) {
+        mainViewModel.setCurrency(currency)
+    }
+
+    override fun onQuery(query: String) {
+        viewModel.query(query)
+    }
+
+    companion object {
+
+        private const val ARG_CURRENCIES = "currencies"
+        private const val ARG_EXTRAS = "extras"
+
+        fun newInstance(currencies: List<WalletCurrency>, extras: List<String>): OnRampFiatScreen {
+            if (extras.isNotEmpty() && extras.size != currencies.size) {
+                throw IllegalArgumentException("Extras size must match currencies size")
+            }
+            val screen = OnRampFiatScreen()
+            screen.putParcelableListArg(ARG_CURRENCIES, currencies)
+            screen.putStringList(ARG_EXTRAS, extras)
+            return screen
+        }
+    }
+
+
+}

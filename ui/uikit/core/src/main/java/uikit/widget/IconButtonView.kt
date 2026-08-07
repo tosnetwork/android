@@ -5,7 +5,7 @@ import android.util.AttributeSet
 import android.widget.FrameLayout
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
-import com.tonapps.uikit.color.stateList
+import network.tos.uikit.color.stateList
 import uikit.R
 import uikit.extensions.createRipple
 import uikit.extensions.useAttributes

@@ -2,8 +2,8 @@ package uikit.extensions
 
 import android.content.Context
 import android.graphics.drawable.Drawable
-import com.tonapps.uikit.color.backgroundContentColor
-import com.tonapps.uikit.list.ListCell
+import network.tos.uikit.color.backgroundContentColor
+import network.tos.uikit.list.ListCell
 import uikit.drawable.CellBackgroundDrawable
 
 fun ListCell.Position.drawable(

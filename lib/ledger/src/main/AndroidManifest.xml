@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.tonapps.ledger">
+    package="network.tos.ledger">
 
     <uses-permission tools:node="merge" android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application>
-        <service android:exported="false" android:name="com.tonapps.ledger.ble.service.BleService" android:enabled="true"/>
+        <service android:exported="false" android:name="network.tos.ledger.ble.service.BleService" android:enabled="true"/>
 
     </application>
 

@@ -11,7 +11,7 @@ import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.tonapps.ui.blur.R
+import network.tos.ui.blur.R
 
 @RequiresApi(Build.VERSION_CODES.S)
 internal class BlurNode(

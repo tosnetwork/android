@@ -91,7 +91,7 @@
         android:id="@+id/refresh"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
-        <com.tonapps.tonkeeper.ui.component.TonConnectWebView
+        <network.tos.wallet.app.ui.component.TonConnectWebView
             android:id="@+id/web_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

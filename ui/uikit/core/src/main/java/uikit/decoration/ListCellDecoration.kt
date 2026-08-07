@@ -19,12 +19,12 @@ class ListCellDecoration(
         state: RecyclerView.State
     ) {
         super.getItemOffsets(outRect, view, parent, state)
-        val adapter = parent.adapter as? com.tonapps.uikit.list.BaseListAdapter ?: return
+        val adapter = parent.adapter as? network.tos.uikit.list.BaseListAdapter ?: return
         val position = parent.getChildAdapterPosition(view)
         val item = adapter.getItem(position)
-        if (item is com.tonapps.uikit.list.ListCell) {
+        if (item is network.tos.uikit.list.ListCell) {
             val cellPosition = item.position
-            if (cellPosition == com.tonapps.uikit.list.ListCell.Position.SINGLE || cellPosition == com.tonapps.uikit.list.ListCell.Position.LAST) {
+            if (cellPosition == network.tos.uikit.list.ListCell.Position.SINGLE || cellPosition == network.tos.uikit.list.ListCell.Position.LAST) {
                 outRect.bottom += offset
             }
         } else {

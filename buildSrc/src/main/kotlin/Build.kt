@@ -7,5 +7,5 @@ object Build {
 
     val compileJavaVersion = JavaVersion.VERSION_17
 
-    fun namespacePrefix(name: String) = "com.tonapps.$name"
+    fun namespacePrefix(name: String) = "network.tos.$name"
 }

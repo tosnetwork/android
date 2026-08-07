@@ -12,7 +12,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.Shader
 import blur.Toolkit
-import com.tonapps.ui.blur.R
+import network.tos.ui.blur.R
 
 internal class BlurNodeLegacy(
     private val context: Context

@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="@dimen/itemHeight">
     
-    <com.tonapps.emoji.ui.EmojiView
+    <network.tos.emoji.ui.EmojiView
         android:id="@+id/emoji"
         android:layout_width="28dp"
         android:layout_height="28dp"

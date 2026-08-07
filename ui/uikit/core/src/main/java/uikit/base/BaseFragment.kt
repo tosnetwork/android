@@ -29,7 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomsheet.BottomSheetBehavior
-import com.tonapps.uikit.color.backgroundPageColor
+import network.tos.uikit.color.backgroundPageColor
 import uikit.extensions.getSpannable
 import uikit.navigation.Navigation.Companion.navigation
 import uikit.widget.BottomSheetLayout

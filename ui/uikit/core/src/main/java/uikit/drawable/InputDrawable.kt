@@ -7,10 +7,10 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
-import com.tonapps.uikit.color.fieldActiveBorderColor
-import com.tonapps.uikit.color.fieldBackgroundColor
-import com.tonapps.uikit.color.fieldErrorBackgroundColor
-import com.tonapps.uikit.color.fieldErrorBorderColor
+import network.tos.uikit.color.fieldActiveBorderColor
+import network.tos.uikit.color.fieldBackgroundColor
+import network.tos.uikit.color.fieldErrorBackgroundColor
+import network.tos.uikit.color.fieldErrorBorderColor
 import uikit.ArgbEvaluator
 import uikit.HapticHelper
 import uikit.R

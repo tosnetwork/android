@@ -7,7 +7,7 @@ import android.text.Spanned
 import androidx.annotation.ColorInt
 import androidx.annotation.StringRes
 import androidx.core.text.HtmlCompat
-import com.tonapps.uikit.color.accentBlueColor
+import network.tos.uikit.color.accentBlueColor
 
 fun String.parseWords(): List<String> {
     val words = split(",", "\n", " ").map {

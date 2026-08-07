@@ -5,7 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
-import com.tonapps.uikit.color.backgroundPageColor
+import network.tos.uikit.color.backgroundPageColor
 import uikit.extensions.dp
 
 class ColorView @JvmOverloads constructor(

@@ -16,7 +16,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.setPadding
 import androidx.core.view.updateLayoutParams
-import com.tonapps.uikit.color.backgroundContentTintColor
+import network.tos.uikit.color.backgroundContentTintColor
 import uikit.R
 import uikit.extensions.dp
 import uikit.extensions.getDimensionPixelSize

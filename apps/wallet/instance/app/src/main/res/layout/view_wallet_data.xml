@@ -44,7 +44,7 @@
 
             </FrameLayout>
 
-            <com.tonapps.tonkeeper.view.BatteryView
+            <network.tos.wallet.app.view.BatteryView
                 style="@style/Battery.Medium"
                 android:id="@+id/wallet_battery"
                 android:layout_gravity="center"

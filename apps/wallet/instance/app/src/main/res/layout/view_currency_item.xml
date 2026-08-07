@@ -13,7 +13,7 @@
         android:visibility="gone"
         app:roundAsCircle="true"/>
 
-    <com.tonapps.tonkeeper.ui.component.CountryFlagView
+    <network.tos.wallet.app.ui.component.CountryFlagView
         android:id="@+id/icon"
         android:layout_width="@dimen/iconSize"
         android:layout_height="@dimen/iconSize"

@@ -18,10 +18,10 @@ import android.util.Log
 import android.view.View
 import androidx.core.animation.doOnEnd
 import androidx.core.graphics.withSave
-import com.tonapps.uikit.color.backgroundContentColor
-import com.tonapps.uikit.color.backgroundHighlightedColor
-import com.tonapps.uikit.color.separatorCommonColor
-import com.tonapps.uikit.list.ListCell
+import network.tos.uikit.color.backgroundContentColor
+import network.tos.uikit.color.backgroundHighlightedColor
+import network.tos.uikit.color.separatorCommonColor
+import network.tos.uikit.list.ListCell
 import uikit.R
 import uikit.base.BaseDrawable
 import uikit.extensions.contentDrawable

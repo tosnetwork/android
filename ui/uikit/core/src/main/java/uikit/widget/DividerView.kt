@@ -5,7 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
-import com.tonapps.uikit.color.separatorCommonColor
+import network.tos.uikit.color.separatorCommonColor
 import uikit.extensions.dp
 
 class DividerView @JvmOverloads constructor(

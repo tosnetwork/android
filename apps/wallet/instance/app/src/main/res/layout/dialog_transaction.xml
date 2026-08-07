@@ -206,7 +206,7 @@
         android:layout_marginTop="@dimen/offsetLarge"
         android:orientation="vertical">
 
-        <com.tonapps.tonkeeper.view.TransactionDetailView
+        <network.tos.wallet.app.view.TransactionDetailView
             android:id="@+id/account_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
@@ -234,12 +234,12 @@
 
         </uikit.widget.ColumnLayout>
 
-        <com.tonapps.tonkeeper.view.TransactionDetailView
+        <network.tos.wallet.app.view.TransactionDetailView
             android:id="@+id/fee"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
-        <com.tonapps.tonkeeper.view.TransactionDetailView
+        <network.tos.wallet.app.view.TransactionDetailView
             android:id="@+id/comment"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />

@@ -1,0 +1,72 @@
+package network.tos.wallet.app.ui.screen.notifications
+
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.viewModelScope
+import network.tos.wallet.app.manager.push.PushManager
+import network.tos.wallet.app.manager.tonconnect.TonConnectManager
+import network.tos.wallet.app.ui.base.BaseWalletVM
+import network.tos.wallet.app.ui.screen.notifications.list.Item
+import network.tos.wallet.app.worker.DAppPushToggleWorker
+import network.tos.wallet.app.worker.PushToggleWorker
+import network.tos.uikit.list.ListCell
+import network.tos.wallet.data.account.entities.WalletEntity
+import network.tos.wallet.data.settings.SettingsRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+
+class NotificationsManageViewModel(
+    app: Application,
+    private val wallet: WalletEntity,
+    private val tonConnectManager: TonConnectManager,
+    private val settingsRepository: SettingsRepository,
+    private val pushManager: PushManager,
+): BaseWalletVM(app) {
+
+    val uiItemsFlow = tonConnectManager.walletAppsFlow(wallet).map { apps ->
+        val uiItems = mutableListOf<Item>()
+        uiItems.add(
+            Item.Wallet(
+            wallet = wallet,
+            pushEnabled = settingsRepository.getPushWallet(wallet.id)
+        ))
+        uiItems.add(Item.Space)
+        if (apps.isNotEmpty()) {
+            uiItems.add(Item.AppsHeader)
+            uiItems.add(Item.Space)
+            for ((index, entity) in apps.withIndex()) {
+                val position = ListCell.getPosition(apps.size, index)
+                val pushEnabled = tonConnectManager.isPushEnabled(wallet, entity.url)
+                uiItems.add(
+                    Item.App(
+                    app = entity,
+                    wallet = wallet,
+                    pushEnabled = pushEnabled,
+                    position = position
+                ))
+            }
+            uiItems.add(Item.Space)
+        }
+        uiItems
+    }.flowOn(Dispatchers.IO)
+
+    fun toggleWalletPush(wallet: WalletEntity, enabled: Boolean) {
+        val newState = if (enabled) {
+            PushManager.State.Enable
+        } else {
+            PushManager.State.Disable
+        }
+        PushToggleWorker.run(context, wallet, newState)
+    }
+
+    fun toggleDAppPush(url: Uri, enabled: Boolean) {
+        DAppPushToggleWorker.run(
+            context = context,
+            wallet = wallet,
+            appUrl = url,
+            enable = enabled
+        )
+    }
+}

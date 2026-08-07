@@ -1,0 +1,496 @@
+package network.tos.wallet.app.manager.tonconnect
+
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+import androidx.collection.ArrayMap
+import androidx.core.net.toUri
+import network.tos.extensions.CrashReporter
+import network.tos.blockchain.ton.extensions.equalsAddress
+import network.tos.blockchain.ton.connect.TONProof
+import network.tos.extensions.appVersionName
+import network.tos.extensions.bestMessage
+import network.tos.extensions.filterList
+import network.tos.extensions.flatter
+import network.tos.extensions.hasQuery
+import network.tos.extensions.isEmptyQuery
+import network.tos.extensions.mapList
+import network.tos.network.simple
+import network.tos.security.CryptoBox
+import network.tos.wallet.app.client.safemode.SafeModeClient
+import network.tos.wallet.app.core.DevSettings
+import network.tos.wallet.app.extensions.isSafeModeEnabled
+import network.tos.wallet.app.extensions.showToast
+import network.tos.wallet.app.manager.push.PushManager
+import network.tos.wallet.app.manager.tonconnect.bridge.Bridge
+import network.tos.wallet.app.manager.tonconnect.bridge.JsonBuilder
+import network.tos.wallet.app.manager.tonconnect.bridge.model.BridgeError
+import network.tos.wallet.app.manager.tonconnect.bridge.model.BridgeEvent
+import network.tos.wallet.app.manager.tonconnect.bridge.model.BridgeMethod
+import network.tos.wallet.app.manager.tonconnect.bridge.model.SignDataRequestPayload
+import network.tos.wallet.app.manager.tonconnect.exceptions.ManifestException
+import network.tos.wallet.app.ui.component.SnackBarView
+import network.tos.wallet.app.ui.screen.tonconnect.TonConnectResponse
+import network.tos.wallet.app.ui.screen.tonconnect.TonConnectSafeModeDialog
+import network.tos.wallet.app.ui.screen.tonconnect.TonConnectScreen
+import network.tos.wallet.app.worker.DAppPushToggleWorker
+import network.tos.wallet.api.API
+import network.tos.wallet.data.account.AccountRepository
+import network.tos.wallet.data.account.entities.WalletEntity
+import network.tos.wallet.data.dapps.DAppsRepository
+import network.tos.wallet.data.dapps.entities.AppConnectEntity
+import network.tos.wallet.data.dapps.entities.AppEntity
+import network.tos.wallet.data.settings.SettingsRepository
+import network.tos.wallet.localization.Localization
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import uikit.extensions.activity
+import uikit.extensions.addForResult
+import uikit.navigation.NavigationActivity
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
+import java.util.concurrent.atomic.AtomicBoolean
+
+class TonConnectManager(
+    private val scope: CoroutineScope,
+    private val api: API,
+    private val accountRepository: AccountRepository,
+    private val dAppsRepository: DAppsRepository,
+    private val pushManager: PushManager,
+    private val safeModeClient: SafeModeClient,
+    private val settingsRepository: SettingsRepository,
+) {
+
+    private val bridge: Bridge = Bridge(api)
+    private val bridgeConnected = AtomicBoolean(false)
+    private var bridgeJob: Job? = null
+    private val recentlyConnectedClients = ConcurrentHashMap<String, Long>()
+
+    private val _eventsFlow = MutableSharedFlow<BridgeEvent>(replay = 1)
+    private val eventsFlow = _eventsFlow.asSharedFlow().mapNotNull { event ->
+        val lastAppRequestId = dAppsRepository.getLastAppRequestId(event.connection.clientId)
+        if (lastAppRequestId >= event.message.id) {
+            DevSettings.tonConnectLog("Last app event id: $lastAppRequestId\nIgnore event: $event", error = true)
+            return@mapNotNull null
+        }
+        event
+    }.shareIn(scope, SharingStarted.Eagerly, 1)
+
+    val transactionRequestFlow = eventsFlow.mapNotNull { event ->
+        if (event.method == BridgeMethod.SEND_TRANSACTION) {
+            val connectTime = recentlyConnectedClients[event.connection.clientId] ?: 0L
+            val timeSinceConnect = System.currentTimeMillis() - connectTime
+            if (timeSinceConnect < THROTTLE_DELAY_MS) {
+                delay(THROTTLE_DELAY_MS)
+            }
+            Pair(event.connection, event.message)
+        } else {
+            if (event.method == BridgeMethod.DISCONNECT) {
+                deleteConnection(event.connection, event.message.id)
+            } else if (event.method != BridgeMethod.SIGN_DATA) {
+                sendBridgeError(event.connection, BridgeError.methodNotSupported("Method \"${event.method}\" not supported"), event.message.id)
+            }
+            null
+        }
+    }.flowOn(Dispatchers.IO).shareIn(scope, SharingStarted.Eagerly, 0)
+
+    val signDataRequestFlow = eventsFlow
+        .filter { it.method == BridgeMethod.SIGN_DATA }
+        .map { it }
+        .shareIn(scope, SharingStarted.Eagerly, 0)
+
+    fun connectBridge() {
+        if (bridgeConnected.get()) {
+            return
+        }
+        bridgeJob?.cancel()
+        bridgeConnected.set(true)
+
+        bridgeJob = scope.launch(Dispatchers.IO) {
+            val connections = dAppsRepository.getConnections().chunked(50)
+            if (connections.isEmpty()) {
+                return@launch
+            }
+            val flow = connections.map {
+                bridge.eventsFlow(it, dAppsRepository.lastEventId)
+            }.flatter()
+            flow.collect {
+                if (bridgeConnected.get()) {
+                    _eventsFlow.emit(it)
+                }
+            }
+        }
+    }
+
+    fun disconnectBridge() {
+        if (!bridgeConnected.get()) {
+            return
+        }
+        bridgeJob?.cancel()
+        bridgeConnected.set(false)
+    }
+
+    private fun reconnectBridge() {
+        if (bridgeConnected.get()) {
+            disconnectBridge()
+            connectBridge()
+        }
+    }
+
+    fun walletConnectionsFlow(wallet: WalletEntity) = accountConnectionsFlow(wallet.accountId, wallet.testnet)
+
+    fun accountConnectionsFlow(accountId: String, testnet: Boolean = false) = dAppsRepository.connectionsFlow.filterList { connection ->
+        connection.testnet == testnet && connection.accountId.equalsAddress(accountId)
+    }
+
+    fun setLastAppRequestId(clientId: String, messageId: Long) {
+        dAppsRepository.setLastAppRequestId(clientId, messageId)
+    }
+
+    fun walletAppsFlow(wallet: WalletEntity) = walletConnectionsFlow(wallet).mapList { it.appUrl }.map { it.distinct() }.map { urls ->
+        dAppsRepository.getApps(urls)
+    }.flowOn(Dispatchers.IO)
+
+    private suspend fun deleteConnection(connection: AppConnectEntity, messageId: Long) {
+        val deleted = dAppsRepository.deleteConnect(connection)
+        if (!deleted) {
+            sendBridgeError(connection, BridgeError.unknownApp("App not found. Request user to reconnect wallet for access restoration."), messageId)
+        } else {
+            bridge.sendDisconnectResponseSuccess(connection, messageId)
+        }
+
+        accountRepository.getWalletByAccountId(connection.accountId, connection.testnet)?.let {
+            pushManager.dAppUnsubscribe(it, listOf(connection))
+        }
+    }
+
+    suspend fun getConnection(
+        accountId: String,
+        testnet: Boolean,
+        appUrl: Uri,
+        type: AppConnectEntity.Type
+    ): AppConnectEntity? {
+        val apps = dAppsRepository.getConnections(accountId, testnet)
+        if (apps.isEmpty()) {
+            return null
+        }
+        val connections = apps.filter {
+            it.key.url == appUrl || it.key.url.host == appUrl.host
+        }.values.flatten()
+        for (connection in connections) {
+            if (connection.type == type) {
+                return connection
+            }
+        }
+        return null
+    }
+
+    fun disconnect(wallet: WalletEntity, appUrl: Uri, type: AppConnectEntity.Type? = null) {
+        scope.launch(Dispatchers.IO) {
+            val connections = dAppsRepository.deleteApp(wallet.accountId, wallet.testnet, appUrl, type)
+            if (connections.isNotEmpty()) {
+                for (connection in connections) {
+                    bridge.sendDisconnect(connection)
+                }
+                pushManager.dAppUnsubscribe(wallet, connections)
+            }
+            withContext(Dispatchers.Main.immediate) {
+                reconnectBridge()
+            }
+        }
+    }
+
+    suspend fun clear(wallet: WalletEntity) = withContext(Dispatchers.IO) {
+        val connections = dAppsRepository.deleteApps(wallet.accountId, wallet.testnet)
+        for (connection in connections) {
+            bridge.sendDisconnect(connection)
+        }
+        pushManager.dAppUnsubscribe(wallet, connections)
+    }
+
+    suspend fun sendBridgeError(connection: AppConnectEntity, error: BridgeError, id: Long) {
+        bridge.sendError(connection, error, id)
+        setLastAppRequestId(connection.clientId, id)
+    }
+
+    suspend fun sendTransactionResponseSuccess(connection: AppConnectEntity, boc: String, id: Long) {
+        bridge.sendTransactionResponseSuccess(connection, boc, id)
+        setLastAppRequestId(connection.clientId, id)
+    }
+
+    suspend fun sendSignDataResponseSuccess(connection: AppConnectEntity, proof: TONProof.Result, address: String, payload: SignDataRequestPayload, id: Long) {
+        bridge.sendSignDataResponseSuccess(connection, proof, address, payload, id)
+        setLastAppRequestId(connection.clientId, id)
+    }
+
+    fun isPushEnabled(wallet: WalletEntity, appUrl: Uri): Boolean {
+        return dAppsRepository.isPushEnabled(wallet.accountId, wallet.testnet, appUrl)
+    }
+
+    private suspend fun newConnect(
+        wallet: WalletEntity,
+        keyPair: CryptoBox.KeyPair,
+        clientId: String,
+        appUrl: Uri,
+        proof: TONProof.Result?,
+        pushEnabled: Boolean,
+        type: AppConnectEntity.Type
+    ): AppConnectEntity = withContext(Dispatchers.IO) {
+        val timestamp = proof?.timestamp ?: (System.currentTimeMillis() / 1000L)
+        val connection = AppConnectEntity(
+            accountId = wallet.accountId,
+            testnet = wallet.testnet,
+            clientId = clientId,
+            type = type,
+            appUrl = appUrl,
+            keyPair = keyPair,
+            proofSignature = proof?.signature,
+            timestamp = timestamp,
+            proofPayload = proof?.payload,
+            pushEnabled = pushEnabled
+        )
+        if (!dAppsRepository.newConnect(connection)) {
+            throw Exception("Failed to save connection")
+        }
+        connection
+    }
+
+    fun processDeeplink(
+        context: Context,
+        uri: Uri,
+        fromQR: Boolean,
+        refSource: Uri?,
+        fromPackageName: String?
+    ): Uri? {
+        val returnUri = TonConnect.parseReturn(uri.getQueryParameter("ret"), refSource)
+        try {
+            val activity = context.activity ?: throw IllegalArgumentException("Context must be an Activity")
+            val normalizedUri = normalizeUri(uri)
+            val tonConnect = TonConnect.parse(
+                uri = normalizedUri,
+                refSource = refSource,
+                fromQR = fromQR,
+                returnUri = returnUri,
+                fromPackageName = fromPackageName
+            )
+
+            scope.launch {
+                if (!isScam(context, WalletEntity.EMPTY, uri, normalizedUri, tonConnect.manifestUrl.toUri())) {
+                    connectRemoteApp(activity, tonConnect)
+                }
+            }
+            return null
+        } catch (e: Exception) {
+            if (uri.isEmptyQuery || uri.hasQuery("open") || uri.hasQuery("ret")) {
+                return returnUri
+            } else {
+                context.showToast(Localization.invalid_link)
+                return null
+            }
+        }
+    }
+
+    private suspend fun connectRemoteApp(activity: NavigationActivity, tonConnect: TonConnect) {
+        val keyPair = CryptoBox.keyPair()
+        val message = launchConnectFlow(activity, tonConnect, keyPair, null)
+        bridge.send(tonConnect.clientId, keyPair, message.toString())
+    }
+
+    suspend fun launchConnectFlow(
+        activity: NavigationActivity,
+        tonConnect: TonConnect,
+        keyPair: CryptoBox.KeyPair = CryptoBox.keyPair(),
+        wallet: WalletEntity?,
+        forceConnect: Boolean = false
+    ): JSONObject = withContext(Dispatchers.IO) {
+        if (tonConnect.request.items.isEmpty()) {
+            return@withContext JsonBuilder.connectEventError(BridgeError.badRequest("Empty value provided in required field \"items\""))
+        }
+
+        val clientId = tonConnect.clientId
+        var appUrl = Uri.EMPTY
+        try {
+            val app = readManifest(tonConnect.manifestUrl)
+            appUrl = app.url
+
+            // For in-page (injected) connections, the manifest identity must actually
+            // belong to the page asking to connect. Otherwise any site could present a
+            // well-known dApp's manifest and have the confirmation UI show that dApp's
+            // name/icon (phishing). Remote (QR/deeplink) connections have no WebView
+            // origin to compare against, so this only applies to jsInject.
+            if (tonConnect.jsInject && !isManifestOriginTrusted(tonConnect.origin, app.url)) {
+                return@withContext JsonBuilder.connectEventError(BridgeError.appManifestContentError())
+            }
+
+            if (isScam(activity, wallet ?: WalletEntity.EMPTY, app.iconUrl.toUri(), app.url)) {
+                return@withContext JsonBuilder.connectEventError(BridgeError.badRequest("client error"))
+            }
+
+            val response = if (forceConnect && wallet != null) {
+                TonConnectResponse(
+                    notifications = true,
+                    proof = null,
+                    wallet = wallet,
+                    proofError = null
+                )
+            } else {
+                val screen = TonConnectScreen.newInstance(
+                    app = app,
+                    proofPayload = tonConnect.proofPayload,
+                    returnUri = tonConnect.returnUri,
+                    wallet = wallet,
+                    fromPackageName = tonConnect.fromPackageName
+                )
+                val bundle = activity.addForResult(screen)
+                screen.contract.parseResult(bundle)
+            }
+
+            val connect = newConnect(
+                wallet = response.wallet,
+                keyPair = keyPair,
+                clientId = clientId,
+                appUrl = app.url,
+                proof = response.proof,
+                pushEnabled = response.notifications,
+                type = if (tonConnect.jsInject) AppConnectEntity.Type.Internal else AppConnectEntity.Type.External
+            )
+
+            recentlyConnectedClients[clientId] = System.currentTimeMillis()
+
+            withContext(Dispatchers.Main.immediate) {
+                reconnectBridge()
+
+                DAppPushToggleWorker.run(
+                    context = activity,
+                    wallet = response.wallet,
+                    appUrl = app.url,
+                    enable = response.notifications
+                )
+            }
+
+            JsonBuilder.connectEventSuccess(
+                wallet = response.wallet,
+                proof = response.proof,
+                proofError = response.proofError,
+                activity.appVersionName
+            )
+        } catch (e: CancellationException) {
+            wallet?.let { showLogoutAppBar(it, activity, appUrl) }
+            JsonBuilder.connectEventError(BridgeError.userDeclinedTransaction())
+        } catch (e: ManifestException) {
+            if (e is ManifestException.NotFound) {
+                JsonBuilder.connectEventError(BridgeError.appManifestNotFound())
+            } else {
+                JsonBuilder.connectEventError(BridgeError.appManifestContentError())
+            }
+        } catch (e: Throwable) {
+            CrashReporter.recordException(e)
+            JsonBuilder.connectEventError(BridgeError.unknown(e.bestMessage))
+        }
+    }
+
+    suspend fun showLogoutAppBar(wallet: WalletEntity, context: Context, url: Uri) = withContext(Dispatchers.Main.immediate) {
+        val connections = dAppsRepository.getConnections(wallet.accountId, wallet.testnet).flatMap {
+            it.value
+        }.filter { it.accountId.equalsAddress(wallet.accountId) && it.testnet == wallet.testnet }
+
+        if (connections.isNotEmpty()) {
+            val text = context.getString(Localization.disconnect_dapp_confirm, url.host)
+            SnackBarView.show(context, text) { disconnect(wallet, url, null) }
+        }
+    }
+
+    suspend fun isScam(context: Context, wallet: WalletEntity, vararg uris: Uri): Boolean {
+        if (settingsRepository.isSafeModeEnabled(api) && safeModeClient.isHasScamUris(*uris)) {
+            withContext(Dispatchers.Main) {
+                TonConnectSafeModeDialog(context).show(wallet)
+            }
+            return true
+        }
+        return false
+    }
+
+    /**
+     * The manifest's app URL must share a registrable domain with the page that requested
+     * the connection. Equal hosts pass; a host that is a sub/parent domain of the other
+     * passes (e.g. app.example.com vs example.com); unrelated hosts are rejected.
+     */
+    private fun isManifestOriginTrusted(origin: Uri?, appUrl: Uri): Boolean {
+        val originHost = origin?.host?.lowercase()?.removePrefix("www.")
+        val appHost = appUrl.host?.lowercase()?.removePrefix("www.")
+        if (originHost.isNullOrBlank() || appHost.isNullOrBlank()) {
+            return false
+        }
+        return originHost == appHost ||
+            originHost.endsWith(".$appHost") ||
+            appHost.endsWith(".$originHost")
+    }
+
+    private suspend fun readManifest(url: String): AppEntity {
+        return fetchManifest(url)
+    }
+
+    private suspend fun fetchManifest(url: String): AppEntity {
+        val headers = ArrayMap<String, String>().apply {
+            set("Connection", "close")
+        }
+        val response = api.defaultHttpClient.simple(url, headers)
+        if (response.code != 200) {
+            throw ManifestException.NotFound(response.code)
+        }
+        val body = response.body.string()
+        try {
+            val app = AppEntity(body)
+            dAppsRepository.insertApp(app)
+            return app
+        } catch (e: Throwable) {
+            throw ManifestException.FailedParse(e)
+        }
+    }
+
+    companion object {
+        private const val THROTTLE_DELAY_MS = 5000L
+
+        private const val TOS_CONNECT_PREFIX = "tos://ton-connect"
+
+        private val compatiblePrefixes = listOf(
+            "tc://",
+            "tonkeeper://ton-connect",
+            "https://app.tos.network/ton-connect",
+        )
+
+        fun isTonConnectDeepLink(
+            uri: Uri
+        ): Boolean {
+            return uri.scheme?.lowercase() == "tc" || uri.path?.lowercase() == "/ton-connect" || uri.host?.lowercase() == "ton-connect"
+        }
+
+        private fun normalizeUri(uri: Uri): Uri {
+            val value = uri.toString()
+            for (prefix in compatiblePrefixes) {
+                if (value.startsWith(prefix, ignoreCase = true)) {
+                    return value.replace(prefix, TOS_CONNECT_PREFIX, ignoreCase = true).toUri()
+                }
+            }
+            return uri
+        }
+
+    }
+}

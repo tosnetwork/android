@@ -6,8 +6,8 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Shader
-import com.tonapps.uikit.color.backgroundContentColor
-import com.tonapps.uikit.color.separatorCommonColor
+import network.tos.uikit.color.backgroundContentColor
+import network.tos.uikit.color.separatorCommonColor
 import uikit.base.BaseDrawable
 import uikit.extensions.dp
 

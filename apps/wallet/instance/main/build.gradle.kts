@@ -12,7 +12,7 @@ val isCI = project.hasProperty("android.injected.signing.store.file")
 var isAPK = gradle.startParameter.projectProperties["isApk"]?.toBoolean() ?: false
 
 android {
-    namespace = Build.namespacePrefix("TonKeeper")
+    namespace = Build.namespacePrefix("wallet")
     compileSdk = Build.compileSdkVersion
 
     defaultConfig {

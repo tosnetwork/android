@@ -51,7 +51,7 @@ kotlin {
 
 android {
     compileSdk = Build.compileSdkVersion
-    namespace = "com.tonkeeper.core"
+    namespace = "network.tos.core"
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     defaultConfig {
         minSdk = Build.minSdkVersion

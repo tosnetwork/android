@@ -15,7 +15,7 @@ import android.util.Log
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
-import com.tonapps.uikit.color.iconSecondaryColor
+import network.tos.uikit.color.iconSecondaryColor
 import uikit.R
 import uikit.extensions.dp
 import uikit.extensions.isVisibleForUser

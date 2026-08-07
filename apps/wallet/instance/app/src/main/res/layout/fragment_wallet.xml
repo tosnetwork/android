@@ -4,21 +4,21 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.tonapps.tonkeeper.ui.component.MainSwipeRefreshLayout
+    <network.tos.wallet.app.ui.component.MainSwipeRefreshLayout
         android:id="@+id/refresh"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <com.tonapps.tonkeeper.ui.component.MainRecyclerView
+        <network.tos.wallet.app.ui.component.MainRecyclerView
             android:id="@+id/list"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:padding="@dimen/offsetMedium"
             android:clipToPadding="false"/>
 
-    </com.tonapps.tonkeeper.ui.component.MainSwipeRefreshLayout>
+    </network.tos.wallet.app.ui.component.MainSwipeRefreshLayout>
 
-    <com.tonapps.tonkeeper.ui.component.wallet.WalletHeaderView
+    <network.tos.wallet.app.ui.component.wallet.WalletHeaderView
         android:id="@+id/header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>

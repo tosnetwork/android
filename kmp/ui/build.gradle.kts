@@ -52,7 +52,7 @@ compose.resources {
 
 android {
     compileSdk = Build.compileSdkVersion
-    namespace = "com.tonkeeper.ui"
+    namespace = "network.tos.ui"
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     defaultConfig {
         minSdk = Build.minSdkVersion

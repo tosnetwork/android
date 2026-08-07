@@ -27,7 +27,7 @@
         android:layout_marginHorizontal="@dimen/offsetMedium"
         android:background="@drawable/bg_qr"
         android:padding="24dp">
-        <com.tonapps.qr.ui.QRView
+        <network.tos.qr.ui.QRView
             android:id="@+id/qr"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>

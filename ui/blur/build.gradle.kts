@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.tonapps.ui.blur"
+    namespace = "network.tos.ui.blur"
     compileSdk = Build.compileSdkVersion
     ndkVersion = Build.ndkVersion
 

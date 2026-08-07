@@ -8,7 +8,7 @@ import android.text.TextPaint
 import android.util.Log
 import android.view.Gravity
 import androidx.core.content.res.ResourcesCompat
-import com.tonapps.uikit.color.textSecondaryColor
+import network.tos.uikit.color.textSecondaryColor
 import uikit.drawable.TextDrawable
 import uikit.extensions.dp
 import uikit.extensions.getDimension

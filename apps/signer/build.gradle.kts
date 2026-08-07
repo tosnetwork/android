@@ -10,7 +10,9 @@ android {
     compileSdk = Build.compileSdkVersion
 
     defaultConfig {
-        applicationId = Build.namespacePrefix("signer")
+        // Compatibility boundary: changing this published ID would create a second app
+        // instead of upgrading existing signer installations.
+        applicationId = "com.tonapps.signer"
         minSdk = 26
         targetSdk = Build.compileSdkVersion
         versionCode = 23
@@ -83,4 +85,3 @@ dependencies {
     implementation(project(ProjectModules.Lib.icu))
     implementation(libs.koin.core)
 }
-

@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = Build.namespacePrefix("tonkeeperx")
+    namespace = Build.namespacePrefix("wallet.app")
     compileSdk = Build.compileSdkVersion
     ndkVersion = Build.ndkVersion
 

@@ -7,8 +7,8 @@ import android.util.AttributeSet
 import android.view.Gravity
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.LinearLayoutCompat
-import com.tonapps.uikit.color.textPrimaryColor
-import com.tonapps.uikit.color.textSecondaryColor
+import network.tos.uikit.color.textPrimaryColor
+import network.tos.uikit.color.textSecondaryColor
 import uikit.R
 import uikit.extensions.dp
 import uikit.extensions.setColor

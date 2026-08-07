@@ -6,8 +6,8 @@ import android.util.AttributeSet
 import android.widget.LinearLayout
 import androidx.core.view.setPadding
 import com.google.android.material.tabs.TabLayout
-import com.tonapps.uikit.color.backgroundContentTintColor
-import com.tonapps.uikit.color.stateList
+import network.tos.uikit.color.backgroundContentTintColor
+import network.tos.uikit.color.stateList
 import uikit.R
 import uikit.extensions.getDimensionPixelSize
 import uikit.extensions.setPaddingHorizontal

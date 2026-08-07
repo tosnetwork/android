@@ -20,7 +20,7 @@
             android:paddingHorizontal="12dp"
             android:background="@drawable/bg_wallet_bubble">
             
-            <com.tonapps.emoji.ui.EmojiView
+            <network.tos.emoji.ui.EmojiView
                 android:id="@+id/wallet_emoji"
                 android:layout_width="20dp"
                 android:layout_height="20dp"

@@ -52,31 +52,31 @@
                 android:layout_marginHorizontal="@dimen/offsetMedium"
                 android:background="@drawable/bg_content_tint_16">
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_wallet"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/wallet"/>
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_recipient"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/recipient"/>
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_amount"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/amount"/>
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_apy"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/staking_apy"/>
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_fee"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

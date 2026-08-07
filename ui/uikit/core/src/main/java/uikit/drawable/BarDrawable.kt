@@ -5,7 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.SystemClock
-import com.tonapps.uikit.color.separatorCommonColor
+import network.tos.uikit.color.separatorCommonColor
 import uikit.base.BaseDrawable
 import uikit.extensions.dp
 import kotlin.math.roundToInt

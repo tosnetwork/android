@@ -7,7 +7,7 @@ import android.view.ViewGroup
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
-import com.tonapps.uikit.list.LinearLayoutManager
+import network.tos.uikit.list.LinearLayoutManager
 import uikit.R
 import uikit.extensions.useAttributes
 

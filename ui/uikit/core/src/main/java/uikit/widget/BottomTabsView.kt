@@ -12,9 +12,9 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.core.view.WindowInsetsCompat
-import com.tonapps.uikit.color.backgroundTransparentColor
-import com.tonapps.uikit.color.tabBarActiveIconColor
-import com.tonapps.uikit.color.tabBarInactiveIconColor
+import network.tos.uikit.color.backgroundTransparentColor
+import network.tos.uikit.color.tabBarActiveIconColor
+import network.tos.uikit.color.tabBarInactiveIconColor
 import uikit.R
 import uikit.drawable.FooterDrawable
 import uikit.extensions.createRipple

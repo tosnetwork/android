@@ -13,13 +13,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-            <com.tonapps.tonkeeper.ui.screen.onramp.main.view.CurrencyInputView
+            <network.tos.wallet.app.ui.screen.onramp.main.view.CurrencyInputView
                 android:id="@+id/sell_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:title="@string/send"/>
 
-            <com.tonapps.tonkeeper.ui.screen.onramp.main.view.CurrencyInputView
+            <network.tos.wallet.app.ui.screen.onramp.main.view.CurrencyInputView
                 android:id="@+id/buy_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

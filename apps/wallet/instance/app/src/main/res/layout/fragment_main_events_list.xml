@@ -3,13 +3,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.tonapps.tonkeeper.ui.component.MainSwipeRefreshLayout
+    <network.tos.wallet.app.ui.component.MainSwipeRefreshLayout
         android:visibility="gone"
         android:id="@+id/refresh"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <com.tonapps.tonkeeper.ui.component.MainRecyclerView
+        <network.tos.wallet.app.ui.component.MainRecyclerView
             android:id="@+id/list"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -17,7 +17,7 @@
             android:clipToPadding="false"
             android:topOffset="112dp"/>
 
-    </com.tonapps.tonkeeper.ui.component.MainSwipeRefreshLayout>
+    </network.tos.wallet.app.ui.component.MainSwipeRefreshLayout>
 
     <uikit.widget.EmptyLayout
         android:id="@+id/empty"

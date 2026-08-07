@@ -60,7 +60,7 @@
                 android:layout_marginHorizontal="@dimen/offsetLarge"
                 android:layout_marginVertical="16dp">
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_1"
                     android:layout_width="match_parent"
@@ -71,7 +71,7 @@
                     android:maxLines="1"
                     android:tag="1"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_2"
                     android:layout_width="match_parent"
@@ -83,7 +83,7 @@
                     android:maxLines="1"
                     android:tag="2"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_3"
                     android:layout_width="match_parent"
@@ -95,7 +95,7 @@
                     android:maxLines="1"
                     android:tag="3"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_4"
                     android:layout_width="match_parent"
@@ -107,7 +107,7 @@
                     android:maxLines="1"
                     android:tag="4"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_5"
                     android:layout_width="match_parent"
@@ -119,7 +119,7 @@
                     android:maxLines="1"
                     android:tag="5"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_6"
                     android:layout_width="match_parent"
@@ -131,7 +131,7 @@
                     android:maxLines="1"
                     android:tag="6"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_7"
                     android:layout_width="match_parent"
@@ -143,7 +143,7 @@
                     android:maxLines="1"
                     android:tag="7"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_8"
                     android:layout_width="match_parent"
@@ -155,7 +155,7 @@
                     android:maxLines="1"
                     android:tag="8"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_9"
                     android:layout_width="match_parent"
@@ -167,7 +167,7 @@
                     android:maxLines="1"
                     android:tag="9"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_10"
                     android:layout_width="match_parent"
@@ -179,7 +179,7 @@
                     android:maxLines="1"
                     android:tag="10"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_11"
                     android:layout_width="match_parent"
@@ -191,7 +191,7 @@
                     android:maxLines="1"
                     android:tag="11"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_12"
                     android:layout_width="match_parent"
@@ -203,7 +203,7 @@
                     android:maxLines="1"
                     android:tag="12"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_13"
                     android:layout_width="match_parent"
@@ -215,7 +215,7 @@
                     android:maxLines="1"
                     android:tag="13"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_14"
                     android:layout_width="match_parent"
@@ -227,7 +227,7 @@
                     android:maxLines="1"
                     android:tag="14"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_15"
                     android:layout_width="match_parent"
@@ -239,7 +239,7 @@
                     android:maxLines="1"
                     android:tag="15"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_16"
                     android:layout_width="match_parent"
@@ -251,7 +251,7 @@
                     android:maxLines="1"
                     android:tag="16"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_17"
                     android:layout_width="match_parent"
@@ -263,7 +263,7 @@
                     android:maxLines="1"
                     android:tag="17"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_18"
                     android:layout_width="match_parent"
@@ -275,7 +275,7 @@
                     android:maxLines="1"
                     android:tag="18"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_19"
                     android:layout_width="match_parent"
@@ -287,7 +287,7 @@
                     android:maxLines="1"
                     android:tag="19"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_20"
                     android:layout_width="match_parent"
@@ -299,7 +299,7 @@
                     android:maxLines="1"
                     android:tag="20"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_21"
                     android:layout_width="match_parent"
@@ -311,7 +311,7 @@
                     android:maxLines="1"
                     android:tag="21"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_22"
                     android:layout_width="match_parent"
@@ -323,7 +323,7 @@
                     android:maxLines="1"
                     android:tag="22"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_23"
                     android:layout_width="match_parent"
@@ -335,7 +335,7 @@
                     android:maxLines="1"
                     android:tag="23"/>
 
-                <com.tonapps.tonkeeper.ui.component.WordEditText
+                <network.tos.wallet.app.ui.component.WordEditText
                     style="@style/Widget.App.WordEditText"
                     android:id="@+id/word_24"
                     android:layout_width="match_parent"

@@ -19,7 +19,7 @@
         android:title="@string/customize_wallet_title"
         android:description="@string/customize_wallet_subtitle"/>
 
-    <com.tonapps.tonkeeper.ui.component.label.LabelEditorView
+    <network.tos.wallet.app.ui.component.label.LabelEditorView
         android:id="@+id/editor"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

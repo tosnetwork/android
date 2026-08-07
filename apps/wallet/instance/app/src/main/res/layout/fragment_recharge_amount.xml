@@ -10,7 +10,7 @@
         android:background="@drawable/bg_content"
         android:paddingVertical="44dp">
 
-        <com.tonapps.tonkeeper.ui.component.coin.CoinEditText
+        <network.tos.wallet.app.ui.component.coin.CoinEditText
             android:id="@+id/amount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

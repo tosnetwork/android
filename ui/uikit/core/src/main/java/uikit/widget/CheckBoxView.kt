@@ -6,10 +6,10 @@ import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.View
-import com.tonapps.uikit.color.backgroundContentTintColor
-import com.tonapps.uikit.color.buttonPrimaryBackgroundColor
-import com.tonapps.uikit.color.iconTertiaryColor
-import com.tonapps.uikit.icon.UIKitIcon
+import network.tos.uikit.color.backgroundContentTintColor
+import network.tos.uikit.color.buttonPrimaryBackgroundColor
+import network.tos.uikit.color.iconTertiaryColor
+import network.tos.uikit.icon.UIKitIcon
 import uikit.extensions.dp
 import uikit.extensions.getDrawable
 
