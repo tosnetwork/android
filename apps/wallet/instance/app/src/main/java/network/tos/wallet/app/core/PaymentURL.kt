@@ -14,7 +14,7 @@ class PaymentURL(val uri: Uri) {
 
     val action: String?
         get() {
-            return if (uri.scheme == "ton") {
+            return if (uri.scheme == "tos" || uri.scheme == "ton") {
                 uri.host
             } else {
                 uri.pathSegments.firstOrNull()

@@ -8,7 +8,7 @@ import java.nio.charset.Charset
 class NFCHelper(context: Context) {
 
     fun addWallet(address: String) {
-        val deepLink = "ton://transfer/$address"
+        val deepLink = "tos://transfer/$address"
 
         NdefRecord(
             NdefRecord.TNF_ABSOLUTE_URI,

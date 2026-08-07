@@ -38,6 +38,12 @@ if grep -Fq '<data android:scheme="tonkeeper"' "$manifest"; then
   fail "unreleased wallet registers the legacy Tonkeeper scheme"
 fi
 
+qr_screen='apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/qr/QRScreen.kt'
+grep -Fq '"tos://transfer/${address}"' "$qr_screen" || fail "receive QR does not emit the TOS payment scheme"
+if grep -R -I -n -F '"ton://transfer/' apps/wallet/instance/app/src/main/java; then
+  fail "first-party wallet code still emits a TON payment link"
+fi
+
 if grep -R -I -n -E 'git@github\.com:tonkeeper/|github\.com/tonkeeper/[^ )"[:space:]]+\.git' .github/workflows; then
   fail "workflow pushes to or checks out an upstream Tonkeeper repository"
 fi

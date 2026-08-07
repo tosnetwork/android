@@ -15,14 +15,12 @@ import network.tos.extensions.toParcel
 import network.tos.sqlite.withTransaction
 import network.tos.wallet.data.account.Wallet
 import network.tos.wallet.data.account.entities.WalletEntity
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.ton.api.pub.PublicKeyEd25519
 
 internal class DatabaseSource(
     context: Context,
-    private val scope: CoroutineScope
 ): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
     private companion object {
@@ -111,11 +109,11 @@ internal class DatabaseSource(
         }
     }
 
-    suspend fun clearAccounts() = withContext(scope.coroutineContext) {
+    suspend fun clearAccounts() = withContext(Dispatchers.IO) {
         writableDatabase.delete(WALLET_TABLE_NAME, null, null)
     }
 
-    suspend fun setInitialized(id: String, initialized: Boolean) = withContext(scope.coroutineContext) {
+    suspend fun setInitialized(id: String, initialized: Boolean) = withContext(Dispatchers.IO) {
         val values = ContentValues()
         values.put(WALLET_TABLE_INITIALIZED_COLUMN, if (initialized) 1 else 0)
         val count = writableDatabase.update(WALLET_TABLE_NAME, values, "$WALLET_TABLE_ID_COLUMN = ?", arrayOf(id))
@@ -124,14 +122,14 @@ internal class DatabaseSource(
         }
     }
 
-    suspend fun deleteAccount(id: String) = withContext(scope.coroutineContext) {
+    suspend fun deleteAccount(id: String) = withContext(Dispatchers.IO) {
         val count = writableDatabase.delete(WALLET_TABLE_NAME, "$WALLET_TABLE_ID_COLUMN = ?", arrayOf(id))
         if (count == 0) {
             throw IllegalStateException("Account with id $id not found")
         }
     }
 
-    suspend fun editAccount(id: String, label: Wallet.Label) = withContext(scope.coroutineContext) {
+    suspend fun editAccount(id: String, label: Wallet.Label) = withContext(Dispatchers.IO) {
         val values = ContentValues()
         values.put(WALLET_TABLE_LABEL_COLUMN, label.toByteArray())
         val count = writableDatabase.update(WALLET_TABLE_NAME, values, "$WALLET_TABLE_ID_COLUMN = ?", arrayOf(id))
@@ -140,7 +138,7 @@ internal class DatabaseSource(
         }
     }
 
-    suspend fun insertAccounts(wallets: List<WalletEntity>) = withContext(scope.coroutineContext) {
+    suspend fun insertAccounts(wallets: List<WalletEntity>) = withContext(Dispatchers.IO) {
         writableDatabase.withTransaction {
             for (wallet in wallets) {
                 writableDatabase.insertOrThrow(WALLET_TABLE_NAME, null, wallet.toValues())
@@ -148,7 +146,7 @@ internal class DatabaseSource(
         }
     }
 
-    suspend fun getAccounts(): List<WalletEntity> = withContext(scope.coroutineContext) {
+    suspend fun getAccounts(): List<WalletEntity> = withContext(Dispatchers.IO) {
         val query = "SELECT $walletFields FROM $WALLET_TABLE_NAME LIMIT 1000;"
         val cursor = readableDatabase.rawQuery(query, null)
         if (cursor.isNullOrEmpty()) {
@@ -159,7 +157,7 @@ internal class DatabaseSource(
         }
     }
 
-    suspend fun getAccount(id: String): WalletEntity? = withContext(scope.coroutineContext) {
+    suspend fun getAccount(id: String): WalletEntity? = withContext(Dispatchers.IO) {
         if (id.isNotBlank()) {
             val query = "SELECT $walletFields FROM $WALLET_TABLE_NAME WHERE $WALLET_TABLE_ID_COLUMN = ?;"
             val cursor = readableDatabase.rawQuery(query, arrayOf(id))
@@ -173,7 +171,7 @@ internal class DatabaseSource(
         }
     }
 
-    suspend fun getFirstAccountId(): String? = withContext(scope.coroutineContext) {
+    suspend fun getFirstAccountId(): String? = withContext(Dispatchers.IO) {
         val query = "SELECT $WALLET_TABLE_ID_COLUMN FROM $WALLET_TABLE_NAME LIMIT 1;"
         val cursor = readableDatabase.rawQuery(query, null)
         val idIndex = cursor.getColumnIndex(WALLET_TABLE_ID_COLUMN)

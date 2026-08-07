@@ -44,12 +44,12 @@ class QRScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet), BaseFragment
         analytics?.simpleTrackEvent("receive_open")
     }
 
-    private fun getQrContent(address: String, token: TokenEntity): String {
+    fun getQrContent(address: String, token: TokenEntity): String {
         if (token.isTrc20) {
             return address
         }
 
-        var value = "ton://transfer/${address}"
+        var value = "tos://transfer/${address}"
         if (!token.isTon) {
             value += "?jetton=${
                 token.address.toUserFriendly(
@@ -62,9 +62,7 @@ class QRScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet), BaseFragment
     }
 
     private fun share() {
-        val intent = Intent(Intent.ACTION_SEND)
-        intent.type = "text/plain"
-        intent.putExtra(Intent.EXTRA_TEXT, viewModel.address)
+        val intent = shareIntent(viewModel.address)
         startActivity(Intent.createChooser(intent, getString(Localization.share)))
     }
 
@@ -121,6 +119,11 @@ class QRScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet), BaseFragment
 
         private const val ARG_TOKEN = "token"
         private const val ARG_HAS_TOKEN = "has_token"
+
+        fun shareIntent(address: String) = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, address)
+        }
 
         fun newInstance(
             wallet: WalletEntity,

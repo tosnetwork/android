@@ -68,7 +68,7 @@ class AccountRepository(
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val database = DatabaseSource(context, scope)
+    private val database = DatabaseSource(context)
     private val storageSource: StorageSource by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { StorageSource(context) }
     private val vaultSource: VaultSource by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { VaultSource(context) }
     private val migrationHelper = RNMigrationHelper(rnLegacy)
@@ -203,7 +203,7 @@ class AccountRepository(
         }
     }
 
-    suspend fun requestTonProofToken(wallet: WalletEntity): String? = withContext(scope.coroutineContext) {
+    suspend fun requestTonProofToken(wallet: WalletEntity): String? = withContext(Dispatchers.IO) {
         try {
             if (keyguardManager.isDeviceLocked) {
                 return@withContext null
@@ -475,12 +475,12 @@ class AccountRepository(
         }
     }
 
-    suspend fun delete(wallet: WalletEntity) = withContext(scope.coroutineContext) {
+    suspend fun delete(wallet: WalletEntity) = withContext(Dispatchers.IO) {
         database.deleteAccount(wallet.id)
         setSelectedWallet(database.getFirstAccountId())
     }
 
-    suspend fun logout() = withContext(scope.coroutineContext) {
+    suspend fun logout() = withContext(Dispatchers.IO) {
         database.clearAccounts()
         setSelectedWallet(null)
     }

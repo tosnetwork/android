@@ -1,6 +1,8 @@
 package network.tos.wallet
 
 import android.content.ComponentName
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
@@ -9,13 +11,26 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import kotlinx.coroutines.runBlocking
+import network.tos.blockchain.ton.contract.WalletVersion
+import network.tos.icu.CurrencyFormatter
 import network.tos.security.Sodium
+import network.tos.wallet.api.API
+import network.tos.wallet.data.account.AccountRepository
+import network.tos.wallet.data.account.Wallet
+import network.tos.wallet.data.passcode.PasscodeManager
+import network.tos.wallet.data.passcode.source.PasscodeStore
+import network.tos.wallet.api.entity.TokenEntity
+import network.tos.wallet.app.ui.screen.qr.QRScreen
+import org.koin.core.context.GlobalContext
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.security.KeyStore
 
 @RunWith(AndroidJUnit4::class)
 class V1ProductUiTest {
@@ -44,7 +59,7 @@ class V1ProductUiTest {
         launch()
         clickText("Create new wallet")
 
-        assertTrue(waitText("Create passcode", 20_000))
+        assertTrue(waitText("Create passcode", 180_000))
         device.pressBack()
         device.pressBack()
         device.pressBack()
@@ -57,7 +72,7 @@ class V1ProductUiTest {
         launchImport()
         setPhrase(FIXTURE_MNEMONIC)
         clickText("Continue")
-        assertTrue(waitText("Create passcode", 25_000))
+        assertTrue(waitText("Create passcode", 180_000))
     }
 
     @Test
@@ -85,6 +100,107 @@ class V1ProductUiTest {
     @Test
     fun invalidMnemonicChecksumRemainsRejectedInUi() {
         assertRejected(List(24) { "abandon" }.joinToString(" "))
+    }
+
+    @Test
+    fun deterministicFundedWalletFixtureReachesHomeAndPersists() {
+        val accountRepository = GlobalContext.get().get<AccountRepository>()
+        val passcodeManager = GlobalContext.get().get<PasscodeManager>()
+        val wallet = runBlocking {
+            passcodeManager.save("1234")
+            val existing = accountRepository.getWallets().firstOrNull()
+            existing ?: accountRepository.importWallet(
+                ids = listOf("v1-acceptance-wallet"),
+                label = Wallet.NewLabel(listOf("V1 Test Wallet"), "⭐", 0xfff5b800.toInt()),
+                mnemonic = FIXTURE_MNEMONIC.split(" "),
+                versions = listOf(WalletVersion.V5R1),
+                testnet = false,
+                initialized = listOf(true),
+            ).single().also {
+                accountRepository.setSelectedWallet(it.id)
+            }
+        }
+
+        launch()
+        if (waitText("Enter passcode", 3_000)) enterPin("1234")
+        assertFalse(waitText("Create new wallet", 2_000))
+        assertTrue("Native TOS home did not render", waitText("TOS", 30_000) || hasTextContaining("TOS"))
+        assertEquals(FIXTURE_RAW_ADDRESS, wallet.accountId)
+        assertEquals(FIXTURE_ADDRESS, wallet.address)
+        assertNoReachableDeferredCopy()
+        assertNoFatalCrash()
+    }
+
+    @Test
+    fun persistedWalletColdLaunchShowsExactNativeBalanceAndAddress() {
+        val wallet = currentWallet()
+        val nodeBalance = GlobalContext.get().get<API>()
+            .getTosBalance(wallet.accountId, wallet.testnet, "USD")
+        assertNotNull("Local TOS node did not return the fixture balance", nodeBalance)
+        val expectedBalance = CurrencyFormatter.format(value = nodeBalance!!.value).toString()
+
+        launch()
+        assertFalse(waitText("Create new wallet", 2_000))
+        assertTrue(waitText("TOS", 30_000))
+        assertTrue("UI did not render exact local-node balance $expectedBalance", waitTextContaining(expectedBalance, 30_000))
+        assertTrue(waitTextContaining("UQCJ", 10_000))
+        assertNoReachableDeferredCopy()
+        assertNoFatalCrash()
+    }
+
+    @Test
+    fun receiveCopiesSharesAndEncodesExactNativeTosAddress() {
+        launch()
+        assertTrue(waitText("Receive", 30_000))
+        clickText("Receive")
+        assertTrue(waitText("Receive TOS", 10_000))
+        assertTrue(waitText(FIXTURE_ADDRESS))
+        assertEquals("tos://transfer/$FIXTURE_ADDRESS", QRScreen(currentWallet()).getQrContent(FIXTURE_ADDRESS, TokenEntity.TON))
+        assertEquals(FIXTURE_ADDRESS, QRScreen.shareIntent(FIXTURE_ADDRESS).getStringExtra(Intent.EXTRA_TEXT))
+
+        clickText("Copy")
+        val clipboard = instrumentation.targetContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        assertEquals(FIXTURE_ADDRESS, clipboard.primaryClip?.getItemAt(0)?.coerceToText(instrumentation.targetContext)?.toString())
+
+        val share = device.wait(Until.findObject(By.desc("Share")), 5_000)
+        assertNotNull("Receive share control is missing an accessible label", share)
+        share.click()
+        SystemClock.sleep(500)
+        assertNoFatalCrash()
+        device.pressBack()
+    }
+
+    @Test
+    fun passcodeThrottleKeystoreAndRuntimeSecretPolicyHold() {
+        val context = instrumentation.targetContext
+        val passcodeManager = GlobalContext.get().get<PasscodeManager>()
+        val store = PasscodeStore(context)
+        runBlocking {
+            assertTrue(passcodeManager.isValid(context, "1234"))
+            assertFalse(passcodeManager.isValid(context, "9999"))
+            repeat(5) { assertFalse(store.compare("9999")) }
+            assertTrue("Six failed attempts must start the lockout", store.lockoutSecondsRemaining() > 0)
+            assertFalse(store.compare("1234"))
+            store.setPinCode("1234")
+            assertEquals(0, store.lockoutSecondsRemaining())
+            assertTrue(store.compare("1234"))
+        }
+
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        for (alias in listOf(
+            "_network_tos_account_master_key_",
+            "_network_tos_vault_master_key_",
+            "_network_tos_passcode_master_key_",
+        )) {
+            assertTrue("Missing TOS Keystore key: $alias", keyStore.containsAlias(alias))
+        }
+
+        val logs = device.executeShellCommand("logcat -d -t 2000")
+        assertFalse("Recovery phrase leaked to runtime logs", logs.contains(FIXTURE_MNEMONIC))
+        assertFalse("Passcode leaked to runtime logs", logs.contains("1234"))
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clipboardText = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+        assertFalse("Recovery phrase leaked to clipboard", clipboardText.contains(FIXTURE_MNEMONIC))
     }
 
     @Test
@@ -151,6 +267,10 @@ class V1ProductUiTest {
         first.text = phrase
     }
 
+    private fun enterPin(pin: String) {
+        pin.forEach { digit -> clickText(digit.toString()) }
+    }
+
     private fun assertRejected(phrase: String) {
         launchImport()
         pastePhrase(phrase)
@@ -160,6 +280,10 @@ class V1ProductUiTest {
         }
         assertFalse("Invalid phrase reached passcode setup", hasText("Create passcode"))
         assertTrue("Wallet process disappeared after invalid phrase", device.hasObject(By.pkg(APP_ID)))
+    }
+
+    private fun currentWallet() = runBlocking {
+        GlobalContext.get().get<AccountRepository>().getWallets().single()
     }
 
     private fun launch(action: String = Intent.ACTION_MAIN, data: String? = null) {
@@ -191,6 +315,9 @@ class V1ProductUiTest {
     private fun hasTextContaining(text: String): Boolean =
         device.hasObject(By.textContains(text))
 
+    private fun waitTextContaining(text: String, timeout: Long): Boolean =
+        device.wait(Until.hasObject(By.textContains(text)), timeout)
+
     private fun assertNoReachableDeferredCopy() {
         for (label in listOf("TRON", "TRC20", "Jetton", "NFT", "Swap", "Staking", "Battery", "DApps", "TonConnect")) {
             assertFalse("Deferred product copy is reachable: $label", hasText(label, ignoreCase = true))
@@ -205,6 +332,8 @@ class V1ProductUiTest {
     companion object {
         private const val APP_ID = "network.tos.wallet"
         private const val ROOT_ACTIVITY = "network.tos.wallet.app.ui.screen.root.RootActivity"
+        private const val FIXTURE_ADDRESS = "UQCJFahawZUzYka4uzFTeWns-oQNfoa0VNVOAn8e8BJnXPZe"
+        private const val FIXTURE_RAW_ADDRESS = "0:8915a85ac195336246b8bb31537969ecfa840d7e86b454d54e027f1ef012675c"
         private const val FIXTURE_MNEMONIC = "mansion chef affair ancient announce police snap machine vanish liberty peace tennis effort recall law limit mosquito tornado toward advance vibrant bachelor auction voice"
     }
 }

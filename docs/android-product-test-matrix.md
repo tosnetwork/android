@@ -57,8 +57,8 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
 | APP-01 | Clean emulator launch reaches TOS onboarding | Emulator UI | Passed | `V1ProductUiTest.cleanLaunchUsesTosBrandAndOnlyV1EntryPoints` starts the real activity from cleared app data |
-| APP-02 | Seeded wallet cold launch reaches wallet home | Emulator UI | Not covered | Deterministic seed fixture and test hook are absent |
-| APP-03 | Relaunch preserves wallet and RPC settings | Emulator UI | Not covered | No persistence scenario exists |
+| APP-02 | Seeded wallet cold launch reaches wallet home | Emulator UI | Passed | Real Keystore/vault/account-repository fixture reaches the native funded wallet home |
+| APP-03 | Relaunch preserves wallet and RPC settings | Emulator UI | Partial | A separate instrumentation process proves wallet persistence; RPC-setting persistence remains to be asserted |
 | APP-04 | Background and foreground protect sensitive content | Emulator UI | Not covered | No lifecycle/privacy-shield automation exists |
 | APP-05 | Offline launch shows a recoverable error | Emulator integration | Not covered | No local fault proxy or UI assertion exists |
 | APP-06 | Reconnect refreshes native balance and history | Emulator integration | Not covered | No controlled reconnect scenario exists |
@@ -71,7 +71,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | WAL-02 | Matching passcode creates a wallet; mismatch and cancel do not | Unit + UI | Not covered | No complete creation state-machine test |
 | WAL-03 | Generated recovery phrase has valid words, count, and checksum | Unit | Not covered | Blockchain helper has no dedicated test |
 | WAL-04 | Recovery phrase display and confirmation are authentication-gated | Emulator UI | Not covered | No secret-display UI test |
-| WAL-05 | Valid deterministic TOS phrase imports to the expected address | Unit + UI | Not covered | No end-to-end deterministic import assertion |
+| WAL-05 | Valid deterministic TOS phrase imports to the expected address | Unit + UI | Passed | Repository import through the encrypted vault derives and asserts the funded fixture address, then renders its home |
 | WAL-06 | Whitespace and capitalization normalize safely | Unit | Passed | `TosV1MnemonicTest` pins canonical whitespace/case normalization |
 | WAL-07 | Invalid word count, unknown words, and invalid checksum are rejected | Unit + UI | Passed | JVM vectors plus three isolated malformed-phrase emulator scenarios cover all three classes |
 | WAL-08 | Cancelled creation/import leaves no partial wallet or secret | Emulator storage | Partial | Creation cancellation returns to clean onboarding; import storage cancellation still needs a complete assertion |
@@ -80,24 +80,24 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| SEC-01 | Correct passcode unlocks and wrong passcode remains rejected | Unit + UI | Not covered | No passcode behavior tests |
-| SEC-02 | Retry and lockout behavior matches policy | Unit + UI | Not covered | No deterministic clock/attempt fixture |
+| SEC-01 | Correct passcode unlocks and wrong passcode remains rejected | Emulator integration | Passed | `passcodeThrottleKeystoreAndRuntimeSecretPolicyHold` validates the persisted passcode through the real encrypted store |
+| SEC-02 | Retry and lockout behavior matches policy | Emulator integration | Passed | Six failures trigger the encoded 30-second lockout; attempts during lockout fail and resetting the PIN clears the throttle |
 | SEC-03 | Recovery phrase requires authentication | Emulator UI | Not covered | No instrumentation coverage |
-| SEC-04 | Secret and passcode never appear in logs or clipboard unexpectedly | Static + runtime | Not covered | No logcat/clipboard secret scanner |
-| SEC-05 | Stored secrets use expected Android Keystore protections | Unit + emulator | Not covered | TOS-native aliases exist; cryptographic policy is not asserted |
+| SEC-04 | Secret and passcode never appear in logs or clipboard unexpectedly | Runtime | Passed | Persistent-wallet emulator gate scans logcat and clipboard for the full fixture phrase and passcode |
+| SEC-05 | Stored secrets use expected Android Keystore protections | Static + emulator | Passed | Runtime asserts account, vault, and passcode Android Keystore entries; the static boundary pins their TOS-native aliases and unlocked-device policy |
 | SEC-06 | Sodium encryption and decryption execute through JNI | Native unit | Passed | Emulator JNI round trip; regression also pins the exact plaintext length after MAC removal |
 
 ## F. Native TOS home and receive
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
-| RCV-01 | Home shows exact fixture address, TOS symbol, and balance | Emulator integration | Not covered | No funded emulator fixture |
+| RCV-01 | Home shows exact fixture address, TOS symbol, and balance | Emulator integration | Passed | Cold launch reads the fixture balance from the local node, formats it with the product formatter, and asserts the exact UI value plus address and TOS symbol |
 | RCV-02 | Zero balance and empty history render correctly | Emulator UI | Not covered | No zero-state UI test |
 | RCV-03 | Refresh updates balance after a local native transfer | Emulator + localnet | Not covered | No localnet controller wired to Android tests |
 | RCV-04 | TOS formatting covers zero, fractions, and supported maximum | Unit | Not covered | No formatter boundary suite |
-| RCV-05 | Receive shows the exact address and a decodable QR payload | Emulator + QR decoder | Not covered | No QR image extraction/decoder assertion |
-| RCV-06 | Copy and share contain the exact address | Emulator UI | Not covered | No clipboard/intent capture test |
-| RCV-07 | Receive exposes native TOS only | Static + UI | Partial | Deferred flags pass; no recursive UI inventory |
+| RCV-05 | Receive shows the exact address and a decodable QR payload | Emulator + QR decoder | Partial | Exact address and canonical `tos://transfer/` payload are asserted; image decode remains |
+| RCV-06 | Copy and share contain the exact address | Emulator UI | Passed | Emulator clipboard assertion plus share-intent payload and reachable share-control checks |
+| RCV-07 | Receive exposes native TOS only | Static + UI | Passed | Receive UI asserts `Receive TOS`, exact native address, and no deferred token selector |
 
 ## G. Send native TOS
 

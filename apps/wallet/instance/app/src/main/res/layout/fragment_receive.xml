@@ -103,6 +103,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/bg_oval_button_secondary"
+                android:contentDescription="@string/share"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_share_16"/>
 

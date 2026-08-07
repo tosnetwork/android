@@ -30,9 +30,12 @@ methods=(
   sodiumSecretBoxRoundTripsOnAndroidAbi
 )
 
-for method in "${methods[@]}"; do
+run_method() {
+  local method="$1" clear_data="$2"
   "$adb_bin" shell am force-stop network.tos.wallet >/dev/null
-  "$adb_bin" shell pm clear network.tos.wallet >/dev/null
+  if [[ "$clear_data" == true ]]; then
+    "$adb_bin" shell pm clear network.tos.wallet >/dev/null
+  fi
   "$adb_bin" logcat -c
   output=$("$adb_bin" shell am instrument -w \
     -e class "${test_class}#${method}" \
@@ -42,6 +45,21 @@ for method in "${methods[@]}"; do
     echo "v1-emulator: FAILED (${method})" >&2
     exit 1
   fi
+}
+
+for method in "${methods[@]}"; do
+  run_method "$method" true
 done
 
-echo "v1-emulator: PASS (${#methods[@]} scenarios)"
+persistent_methods=(
+  deterministicFundedWalletFixtureReachesHomeAndPersists
+  persistedWalletColdLaunchShowsExactNativeBalanceAndAddress
+  receiveCopiesSharesAndEncodesExactNativeTosAddress
+  passcodeThrottleKeystoreAndRuntimeSecretPolicyHold
+)
+run_method "${persistent_methods[0]}" true
+for method in "${persistent_methods[@]:1}"; do
+  run_method "$method" false
+done
+
+echo "v1-emulator: PASS ($((${#methods[@]} + ${#persistent_methods[@]})) scenarios)"
