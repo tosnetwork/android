@@ -31,6 +31,7 @@ class ItemSwitchView @JvmOverloads constructor(
         get() = textView.text.toString()
         set(value) {
             textView.text = value
+            switchView.contentDescription = value
         }
 
     var subtitle: String?

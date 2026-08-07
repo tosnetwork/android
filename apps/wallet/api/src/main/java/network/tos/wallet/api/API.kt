@@ -380,6 +380,17 @@ class API(
         return network.tos.wallet.api.tos.TosEventMapper.toAccountEvents(accountId, txs)
     }
 
+    fun fetchTosNativeTransfers(
+        accountId: String,
+        testnet: Boolean,
+        limit: Int = 5,
+    ): List<network.tos.wallet.api.tos.TosNativeTransfer> {
+        val txs = withRetry {
+            tos.getTransactions(accountId, limit.coerceAtMost(5), testnet = testnet)
+        } ?: throw Exception("Failed to get native transfers")
+        return network.tos.wallet.api.tos.TosEventMapper.toNativeTransfers(accountId, txs)
+    }
+
     fun fetchTronTransactions(
         tronAddress: String,
         tonProofToken: String,
@@ -828,13 +839,11 @@ class API(
         source: String,
         confirmationTime: Double,
     ): SendBlockchainState = withContext(Dispatchers.IO) {
-        if (!isOkStatus(testnet)) {
-            return@withContext SendBlockchainState.STATUS_ERROR
-        }
-
         // TOS (Phase 1.5): send now uses the TOS node JSON-RPC (sendBocReturnHash) instead of tonapi.
         // The original meta (platform/version/source/confirmation_time) was for tonkeeper backend
-        // analytics only and is not needed by TOS.
+        // analytics only and is not needed by TOS. Do not gate retries on a separate
+        // liveness probe: it can race with block application and suppress an idempotent
+        // replay after an ambiguous response. sendBoc is the authoritative operation.
         withRetry {
             val result = tos.sendBoc(boc, testnet)
             if (result.accepted) SendBlockchainState.SUCCESS else SendBlockchainState.UNKNOWN_ERROR

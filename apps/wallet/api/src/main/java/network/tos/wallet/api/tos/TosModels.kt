@@ -183,6 +183,17 @@ data class TosRawTransaction(
     }
 }
 
+/** First-party native-transfer projection used outside the legacy TonAPI model boundary. */
+data class TosNativeTransfer(
+    val eventId: String,
+    val timestamp: Long,
+    val fee: BigInteger,
+    val sender: String,
+    val recipient: String,
+    val amount: Long,
+    val comment: String?,
+)
+
 /** An account's jetton wallet address + balance for a given jetton master (queried via runGetMethod). */
 data class TosJettonBalance(
     val jettonMaster: String,

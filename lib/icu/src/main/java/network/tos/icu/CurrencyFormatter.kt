@@ -3,10 +3,8 @@ package network.tos.icu
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
-import android.text.SpannableString
 import android.util.Log
 import network.tos.icu.format.CurrencyFormat
-import network.tos.icu.format.TONSymbolSpan
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Locale
@@ -123,10 +121,8 @@ object CurrencyFormatter {
         replaceSymbol: Boolean = true,
     ) = formatFiat(currency, value.value, roundingMode, replaceSymbol)
 
+    @Suppress("UNUSED_PARAMETER")
     fun CharSequence.withCustomSymbol(context: Context): CharSequence {
-        if (true) { // Not now... maybe in future
-            return this
-        }
         val startIndex = indexOf(CurrencyFormat.TON_SYMBOL)
         val endIndex = startIndex + CurrencyFormat.TON_SYMBOL.length
         if (startIndex == -1) {
@@ -138,10 +134,7 @@ object CurrencyFormatter {
             return this
         }
 
-        val span = TONSymbolSpan(context)
-        val spannableString = SpannableString(this)
-        spannableString.setSpan(span, startIndex, endIndex, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE)
-        return spannableString
+        return replaceRange(startIndex, endIndex, "TOS")
     }
 
 }

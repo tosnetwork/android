@@ -25,7 +25,7 @@ class TosEventMapperTest {
             lt = 14000001L,
             hash = "Wj0SXHjVU1n8WWxtQjAbNELIHKa3IEkYtk9VyU6SJzk=",
             utime = 1780921938L,
-            fee = BigInteger.ZERO,
+            fee = BigInteger.valueOf(123_456L),
             account = "0:...",
             dataBoc = incomingBoc,
             inMsgHash = null,
@@ -36,6 +36,7 @@ class TosEventMapperTest {
         assertEquals("should parse 1 event", 1, events.size)
         val event = events.first()
         assertEquals(14000001L, event.lt)
+        assertEquals(-123_456L, event.extra)
 
         val transfers = event.actions.filter { it.type == Action.Type.TonTransfer }
         assertTrue("should have at least 1 TON transfer", transfers.isNotEmpty())

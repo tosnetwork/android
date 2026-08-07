@@ -27,6 +27,23 @@ import org.ton.tlb.loadTlb
  */
 object TosEventMapper {
 
+    fun toNativeTransfers(accountId: String, txs: List<TosRawTransaction>): List<TosNativeTransfer> =
+        toAccountEvents(accountId, txs).flatMap { event ->
+            event.actions.mapNotNull { action ->
+                action.tonTransfer?.let { transfer ->
+                    TosNativeTransfer(
+                        eventId = event.eventId,
+                        timestamp = event.timestamp,
+                        fee = txs.first { it.hash == event.eventId }.fee,
+                        sender = transfer.sender.address,
+                        recipient = transfer.recipient.address,
+                        amount = transfer.amount,
+                        comment = transfer.comment,
+                    )
+                }
+            }
+        }
+
     fun toAccountEvents(accountId: String, txs: List<TosRawTransaction>): List<AccountEvent> {
         return txs.mapNotNull { tx ->
             runCatching { toAccountEvent(accountId, tx) }.getOrNull()
@@ -70,7 +87,9 @@ object TosEventMapper {
             isScam = false,
             lt = tx.lt,
             inProgress = false,
-            extra = 0L,
+            // The legacy model uses a negative value for a charged network fee
+            // and a positive value for a refund. Preserve the node's exact fee.
+            extra = -tx.fee.toLong(),
             progress = 1f,
         )
     }

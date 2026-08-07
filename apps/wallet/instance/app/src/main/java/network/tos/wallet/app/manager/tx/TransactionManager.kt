@@ -157,7 +157,10 @@ class TransactionManager(
         source: String,
         normalizedHash: BitString,
         confirmationTime: Double,
-    ) = send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, 0)
+    ): SendBlockchainState {
+        val initialSeqno = if (withBattery) null else api.getAccountSeqno(wallet.accountId, wallet.testnet)
+        return send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, 0)
+    }
 
     private suspend fun send(
         wallet: WalletEntity,
@@ -166,6 +169,7 @@ class TransactionManager(
         source: String,
         confirmationTime: Double,
         normalizedHash: BitString,
+        initialSeqno: Int?,
         attempt: Int
     ): SendBlockchainState {
         val state = if (withBattery) {
@@ -179,11 +183,18 @@ class TransactionManager(
             return state
         }
 
+        // A transport error can occur after the node accepted the BOC. Reconcile
+        // against the wallet seqno before replaying the same signed transaction.
+        if (initialSeqno != null && api.getAccountSeqno(wallet.accountId, wallet.testnet) > initialSeqno) {
+            _sendingTransactionFlow.tryEmit(SendingTransaction(wallet.copy(), boc))
+            return SendBlockchainState.SUCCESS
+        }
+
         return if (attempt > 3) {
             state
         } else {
             delay(10.seconds)
-            send(wallet, boc, withBattery, source, confirmationTime, normalizedHash,attempt + 1)
+            send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, attempt + 1)
         }
     }
 

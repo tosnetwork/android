@@ -3,6 +3,7 @@ package network.tos.wallet.app.ui.screen.events.compose.history
 import android.content.Context
 import network.tos.extensions.locale
 import network.tos.icu.CurrencyFormatter
+import network.tos.icu.CurrencyFormatter.withCustomSymbol
 import network.tos.wallet.app.core.history.iconRes
 import network.tos.wallet.app.core.history.nameRes
 import network.tos.wallet.app.extensions.externalDrawableUrl
@@ -100,7 +101,8 @@ internal class TxUiMapper(
                 outgoingFormatted = CurrencyFormatter.PREFIX_MINUS + outgoingFormatted
             }
         }
-        return incomingFormatted?.toString() to outgoingFormatted?.toString()
+        return incomingFormatted?.withCustomSymbol(context)?.toString() to
+            outgoingFormatted?.withCustomSymbol(context)?.toString()
     }
 
     private fun isSpam(event: TxEvent): Boolean {
@@ -110,13 +112,8 @@ internal class TxUiMapper(
         } else localSpamState == SpamTransactionState.SPAM
     }
 
-    private fun state(event: TxEvent, action: TxAction): UiEvent.Item.Action.State {
-        return when {
-            event.inProgress -> UiEvent.Item.Action.State.Pending
-            action.status == TxAction.Status.Failed -> UiEvent.Item.Action.State.Failed
-            else -> UiEvent.Item.Action.State.Success
-        }
-    }
+    private fun state(event: TxEvent, action: TxAction) =
+        txActionState(event.inProgress, action.status == TxAction.Status.Failed)
 
     fun event(event: TxEvent): UiEvent.Item {
         val isSpam = isSpam(event)
@@ -165,4 +162,10 @@ internal class TxUiMapper(
         )
     }
 
+}
+
+internal fun txActionState(inProgress: Boolean, failed: Boolean): UiEvent.Item.Action.State = when {
+    inProgress -> UiEvent.Item.Action.State.Pending
+    failed -> UiEvent.Item.Action.State.Failed
+    else -> UiEvent.Item.Action.State.Success
 }

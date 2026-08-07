@@ -16,6 +16,9 @@ test_apk='apps/wallet/instance/main/build/outputs/apk/androidTest/default/debug/
 "$adb_bin" install -r -t "$test_apk" >/dev/null
 
 test_class='network.tos.wallet.V1ProductUiTest'
+python3 scripts/tos_rpc_fault_proxy.py &
+fault_proxy_pid=$!
+trap 'kill "$fault_proxy_pid" 2>/dev/null || true' EXIT
 methods=(
   cleanLaunchUsesTosBrandAndOnlyV1EntryPoints
   createWalletOpensPasscodeAndCancelLeavesNoWallet
@@ -25,6 +28,7 @@ methods=(
   unknownMnemonicWordRemainsRejectedInUi
   invalidMnemonicChecksumRemainsRejectedInUi
   cancelledImportLeavesNoWalletOrPasscode
+  passcodeMismatchRetriesAndMatchingCodesCreateWallet
   deferredDeepLinksCannotOpenProductScreens
   backgroundAndForegroundDoNotExposeOrCrashOnboarding
   onboardingControlsExposeAccessibleNames
@@ -57,13 +61,22 @@ persistent_methods=(
   deterministicFundedWalletFixtureReachesHomeAndPersists
   persistedWalletColdLaunchShowsExactNativeBalanceAndAddress
   walletWindowProtectsSensitiveContentAcrossBackgroundAndForeground
+  retainedWalletControlsExposeAccessibleNames
+  launchMemoryAndRepeatedNavigationStayWithinBudgets
   rpcSettingValidatesPersistsAndRoutesToSecondLocalValidator
   persistedRpcSettingSurvivesColdProcessAndResets
+  localTransferRefreshesNativeBalance
+  offlineHistoryShowsErrorAndRetryReconnects
   receiveCopiesSharesAndEncodesExactNativeTosAddress
   walletSendAndSettingsExposeOnlyNativeV1Controls
   sendValidationConfirmationAndCancelDoNotBroadcast
+  nativeTransferSignsBroadcastsAndRoundTripsUnicodeComment
+  nativeHistoryDetailsShowExactChainFields
+  timeoutRetryBroadcastsOnlyOnceAndRelaunchReconcilesHistory
+  maxNativeTransferCarriesBalanceWhileReservingNetworkFee
   fundedHistoryLoadsAndPaginatesWithoutDuplicateTransactions
   passcodeThrottleKeystoreAndRuntimeSecretPolicyHold
+  recoveryPhraseRequiresCorrectPasscode
   signOutRequiresConfirmationAndReturnsToCleanOnboarding
   unfundedGeneratedWalletRendersZeroBalanceAndEmptyHistory
 )

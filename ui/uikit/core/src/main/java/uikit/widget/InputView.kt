@@ -212,6 +212,8 @@ class InputView @JvmOverloads constructor(
         get() = hintView.text.toString()
         set(value) {
             hintView.text = value
+            contentDescription = value
+            editText.contentDescription = value
         }
 
     var hintColor: Int

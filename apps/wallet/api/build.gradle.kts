@@ -40,6 +40,7 @@ dependencies {
     ksp(libs.androidX.room.compiler)
 
     testImplementation(libs.junit)
+    testImplementation("com.squareup.okhttp3:mockwebserver3:5.2.1")
     // Use the real org.json in unit tests (Android's bundled org.json is stubbed/not-mocked).
     testImplementation("org.json:json:20231013")
 }

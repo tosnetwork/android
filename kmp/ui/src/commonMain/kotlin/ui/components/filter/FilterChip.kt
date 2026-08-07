@@ -14,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import ui.components.base.SimpleText
 import ui.theme.Dimens
@@ -47,6 +49,7 @@ fun FilterChip(
             onClick = onClick,
             role = Role.Checkbox,
         )
+        .semantics(mergeDescendants = true) { contentDescription = text }
         .height(Dimens.sizeAction)
 
     val selectedModifier = if (selected) {

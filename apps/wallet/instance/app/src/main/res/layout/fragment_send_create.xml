@@ -60,6 +60,7 @@
                         android:layout_width="28dp"
                         android:layout_height="28dp"
                         android:layout_gravity="center"
+                        android:contentDescription="@string/contacts"
                         android:src="@drawable/ic_address_book_28"
                         android:tint="?attr/accentBlueColor" />
 

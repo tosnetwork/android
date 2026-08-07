@@ -8,6 +8,7 @@ import network.tos.extensions.withApproximately
 import network.tos.extensions.withMinus
 import network.tos.extensions.withPlus
 import network.tos.icu.CurrencyFormatter
+import network.tos.icu.CurrencyFormatter.withCustomSymbol
 import network.tos.wallet.app.api.shortAddress
 import network.tos.wallet.app.core.history.nameRes
 import network.tos.wallet.app.extensions.composeIcon
@@ -98,10 +99,10 @@ class TxDetailsViewModel(
         get() = action.amount.outgoing
 
     private val incomingFormatted: CharSequence?
-        get() = incomingValue?.formattedFull?.withPlus
+        get() = incomingValue?.formattedFull?.withCustomSymbol(context)?.withPlus
 
     private val outgoingFormatted: CharSequence?
-        get() = outgoingValue?.formattedFull?.withMinus
+        get() = outgoingValue?.formattedFull?.withCustomSymbol(context)?.withMinus
 
     private val isUsdt: Boolean
         get() = primaryValue?.currency?.isUSDT == true
@@ -254,7 +255,8 @@ class TxDetailsViewModel(
                 return UiDetails.Row(
                     id = EXTRA_ROW_ID,
                     key = getString(Localization.refund),
-                    value = CurrencyFormatter.format(WalletCurrency.TON.symbol,extra.value).withApproximately,
+                    value = CurrencyFormatter.format(WalletCurrency.TON.symbol,extra.value)
+                        .withCustomSymbol(context).withApproximately,
                     secondaryValue = rate?.let {
                         CurrencyFormatter.formatFiat(currency.symbol, it).withApproximately
                     }
@@ -265,7 +267,8 @@ class TxDetailsViewModel(
                 return UiDetails.Row(
                     id = EXTRA_ROW_ID,
                     key = getString(Localization.fee),
-                    value = CurrencyFormatter.format(WalletCurrency.TON.symbol,extra.value).withApproximately,
+                    value = CurrencyFormatter.format(WalletCurrency.TON.symbol,extra.value)
+                        .withCustomSymbol(context).withApproximately,
                     secondaryValue = rate?.let {
                         CurrencyFormatter.formatFiat(currency.symbol, it).withApproximately
                     }

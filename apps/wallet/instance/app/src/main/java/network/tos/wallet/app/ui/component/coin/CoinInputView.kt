@@ -72,6 +72,7 @@ class CoinInputView @JvmOverloads constructor(
         setHint(Localization.amount)
 
         editText = findViewById(R.id.coin_input)
+        editText.contentDescription = context.getString(Localization.amount)
         editText.setMaxLength(24)
         editText.doAfterTextChanged { onTextChanged(it.toString())  }
         editText.setOnFocusChangeListener { _, hasFocus ->
@@ -86,7 +87,10 @@ class CoinInputView @JvmOverloads constructor(
         tokenPickerView = findViewById(R.id.coin_input_token)
         tokenPickerView.doOnValueChanged = ::onValueChanged
         onValueChanged(CurrencyPickerView.Value(tokenPickerView.token))
-        findViewById<View>(R.id.coin_input_container).setOnClickListener { focusWithKeyboard() }
+        findViewById<View>(R.id.coin_input_container).apply {
+            contentDescription = context.getString(Localization.amount)
+            setOnClickListener { focusWithKeyboard() }
+        }
     }
 
     fun setWallet(wallet: WalletEntity) {
