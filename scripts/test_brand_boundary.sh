@@ -17,8 +17,8 @@ grep -Fq 'applicationId = "network.tos.wallet"' apps/wallet/instance/main/build.
   || fail "wallet application ID changed"
 grep -Fq 'namespace = Build.namespacePrefix("wallet.app")' apps/wallet/instance/app/build.gradle.kts \
   || fail "wallet implementation namespace changed"
-grep -Fq 'applicationId = "com.tonapps.signer"' apps/signer/build.gradle.kts \
-  || fail "published signer application ID compatibility was removed"
+grep -Fq 'applicationId = "network.tos.signer"' apps/signer/build.gradle.kts \
+  || fail "signer application ID is not TOS-native"
 
 if find apps kmp lib ui -type d \( -path '*/src/*/com/tonapps*' -o -path '*/src/*/com/tonkeeper*' \) -print -quit | grep -q .; then
   fail "legacy first-party source directory remains"
@@ -40,8 +40,9 @@ fi
 
 grep -Fq 'private const val PREFIX = "tos://"' apps/wallet/instance/app/src/main/java/network/tos/wallet/app/deeplink/DeepLinkRoute.kt \
   || fail "TOS deep-link prefix is missing"
-grep -Fq 'LEGACY_TONKEEPER_PREFIX = "tonkeeper://"' apps/wallet/instance/app/src/main/java/network/tos/wallet/app/deeplink/DeepLinkRoute.kt \
-  || fail "legacy inbound deep-link compatibility is missing"
+if grep -R -I -n -E 'com\.tonapps|_com_tonapps|tonkeeper://' apps --exclude-dir=build; then
+  fail "unreleased product still contains a legacy Tonkeeper identity"
+fi
 
 if grep -R -I -n -i 'tonkeeper' .github/workflows; then
   fail "workflow contains upstream Tonkeeper branding or destinations"
@@ -49,7 +50,7 @@ fi
 
 grep -Fq 'derived from the open-source Tonkeeper Android wallet' NOTICE \
   || fail "upstream attribution is missing"
-grep -Fq 'Legacy TON Compatibility Boundary' docs/legacy-ton-compatibility-boundary.md \
-  || fail "compatibility boundary documentation is missing"
+grep -Fq 'Inherited Protocol Boundary' docs/inherited-protocol-boundary.md \
+  || fail "inherited protocol boundary documentation is missing"
 
 echo "brand-boundary: PASS"

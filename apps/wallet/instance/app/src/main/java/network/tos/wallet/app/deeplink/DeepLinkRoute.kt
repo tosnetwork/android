@@ -272,7 +272,6 @@ sealed class DeepLinkRoute {
     companion object {
 
         private const val PREFIX = "tos://"
-        private const val LEGACY_TONKEEPER_PREFIX = "tonkeeper://"
 
         fun resolve(input: Uri): DeepLinkRoute {
             val uri = normalize(input)
@@ -328,7 +327,6 @@ sealed class DeepLinkRoute {
 
         fun normalize(uri: Uri): Uri {
             return uri.toString()
-                .replace(LEGACY_TONKEEPER_PREFIX, PREFIX, ignoreCase = true)
                 .replace("ton://", PREFIX)
                 .replace("https://app.tos.network/", PREFIX)
                 .replace("http://app.tos.network/", PREFIX)
@@ -340,7 +338,6 @@ sealed class DeepLinkRoute {
 
         fun isAppLink(url: String): Boolean {
             return url.startsWith(PREFIX) ||
-                url.startsWith(LEGACY_TONKEEPER_PREFIX) ||
                 url.startsWith("ton://") ||
                 url.startsWith("https://app.tos.network")
         }

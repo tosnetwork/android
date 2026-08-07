@@ -12,7 +12,7 @@ android {
     defaultConfig {
         // Compatibility boundary: changing this published ID would create a second app
         // instead of upgrading existing signer installations.
-        applicationId = "com.tonapps.signer"
+        applicationId = "network.tos.signer"
         minSdk = 26
         targetSdk = Build.compileSdkVersion
         versionCode = 23

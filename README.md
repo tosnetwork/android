@@ -8,7 +8,7 @@ It provides a secure and convenient way to manage TOS accounts and send or recei
 
 TOS Wallet is derived from the open-source Tonkeeper Android wallet. See
 [NOTICE](NOTICE) for attribution and
-[the compatibility boundary](docs/legacy-ton-compatibility-boundary.md) for the
+[the inherited protocol boundary](docs/inherited-protocol-boundary.md) for the
 legacy protocol and migration identifiers that are intentionally retained.
 
 ## License

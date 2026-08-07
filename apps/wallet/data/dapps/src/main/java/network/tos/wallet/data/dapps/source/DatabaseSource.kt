@@ -41,7 +41,7 @@ internal class DatabaseSource(
         private const val DATABASE_NAME = "dapps"
         private const val DATABASE_VERSION = 2
 
-        private const val KEY_ALIAS = "_com_tonapps_dapps_master_key_"
+        private const val KEY_ALIAS = "_network_tos_dapps_master_key_"
 
         private const val LAST_EVENT_ID_KEY = "last_event_id"
         private const val LAST_APP_REQUEST_ID_PREFIX = "last_app_request_id_"

@@ -22,6 +22,8 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
+
     implementation(libs.koin.core)
     implementation(libs.koin.workmanager)
     implementation(libs.kotlinX.datetime)

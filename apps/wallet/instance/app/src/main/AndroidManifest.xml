@@ -2,8 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <queries>
-        <!-- The separately installed signer retains its published package ID. -->
-        <package android:name="com.tonapps.signer" />
+        <package android:name="network.tos.signer" />
         <package android:name="org.telegram.messenger" />
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
@@ -149,8 +148,6 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="ton"/>
                 <data android:scheme="tos"/>
-                <!-- Retained only so links and shortcuts created by earlier builds still open. -->
-                <data android:scheme="tonkeeper"/>
                 <data android:scheme="tc"/>
                 <data android:scheme="tonsite"/>
             </intent-filter>

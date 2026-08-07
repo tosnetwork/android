@@ -22,22 +22,22 @@ data class FlagsEntity(
 ) : Parcelable {
 
     constructor(json: JSONObject) : this(
-        disableSwap = json.optBoolean("disable_swap", false),
-        disableExchangeMethods = json.optBoolean("disable_exchange_methods", false),
-        disableDApps = json.optBoolean("disable_dapps", false),
+        disableSwap = json.optBoolean("disable_swap", true),
+        disableExchangeMethods = json.optBoolean("disable_exchange_methods", true),
+        disableDApps = json.optBoolean("disable_dapps", true),
         disableSigner = json.optBoolean("disable_signer", false),
         safeModeEnabled = json.optBoolean("safe_mode_enabled", false),
-        disableStaking = json.optBoolean("disable_staking", false),
-        disableTron = json.optBoolean("disable_tron", false),
-        disableBattery = json.optBoolean("disable_battery", false),
-        disableGasless = json.optBoolean("disable_gaseless", false),
-        disableUsde = json.optBoolean("disable_usde", false),
-        disableNativeSwap = json.optBoolean("disable_native_swap", false),
-        disableOnboardingStory = json.optBoolean("disable_onboarding_story", false),
-        disableNfts = json.optBoolean("disable_nfts", false)
+        disableStaking = json.optBoolean("disable_staking", true),
+        disableTron = json.optBoolean("disable_tron", true),
+        disableBattery = json.optBoolean("disable_battery", true),
+        disableGasless = json.optBoolean("disable_gaseless", true),
+        disableUsde = json.optBoolean("disable_usde", true),
+        disableNativeSwap = json.optBoolean("disable_native_swap", true),
+        disableOnboardingStory = json.optBoolean("disable_onboarding_story", true),
+        disableNfts = json.optBoolean("disable_nfts", true)
     )
 
-    // TOS (Phase 0): disable by default every feature that depends on Tonkeeper-only external services.
+    // TOS V1: disable by default every feature that depends on deferred external services.
     // These have no backend on TOS-owned infrastructure; enabling them would call external hosts.
     constructor() : this(
         disableSwap = true,

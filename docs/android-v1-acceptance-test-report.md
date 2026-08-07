@@ -14,14 +14,14 @@
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Brand and architecture boundary | Passed | No legacy first-party package/import declarations; stable IDs and attribution asserted |
+| Brand and architecture boundary | Passed | No legacy first-party identities; TOS-native IDs and attribution asserted |
 | V1 static feature defaults | Passed | Deferred service flags, TOS endpoint, deep links, and workflow boundary asserted |
-| JVM unit tests | Passed | 9 tests, 0 failures/errors; 1 optional local-node test skipped because no endpoint was configured |
+| JVM unit tests | Passed | 12 tests, 0 failures/errors; 1 optional local-node test skipped because no endpoint was configured |
 | Wallet Debug build | Passed | `main-default-debug.apk`, application ID `network.tos.wallet` |
-| Signer Debug build | Passed | `signer-debug.apk`, debug ID `com.tonapps.signer.debug` |
+| Signer Debug build | Passed | `signer-debug.apk`, debug ID `network.tos.signer.debug` |
 | Wallet Release/R8 build | Passed | Unsigned Site Release APK built after full lint and shrinking |
 | Signer Release/R8 build | Passed | Unsigned Release APK built after full lint and shrinking |
-| Release artifact inspection | Passed | Wallet ID, signer compatibility ID, and Sodium libraries for four Android ABIs asserted |
+| Release artifact inspection | Passed | TOS-native wallet/signer IDs and Sodium libraries for four Android ABIs asserted |
 
 The first uncached combined Release build executed 1,535 Gradle tasks and completed
 successfully in 16 minutes 12 seconds. Subsequent aggregate verification reused the
@@ -50,12 +50,12 @@ old Java package. APK compilation alone would not detect this and the first nati
 call would fail at runtime. All JNI exports now match the new class name, four ABIs
 build, and the static/artifact gates protect the mapping.
 
-### AND-REN-004: signer identity migration risk
+### AND-REN-004: unnecessary signer compatibility identity
 
-A mechanical rename changed the separate Signer application ID. That would install a
-new application instead of upgrading the existing one. Its published ID is now
-explicitly pinned to `com.tonapps.signer`; only its source namespace and product copy
-use TOS naming.
+The initial implementation retained the upstream Signer application ID on the
+assumption that an installed release needed upgrading. The product has not shipped,
+so that premise does not exist. Signer now uses `network.tos.signer`, matching its
+source namespace and first-release product identity.
 
 ### AND-REN-005: artifact check pipeline false failure
 
@@ -65,8 +65,19 @@ temporary listing, checks every ABI deterministically, and cleans the file on ex
 
 ## Remaining automated coverage
 
-The formal matrix currently contains 74 requirements: 15 `Passed`, 9 `Partial`, and
-50 `Not covered`. Most remaining work is emulator UI, upgrade-fixture, fault-proxy,
+The formal matrix currently contains 72 requirements: 16 `Passed`, 9 `Partial`, and
+47 `Not covered`. Most remaining work is emulator UI, fault-proxy,
 and local three-node integration automation. These are explicitly recorded in
 `docs/android-product-test-matrix.md`; no physical-device or human-only work is
 included.
+
+## Post-review V1 reachability correction
+
+Independent review found that supported deep links could reach deferred
+staking, battery, DApp, purchase, and exchange screens because their flags were
+not consulted centrally. `DeepLinkFeaturePolicy` now gates every deferred route
+family, both DApp shortcut/push bypasses consume `disableDApps`, omitted remote
+configuration keys fail closed, and JVM/static regression tests enforce every
+reviewed flag-controlled route family. Because no public build exists, upstream
+WorkManager class names, key aliases, application IDs, and Tonkeeper deep links have
+no upgrade contract and were replaced outright with TOS-native identities.

@@ -5,7 +5,7 @@
 - Baseline date: 2026-08-07
 - Code baseline: `codex/tos-native-architecture`
 - Execution boundary: every row is decidable by source checks, JVM tests, an Android emulator, a local TOS network, or build-artifact inspection; no physical device, Play Console, distribution signing, external production service, or human visual judgment is included
-- Brand rule: reachable product copy, first-party packages, links, and assets use TOS Wallet and TOS; inherited names are allowed only at the documented compatibility boundary
+- Brand rule: reachable product copy, first-party packages, links, persisted identifiers, and assets use TOS Wallet and TOS; inherited names are allowed only at the documented external-protocol boundary
 
 ## Scope and completion rule
 
@@ -27,7 +27,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | `Not covered` | No complete autonomous test exists yet. |
 | `Failed` | The autonomous test ran and detected a defect. |
 
-## A. Product identity, architecture, and compatibility
+## A. Product identity and architecture
 
 | ID | Automated requirement | Test layer | Status | Evidence or missing automation |
 | --- | --- | --- | --- | --- |
@@ -35,12 +35,10 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | ARC-02 | First-party namespaces and source packages use `network.tos` | Static + compile | Passed | Boundary scan rejects legacy package/import declarations; full Debug compile passes |
 | ARC-03 | App implementation and public wallet API cannot emit duplicate DEX classes | Build | Passed | `:apps:wallet:instance:main:assembleDefaultDebug` packages successfully |
 | ARC-04 | Native Sodium JNI symbols match the renamed Kotlin class | Static + native build | Passed | Boundary gate checks the symbol prefix; four-ABI native build passes |
-| ARC-05 | Existing encrypted key aliases remain readable | Upgrade integration | Not covered | Aliases are preserved, but no previous-release-to-current emulator fixture exists |
-| ARC-06 | Existing wallet preferences and databases survive upgrade | Upgrade UI | Not covered | Requires an automated previous-release data fixture and upgrade scenario |
-| ARC-07 | Standalone signer retains its published app identity | Static + build | Passed | Boundary gate pins `com.tonapps.signer`; signer Debug build is in `make compile` |
-| ARC-08 | `tos://` is first-party and legacy inbound schemes remain compatible | Static | Passed | Manifest and parser assertions in both static gates |
-| ARC-09 | Workflows contain no upstream Tonkeeper checkout or push target | Static | Passed | Recursive workflow guard in both static gates |
-| ARC-10 | Upstream origin is attributed without presenting Tonkeeper as the product | Static | Passed | `NOTICE`, README, and compatibility-boundary checks |
+| ARC-05 | Standalone signer uses the TOS-native `network.tos.signer` identity | Static + build artifact | Passed | Boundary and release-artifact gates pin the ID; signer builds in `make compile` |
+| ARC-06 | `tos://` is the first-party application scheme and no Tonkeeper scheme remains | Static | Passed | Manifest and source assertions in both static gates |
+| ARC-07 | Workflows contain no upstream Tonkeeper checkout or push target | Static | Passed | Recursive workflow guard in both static gates |
+| ARC-08 | Upstream origin is attributed without presenting Tonkeeper as the product | Static | Passed | `NOTICE`, README, and protocol-boundary checks |
 
 ## B. Branding and V1 feature gating
 
@@ -52,7 +50,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | BRD-04 | No TRON/TRC20 entry point is reachable | Static + UI | Partial | Offline defaults disable TRON; no emulator reachability inventory |
 | BRD-05 | No Jetton/NFT/Swap/Staking/Buy/DApp/TonConnect entry point is reachable | Static + UI | Partial | Static gate pins most offline defaults; no emulator reachability inventory |
 | BRD-06 | Supported RPC defaults use TOS-owned endpoints | Static + unit | Passed | `test_v1_static.sh` plus `TosRpcEndpointTest` |
-| BRD-07 | Unsupported and stale deep links cannot escape V1 | Unit + UI | Not covered | Compatibility normalization exists; route-policy tests are absent |
+| BRD-07 | Deferred deep links honor feature flags for supported schemes | Unit + static | Passed | Central route policy, fail-closed remote defaults, direct DApp entry gates, and unit/static regression coverage |
 
 ## C. Application lifecycle and persistence
 
@@ -86,7 +84,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | SEC-02 | Retry and lockout behavior matches policy | Unit + UI | Not covered | No deterministic clock/attempt fixture |
 | SEC-03 | Recovery phrase requires authentication | Emulator UI | Not covered | No instrumentation coverage |
 | SEC-04 | Secret and passcode never appear in logs or clipboard unexpectedly | Static + runtime | Not covered | No logcat/clipboard secret scanner |
-| SEC-05 | Stored secrets use expected Android Keystore protections | Unit + emulator | Not covered | Key aliases are preserved; cryptographic policy is not asserted |
+| SEC-05 | Stored secrets use expected Android Keystore protections | Unit + emulator | Not covered | TOS-native aliases exist; cryptographic policy is not asserted |
 | SEC-06 | Sodium encryption and decryption execute through JNI | Native unit | Not covered | Native library builds, but no round-trip runtime test exists |
 
 ## F. Native TOS home and receive
@@ -143,7 +141,7 @@ regression makes an authoritative command fail. Compiling code is not UI coverag
 | QLT-04 | Runtime logs and telemetry contain no fixture secret | Runtime scan | Not covered | No logcat gate |
 | BLD-01 | Wallet Debug APK builds | Build | Passed | `make compile` / `assembleDefaultDebug` |
 | BLD-02 | Standalone signer Debug APK builds | Build | Passed | Included in `make compile` |
-| BLD-03 | JVM unit suite passes | Unit | Passed | `make test_unit`; 9 tests, 0 failures, 1 optional local-node test skipped on 2026-08-07 |
+| BLD-03 | JVM unit suite passes | Unit | Passed | `make test_unit`; 12 tests, 0 failures, 1 optional local-node test skipped on 2026-08-07 |
 | BLD-04 | Unsigned release APKs build with R8 and retain expected application IDs and native ABIs | Build artifact | Passed | `test_release_artifacts.sh`; wallet and signer Release builds passed on 2026-08-07 |
 
 ## Excluded human and external validation
@@ -177,5 +175,5 @@ not implied success.
 - Unit tests: `apps/wallet/api/src/test/`
 - Brand gate: `scripts/test_brand_boundary.sh`
 - V1 static gate: `scripts/test_v1_static.sh`
-- Compatibility policy: `docs/legacy-ton-compatibility-boundary.md`
+- Protocol boundary: `docs/inherited-protocol-boundary.md`
 - Test entry points: `Makefile`

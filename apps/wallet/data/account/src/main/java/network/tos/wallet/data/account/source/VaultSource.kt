@@ -21,7 +21,7 @@ internal class VaultSource(context: Context) {
         private const val NAME = "vault"
         private const val PRIVATE_KEY_PREFIX = "private_key"
         private const val MNEMONIC_KEY_PREFIX = "mnemonic"
-        private const val KEY_ALIAS = "_com_tonapps_vault_master_key_"
+        private const val KEY_ALIAS = "_network_tos_vault_master_key_"
     }
 
     // The vault holds mnemonics and private keys; require an unlocked device so a

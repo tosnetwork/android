@@ -23,7 +23,7 @@ object PasscodeBiometric {
     private const val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
 
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-    private const val KEY_ALIAS = "_com_tonapps_biometric_gate_key_"
+    private const val KEY_ALIAS = "_network_tos_biometric_gate_key_"
     private const val TRANSFORMATION = "${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_GCM}/${KeyProperties.ENCRYPTION_PADDING_NONE}"
 
     fun isAvailableOnDevice(context: Context): Boolean {

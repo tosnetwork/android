@@ -40,6 +40,7 @@ import network.tos.wallet.app.core.history.ActionOptions
 import network.tos.wallet.app.core.history.HistoryHelper
 import network.tos.wallet.app.core.history.list.item.HistoryItem
 import network.tos.wallet.app.deeplink.DeepLink
+import network.tos.wallet.app.deeplink.DeepLinkFeaturePolicy
 import network.tos.wallet.app.deeplink.DeepLinkRoute
 import network.tos.wallet.app.extensions.getAppFixIcon
 import network.tos.wallet.app.extensions.hasRefer
@@ -494,6 +495,9 @@ class RootViewModel(
     }
 
     fun openDApp(url: Uri, source: String) {
+        if (api.config.flags.disableDApps) {
+            return
+        }
         selectedWalletFlow.take(1).collectFlow {
             _eventFlow.tryEmit(RootEvent.OpenDAppByShortcut(it, url, source))
         }
@@ -518,6 +522,9 @@ class RootViewModel(
     }
 
     private suspend fun processDAppPush(bundle: Bundle) {
+        if (api.config.flags.disableDApps) {
+            return
+        }
         val accountId = bundle.getString("account") ?: return
         val wallet = accountRepository.getWalletByAccountId(accountId) ?: return
         val openUrl = bundle.getString("link")?.toUriOrNull() ?: bundle.getString("dapp_url")?.toUriOrNull()
@@ -598,6 +605,10 @@ class RootViewModel(
         fromPackageName: String?
     ) {
         val route = deeplink.route
+        if (!DeepLinkFeaturePolicy.isAllowed(route, api.config.flags)) {
+            showInvalidLinkToast(route)
+            return
+        }
         if (route is DeepLinkRoute.DnsRenew) {
             openScreen(DNSRenewScreen.newInstance(wallet, emptyList()))
         } else if (route is DeepLinkRoute.TonConnect) {

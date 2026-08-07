@@ -472,7 +472,6 @@ class TonConnectManager(
 
         private val compatiblePrefixes = listOf(
             "tc://",
-            "tonkeeper://ton-connect",
             "https://app.tos.network/ton-connect",
         )
 
