@@ -53,4 +53,19 @@ grep -Fq 'derived from the open-source Tonkeeper Android wallet' NOTICE \
 grep -Fq 'Inherited Protocol Boundary' docs/inherited-protocol-boundary.md \
   || fail "inherited protocol boundary documentation is missing"
 
+warm_tos_icon_sha="92d9942ce1511cd08235d1aa9fd0eefa5b61bc4548a6cf2f2f5bb3e2ac7db1d1"
+for icon in \
+  apps/wallet/api/src/main/res/drawable/ic_ton_with_bg.png \
+  apps/wallet/api/src/main/res/drawable/ic_ton_logo.png \
+  apps/wallet/instance/app/src/main/res/drawable-nodpi/ic_ton.png; do
+  actual_sha="$(shasum -a 256 "$icon" | awk '{print $1}')"
+  [[ "$actual_sha" == "$warm_tos_icon_sha" ]] \
+    || fail "$icon is not the approved yellow-and-white TOS token asset"
+done
+
+small_warm_tos_icon_sha="99cb4216dca0246d30505dc5e5135fb5c3ca6a19b4361a2ab8d223e441908d5b"
+actual_sha="$(shasum -a 256 apps/wallet/instance/app/src/main/res/drawable-nodpi/ic_ton_28.png | awk '{print $1}')"
+[[ "$actual_sha" == "$small_warm_tos_icon_sha" ]] \
+  || fail "ic_ton_28.png is not the approved yellow-and-white TOS token asset"
+
 echo "brand-boundary: PASS"
