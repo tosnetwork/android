@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.setPadding
-import com.tonapps.uikit.list.ListCell
+import network.tos.uikit.list.ListCell
 import uikit.R
 import uikit.extensions.dp
 import uikit.extensions.useAttributes

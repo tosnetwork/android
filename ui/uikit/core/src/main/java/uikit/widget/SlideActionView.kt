@@ -18,11 +18,11 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.graphics.toColorInt
 import androidx.core.math.MathUtils
 import androidx.customview.widget.ViewDragHelper
-import com.tonapps.uikit.color.backgroundContentColor
-import com.tonapps.uikit.color.iconTertiaryColor
-import com.tonapps.uikit.color.stateList
-import com.tonapps.uikit.color.textTertiaryColor
-import com.tonapps.uikit.icon.UIKitIcon
+import network.tos.uikit.color.backgroundContentColor
+import network.tos.uikit.color.iconTertiaryColor
+import network.tos.uikit.color.stateList
+import network.tos.uikit.color.textTertiaryColor
+import network.tos.uikit.icon.UIKitIcon
 import uikit.R
 import uikit.HapticHelper
 import uikit.extensions.dp

@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <queries>
-        <package android:name="com.tonapps.signer" />
+        <package android:name="network.tos.signer" />
         <package android:name="org.telegram.messenger" />
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
@@ -67,16 +67,16 @@
         android:hardwareAccelerated="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:largeHeap="true"
-        android:name="com.tonapps.tonkeeper.App"
-        android:manageSpaceActivity="com.tonapps.tonkeeper.ui.screen.root.RootActivity"
+        android:name="network.tos.wallet.app.App"
+        android:manageSpaceActivity="network.tos.wallet.app.ui.screen.root.RootActivity"
         tools:targetApi="31"
         tools:replace="android:allowBackup"
         android:localeConfig="@xml/locales_config">
 
         <activity-alias
             android:enabled="true"
-            android:name="com.tonapps.tonkeeper.DefaultLauncherIcon"
-            android:targetActivity="com.tonapps.tonkeeper.ui.screen.root.RootActivity"
+            android:name="network.tos.wallet.app.DefaultLauncherIcon"
+            android:targetActivity="network.tos.wallet.app.ui.screen.root.RootActivity"
             android:icon="@mipmap/ic_default_launcher"
             android:roundIcon="@mipmap/ic_default_launcher_round"
             android:exported="true">
@@ -89,8 +89,8 @@
 
         <activity-alias
             android:enabled="false"
-            android:name="com.tonapps.tonkeeper.AccentLauncherIcon"
-            android:targetActivity="com.tonapps.tonkeeper.ui.screen.root.RootActivity"
+            android:name="network.tos.wallet.app.AccentLauncherIcon"
+            android:targetActivity="network.tos.wallet.app.ui.screen.root.RootActivity"
             android:icon="@mipmap/ic_accent_launcher"
             android:roundIcon="@mipmap/ic_accent_launcher_round"
             android:exported="true">
@@ -103,8 +103,8 @@
 
         <activity-alias
             android:enabled="false"
-            android:name="com.tonapps.tonkeeper.DarkLauncherIcon"
-            android:targetActivity="com.tonapps.tonkeeper.ui.screen.root.RootActivity"
+            android:name="network.tos.wallet.app.DarkLauncherIcon"
+            android:targetActivity="network.tos.wallet.app.ui.screen.root.RootActivity"
             android:icon="@mipmap/ic_dark_launcher"
             android:roundIcon="@mipmap/ic_dark_launcher_round"
             android:exported="true">
@@ -117,8 +117,8 @@
 
         <activity-alias
             android:enabled="false"
-            android:name="com.tonapps.tonkeeper.LightLauncherIcon"
-            android:targetActivity="com.tonapps.tonkeeper.ui.screen.root.RootActivity"
+            android:name="network.tos.wallet.app.LightLauncherIcon"
+            android:targetActivity="network.tos.wallet.app.ui.screen.root.RootActivity"
             android:icon="@mipmap/ic_light_launcher"
             android:roundIcon="@mipmap/ic_light_launcher_round"
             android:exported="true">
@@ -129,7 +129,7 @@
             </intent-filter>
         </activity-alias>
         <activity
-            android:name="com.tonapps.tonkeeper.ui.screen.root.RootActivity"
+            android:name="network.tos.wallet.app.ui.screen.root.RootActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:largeHeap="true"
@@ -162,7 +162,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name="com.tonapps.tonkeeper.core.signer.SignerHiddenActivity"
+            android:name="network.tos.wallet.app.core.signer.SignerHiddenActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="false"
             android:enabled="true"
@@ -170,7 +170,7 @@
             android:theme="@style/Theme.Hidden">
         </activity>
         <receiver
-            android:name="com.tonapps.tonkeeper.manager.widget.WidgetReceiver$Balance"
+            android:name="network.tos.wallet.app.manager.widget.WidgetReceiver$Balance"
             android:exported="true"
             android:label="@string/wallet_balance">
             <intent-filter>
@@ -180,7 +180,7 @@
                 android:resource="@xml/widget_balance" />
         </receiver>
         <receiver
-            android:name="com.tonapps.tonkeeper.manager.widget.WidgetReceiver$Rate"
+            android:name="network.tos.wallet.app.manager.widget.WidgetReceiver$Rate"
             android:exported="true"
             android:label="@string/rate">
             <intent-filter>
@@ -228,7 +228,7 @@
                 android:resource="@xml/filepaths" />
         </provider>
         <receiver
-            android:name="com.tonapps.tonkeeper.manager.widget.WidgetManager$PinnedReceiver"
+            android:name="network.tos.wallet.app.manager.widget.WidgetManager$PinnedReceiver"
             android:exported="false" />
     </application>
 

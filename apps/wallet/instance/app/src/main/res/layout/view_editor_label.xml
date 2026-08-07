@@ -25,7 +25,7 @@
             android:layout_marginEnd="8dp"
             android:layout_gravity="center|end"
             android:background="@drawable/bg_emoji_edit">
-            <com.tonapps.emoji.ui.EmojiView
+            <network.tos.emoji.ui.EmojiView
                 android:id="@+id/label_emoji"
                 android:layout_width="28dp"
                 android:layout_height="28dp"

@@ -4,10 +4,10 @@ import android.content.Context
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
-import com.tonapps.uikit.color.accentBlueColor
-import com.tonapps.uikit.color.stateList
-import com.tonapps.uikit.icon.UIKitIcon
-import com.tonapps.uikit.list.ListCell
+import network.tos.uikit.color.accentBlueColor
+import network.tos.uikit.color.stateList
+import network.tos.uikit.icon.UIKitIcon
+import network.tos.uikit.list.ListCell
 import uikit.R
 import uikit.drawable.DotDrawable
 import uikit.extensions.setEndDrawable

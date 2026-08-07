@@ -55,7 +55,7 @@
 
         </uikit.widget.RowLayout>
 
-        <com.tonapps.signer.password.ui.PasswordView
+        <network.tos.signer.password.ui.PasswordView
             android:id="@+id/lock_password"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

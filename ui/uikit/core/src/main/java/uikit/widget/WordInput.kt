@@ -10,8 +10,8 @@ import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatTextView
-import com.tonapps.uikit.color.accentBlueColor
-import com.tonapps.uikit.color.accentRedColor
+import network.tos.uikit.color.accentBlueColor
+import network.tos.uikit.color.accentRedColor
 import uikit.R
 import uikit.drawable.InputDrawable
 import uikit.extensions.dp

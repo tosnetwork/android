@@ -17,6 +17,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import ui.UiPosition
@@ -41,6 +43,20 @@ fun EventItem(
     onClick: (id: String, part: EventItemClickPart) -> Unit
 ) {
     event.actions.fastForEachIndexed { index, action ->
+        val accessibilityLabel = listOfNotNull(
+            action.title,
+            action.subtitle.takeIf { it.isNotBlank() },
+            action.incomingAmount,
+            action.outgoingAmount,
+            action.text?.let {
+                when (it) {
+                    is UiEvent.Item.Action.Text.Plain -> it.text
+                    is UiEvent.Item.Action.Text.Encrypted -> it.placeholder
+                }
+            },
+            action.date,
+            action.state.name,
+        ).joinToString(", ")
         EventAction(
             modifier = Modifier
                 .clip(action.position.shape())
@@ -49,6 +65,7 @@ fun EventItem(
                 .clickable(onClick = {
                     onClick(event.id, EventItemClickPart.Action(index))
                 })
+                .semantics(mergeDescendants = true) { contentDescription = accessibilityLabel }
                 .padding(bottom = Dimens.offsetMedium),
             action = action,
             index = index,

@@ -9,7 +9,7 @@ import android.view.animation.OvershootInterpolator
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.animation.doOnEnd
 import androidx.core.animation.doOnStart
-import com.tonapps.uikit.color.textPrimaryColor
+import network.tos.uikit.color.textPrimaryColor
 import uikit.R
 import uikit.base.BaseDialog
 import uikit.extensions.dp

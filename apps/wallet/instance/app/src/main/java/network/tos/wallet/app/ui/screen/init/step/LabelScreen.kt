@@ -1,0 +1,63 @@
+package network.tos.wallet.app.ui.screen.init.step
+
+import android.os.Bundle
+import android.util.Log
+import android.view.View
+import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
+import network.tos.wallet.app.ui.component.label.LabelEditorView
+import network.tos.wallet.app.ui.screen.init.InitRoute
+import network.tos.wallet.app.ui.screen.init.InitViewModel
+import network.tos.wallet.app.R
+import kotlinx.coroutines.launch
+import org.koin.androidx.viewmodel.ext.android.viewModel
+import uikit.base.BaseFragment
+import uikit.extensions.collectFlow
+import uikit.extensions.doKeyboardAnimation
+
+class LabelScreen: BaseFragment(R.layout.fragment_init_label) {
+
+    override val fragmentName: String = "LabelScreen"
+
+    private val initViewModel: InitViewModel by viewModel(ownerProducer = { requireParentFragment() })
+
+    private lateinit var editorView: LabelEditorView
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        editorView = view.findViewById(R.id.editor)
+        editorView.doOnChange = { name, emoji, color ->
+            initViewModel.setLabel(name, emoji, color)
+        }
+        editorView.doOnDone = { name, emoji, color ->
+            initViewModel.setLabel(name, emoji, color)
+            initViewModel.nextStep(requireContext(), InitRoute.LabelAccount)
+        }
+
+        view.doKeyboardAnimation { offset, progress, _ ->
+            editorView.setBottomOffset(offset, progress)
+        }
+
+        collectFlow(initViewModel.uiTopOffset) {
+            view.updatePadding(top = it)
+        }
+
+        collectFlow(initViewModel.labelFlow) { label ->
+            Log.d("InitViewModelLog", "setNewLabel: $label")
+            with(editorView) {
+                name = label.name
+                emoji = label.emoji
+                color = label.color
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { editorView.loadEmoji() }
+    }
+
+    companion object {
+        fun newInstance() = LabelScreen()
+    }
+}

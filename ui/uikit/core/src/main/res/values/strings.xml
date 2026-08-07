@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="uikit_navigate_back">Navigate back</string>
+    <string name="uikit_more_actions">More actions</string>
+</resources>

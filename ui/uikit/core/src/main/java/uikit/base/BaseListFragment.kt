@@ -6,7 +6,7 @@ import android.widget.FrameLayout
 import androidx.annotation.DrawableRes
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
-import com.tonapps.uikit.icon.UIKitIcon
+import network.tos.uikit.icon.UIKitIcon
 import uikit.R
 import uikit.extensions.applyNavBottomPadding
 import uikit.extensions.collectFlow

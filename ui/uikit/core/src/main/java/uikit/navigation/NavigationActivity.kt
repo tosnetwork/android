@@ -22,8 +22,8 @@ import androidx.fragment.app.commit
 import androidx.fragment.app.commitNow
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import com.tonapps.uikit.color.UIKitColor
-import com.tonapps.uikit.color.backgroundContentTintColor
+import network.tos.uikit.color.UIKitColor
+import network.tos.uikit.color.backgroundContentTintColor
 import uikit.R
 import uikit.base.BaseActivity
 import uikit.base.BaseFragment

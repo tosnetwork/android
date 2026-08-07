@@ -9,6 +9,7 @@
         android:alpha="0"
         android:background="@drawable/bg_oval_button_secondary"
         android:backgroundTint="?attr/buttonSecondaryBackgroundColor"
+        android:contentDescription="@string/uikit_navigate_back"
         android:scaleType="centerInside"
         android:tint="?attr/buttonSecondaryForegroundColor" />
 
@@ -82,6 +83,7 @@
             android:alpha="0"
             android:background="@drawable/bg_oval_button_secondary"
             android:backgroundTint="?attr/buttonSecondaryBackgroundColor"
+            android:contentDescription="@string/uikit_more_actions"
             android:scaleType="centerInside"
             android:tint="?attr/buttonSecondaryForegroundColor" />
     </uikit.widget.RowLayout>

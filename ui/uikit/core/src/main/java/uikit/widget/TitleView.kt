@@ -3,7 +3,7 @@ package uikit.widget
 import android.content.Context
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
-import com.tonapps.uikit.color.textPrimaryColor
+import network.tos.uikit.color.textPrimaryColor
 import uikit.R
 import uikit.extensions.getDimensionPixelSize
 import uikit.extensions.setPaddingVertical

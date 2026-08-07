@@ -8,8 +8,8 @@ import android.os.Bundle
 import androidx.annotation.AttrRes
 import androidx.annotation.ColorInt
 import androidx.fragment.app.Fragment
-import com.tonapps.uikit.color.UIKitColor
-import com.tonapps.uikit.color.backgroundContentTintColor
+import network.tos.uikit.color.UIKitColor
+import network.tos.uikit.color.backgroundContentTintColor
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import uikit.base.BaseFragment

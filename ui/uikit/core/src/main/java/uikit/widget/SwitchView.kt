@@ -11,9 +11,9 @@ import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.core.graphics.withSave
 import androidx.core.view.isVisible
-import com.tonapps.uikit.color.buttonPrimaryBackgroundColor
-import com.tonapps.uikit.color.buttonTertiaryBackgroundColor
-import com.tonapps.uikit.color.constantWhiteColor
+import network.tos.uikit.color.buttonPrimaryBackgroundColor
+import network.tos.uikit.color.buttonTertiaryBackgroundColor
+import network.tos.uikit.color.constantWhiteColor
 import uikit.ArgbEvaluator
 import uikit.extensions.dp
 import uikit.extensions.range

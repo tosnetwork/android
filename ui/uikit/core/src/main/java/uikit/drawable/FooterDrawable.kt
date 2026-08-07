@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import com.tonapps.uikit.color.separatorCommonColor
+import network.tos.uikit.color.separatorCommonColor
 import uikit.base.BaseDrawable
 import uikit.extensions.dp
 

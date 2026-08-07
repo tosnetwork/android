@@ -29,7 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomsheet.BottomSheetBehavior
-import com.tonapps.uikit.color.backgroundPageColor
+import network.tos.uikit.color.backgroundPageColor
 import uikit.extensions.getSpannable
 import uikit.navigation.Navigation.Companion.navigation
 import uikit.widget.BottomSheetLayout
@@ -240,6 +240,10 @@ open class BaseFragment(
             }
         }
         view.setOnClickListener {  }
+        // The root consumes background taps but is not an actionable control. Excluding only
+        // this container keeps its named descendants in the accessibility tree and prevents
+        // screen readers from announcing an empty, full-screen button.
+        view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         return view
     }
 

@@ -32,18 +32,18 @@
 
 -keep class java.time.** { *; }
 
--keep class com.tonapps.tonkeeper.worker.** { *; }
+-keep class network.tos.wallet.app.worker.** { *; }
 
--keep class com.tonapps.tonkeeper.manager.** { *; }
+-keep class network.tos.wallet.app.manager.** { *; }
 
 -keep class android.graphics.ColorSpace { *; }
 -dontwarn android.graphics.ColorSpace
 -dontwarn android.graphics.ColorSpace$**
 
 -keep class org.koin.** { *; }
--keep class com.tonapps.tonkeeper.App { *; }
+-keep class network.tos.wallet.app.App { *; }
 
--keepnames class com.tonapps.tonkeeper.ui.screen.** { *; }
+-keepnames class network.tos.wallet.app.ui.screen.** { *; }
 
 -dontwarn com.fasterxml.jackson.databind.ext.Java7SupportImpl
 -keep class com.fasterxml.jackson.databind.ext.** { *; }
@@ -66,4 +66,3 @@
     public static int i(...);
     public static boolean isLoggable(java.lang.String, int);
 }
-

@@ -33,9 +33,9 @@ import androidx.annotation.StyleableRes
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
-import com.tonapps.uikit.color.backgroundHighlightedColor
-import com.tonapps.uikit.color.stateList
-import com.tonapps.uikit.color.textTertiaryColor
+import network.tos.uikit.color.backgroundHighlightedColor
+import network.tos.uikit.color.stateList
+import network.tos.uikit.color.textTertiaryColor
 import uikit.navigation.Navigation.Companion.navigation
 import uikit.navigation.NavigationActivity
 

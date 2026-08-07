@@ -60,7 +60,7 @@
             android:layout_height="wrap_content"
             android:layout_marginVertical="@dimen/offsetLarge"/>
 
-        <com.tonapps.tonkeeper.ui.component.CameraFlashIconView
+        <network.tos.wallet.app.ui.component.CameraFlashIconView
             android:id="@+id/flash"
             android:layout_width="@dimen/itemHeight"
             android:layout_height="@dimen/itemHeight"

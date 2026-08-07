@@ -8,9 +8,9 @@ import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import androidx.core.view.postDelayed
 import androidx.core.widget.doAfterTextChanged
-import com.tonapps.uikit.color.accentBlueColor
-import com.tonapps.uikit.color.accentRedColor
-import com.tonapps.uikit.color.textSecondaryColor
+import network.tos.uikit.color.accentBlueColor
+import network.tos.uikit.color.accentRedColor
+import network.tos.uikit.color.textSecondaryColor
 import uikit.R
 import uikit.drawable.InputDrawable
 import uikit.extensions.focusWithKeyboard

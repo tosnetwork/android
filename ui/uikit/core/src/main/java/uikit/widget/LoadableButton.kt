@@ -7,7 +7,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
-import com.tonapps.uikit.color.iconSecondaryColor
+import network.tos.uikit.color.iconSecondaryColor
 import uikit.R
 import uikit.UiButtonState
 import uikit.extensions.getDimensionPixelSize

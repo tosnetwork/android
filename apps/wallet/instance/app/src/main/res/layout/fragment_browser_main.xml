@@ -30,7 +30,7 @@
             android:layout_height="1dp"
             android:layout_weight="1"/>
 
-        <com.tonapps.tonkeeper.ui.component.CountryFlagView
+        <network.tos.wallet.app.ui.component.CountryFlagView
             android:id="@+id/country"
             android:layout_width="32dp"
             android:layout_height="32dp"

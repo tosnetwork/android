@@ -17,7 +17,7 @@
             android:gravity="center"
             android:paddingHorizontal="@dimen/offsetMedium">
 
-            <com.tonapps.tonkeeper.view.BatteryView
+            <network.tos.wallet.app.view.BatteryView
                 android:id="@+id/battery"
                 style="@style/Battery.Big"
                 android:layout_gravity="center"

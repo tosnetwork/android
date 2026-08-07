@@ -3,19 +3,19 @@
 #include <string>
 #include <sodium.h>
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_init(JNIEnv *, jobject) {
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_init(JNIEnv *, jobject) {
     return sodium_init();
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxMacBytes(JNIEnv *, jobject) {
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxMacBytes(JNIEnv *, jobject) {
     return crypto_box_macbytes();
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxNonceBytes(JNIEnv *, jobject) {
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxNonceBytes(JNIEnv *, jobject) {
     return crypto_box_noncebytes();
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxEasy (
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxEasy (
         JNIEnv *env,
         jobject,
         jbyteArray dst_cipher,
@@ -50,7 +50,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxEasy
     return result;
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxOpenEasy (
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxOpenEasy (
         JNIEnv *env,
         jobject,
         jbyteArray dst_plain,
@@ -85,7 +85,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxOpen
     return result;
 }
 
-extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxKeyPair (
+extern "C" JNIEXPORT jint JNICALL Java_network_tos_security_Sodium_cryptoBoxKeyPair (
         JNIEnv *env,
         jobject,
         jbyteArray remote_public_key,
@@ -106,7 +106,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_tonapps_security_Sodium_cryptoBoxKeyP
 
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_argon2IdHash (
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_argon2IdHash (
         JNIEnv *env,
         jobject,
         jcharArray passwd,
@@ -169,7 +169,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_argon2I
     return jhash;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_scryptHash(
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_scryptHash(
         JNIEnv *env,
         jobject,
         jbyteArray password,
@@ -246,7 +246,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_scryptH
     return jhash;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoSecretboxOpen(
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoSecretboxOpen(
         JNIEnv *env,
         jobject,
         jbyteArray box,
@@ -261,6 +261,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoS
     jsize boxlen = 0;
     jsize nonelen = 0;
     jsize keylen = 0;
+    jsize plainlen = 0;
     int result = -1;
 
     if (!box || !none || !key) {
@@ -271,6 +272,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoS
     boxlen = env->GetArrayLength(box);
     nonelen = env->GetArrayLength(none);
     keylen = env->GetArrayLength(key);
+    plainlen = boxlen - crypto_secretbox_MACBYTES;
 
     if (nonelen != crypto_secretbox_NONCEBYTES || keylen != crypto_secretbox_KEYBYTES || boxlen < crypto_secretbox_MACBYTES) {
         env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "Invalid input lengths");
@@ -302,8 +304,8 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoS
         goto cleanup;
     }
 
-    out = (char *)malloc(boxlen);
-    if (!out || sodium_mlock(out, boxlen) != 0) {
+    out = (char *)malloc(plainlen);
+    if (!out || sodium_mlock(out, plainlen) != 0) {
         env->ThrowNew(env->FindClass("java/lang/OutOfMemoryError"), "Failed to allocate output buffer");
         goto cleanup;
     }
@@ -321,18 +323,18 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoS
         goto cleanup;
     }
 
-    jplain = env->NewByteArray(boxlen);
+    jplain = env->NewByteArray(plainlen);
     if (!jplain) {
         env->ThrowNew(env->FindClass("java/lang/OutOfMemoryError"), "Failed to create output array");
         goto cleanup;
     }
 
-    env->SetByteArrayRegion(jplain, 0, boxlen, (jbyte *)out);
+    env->SetByteArrayRegion(jplain, 0, plainlen, (jbyte *)out);
 
     cleanup:
     if (out) {
-        sodium_memzero(out, boxlen);
-        sodium_munlock(out, boxlen);
+        sodium_memzero(out, plainlen);
+        sodium_munlock(out, plainlen);
         free(out);
     }
     if (native_box) {
@@ -354,7 +356,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoS
     return jplain;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_tonapps_security_Sodium_cryptoSecretbox(
+extern "C" JNIEXPORT jbyteArray JNICALL Java_network_tos_security_Sodium_cryptoSecretbox(
         JNIEnv *env,
         jobject /* this */,
         jbyteArray message,

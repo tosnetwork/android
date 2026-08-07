@@ -8,10 +8,10 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.View
 import androidx.core.graphics.withSave
-import com.tonapps.uikit.color.accentGreenColor
-import com.tonapps.uikit.color.fieldActiveBorderColor
-import com.tonapps.uikit.color.fieldBackgroundColor
-import com.tonapps.uikit.color.fieldErrorBorderColor
+import network.tos.uikit.color.accentGreenColor
+import network.tos.uikit.color.fieldActiveBorderColor
+import network.tos.uikit.color.fieldBackgroundColor
+import network.tos.uikit.color.fieldErrorBorderColor
 import uikit.ArgbEvaluator
 import uikit.R
 import uikit.extensions.dp

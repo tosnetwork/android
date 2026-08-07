@@ -10,7 +10,7 @@ dependencies {
 gradlePlugin {
     plugins {
         register("androidLibrary") {
-            id = "com.tonapps.wallet.data"
+            id = "network.tos.wallet.data"
             implementationClass = "WalletDataPlugin"
         }
     }

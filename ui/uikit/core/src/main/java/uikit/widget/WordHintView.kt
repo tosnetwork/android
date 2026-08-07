@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.LinearLayoutCompat
-import com.tonapps.uikit.color.backgroundContentTintColor
+import network.tos.uikit.color.backgroundContentTintColor
 import uikit.R
 import uikit.extensions.dp
 

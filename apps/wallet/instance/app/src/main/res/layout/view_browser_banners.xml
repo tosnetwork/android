@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.tonapps.tonkeeper.ui.component.BannersContainerView xmlns:android="http://schemas.android.com/apk/res/android"
+<network.tos.wallet.app.ui.component.BannersContainerView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="@dimen/offsetMedium">
@@ -11,4 +11,4 @@
         android:clipToPadding="false"
         android:clipChildren="false"/>
 
-</com.tonapps.tonkeeper.ui.component.BannersContainerView>
+</network.tos.wallet.app.ui.component.BannersContainerView>

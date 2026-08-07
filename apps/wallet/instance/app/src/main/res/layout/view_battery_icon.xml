@@ -10,7 +10,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center">
 
-        <com.tonapps.tonkeeper.view.BatteryView
+        <network.tos.wallet.app.view.BatteryView
             style="@style/Battery.VeryBig"
             android:id="@+id/battery_view"
             android:layout_gravity="center"

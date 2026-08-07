@@ -60,6 +60,7 @@
                         android:layout_width="28dp"
                         android:layout_height="28dp"
                         android:layout_gravity="center"
+                        android:contentDescription="@string/contacts"
                         android:src="@drawable/ic_address_book_28"
                         android:tint="?attr/accentBlueColor" />
 
@@ -77,7 +78,7 @@
                 android:textColor="?attr/textSecondaryColor"
                 android:visibility="gone" />
 
-            <com.tonapps.tonkeeper.ui.component.coin.CoinInputView
+            <network.tos.wallet.app.ui.component.coin.CoinInputView
                 android:id="@+id/amount"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

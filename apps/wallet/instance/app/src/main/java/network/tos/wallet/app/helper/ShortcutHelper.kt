@@ -1,0 +1,129 @@
+package network.tos.wallet.app.helper
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.net.Uri
+import androidx.annotation.DrawableRes
+import androidx.core.app.Person
+import androidx.core.content.LocusIdCompat
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.graphics.drawable.IconCompat
+import androidx.core.graphics.drawable.toBitmap
+import network.tos.emoji.Emoji
+import network.tos.extensions.isValid
+import network.tos.extensions.max18
+import network.tos.wallet.app.App
+import network.tos.uikit.color.accentBlueColor
+import network.tos.uikit.color.backgroundContentColor
+import network.tos.uikit.color.textPrimaryColor
+import network.tos.wallet.data.account.entities.WalletEntity
+import uikit.extensions.dp
+import uikit.extensions.drawable
+import androidx.core.net.toUri
+import androidx.core.graphics.createBitmap
+
+object ShortcutHelper {
+
+    private fun createIcon(
+        context: Context,
+        @DrawableRes resId: Int
+    ): Bitmap {
+        val iconDrawable = context.drawable(resId)
+
+        val size = 64.dp
+        val bitmap = createBitmap(size, size)
+        val canvas = Canvas(bitmap)
+
+        val iconSize = 24.dp
+        val iconBitmap = iconDrawable.toBitmap(iconSize, iconSize)
+
+        val iconLeft = (size - iconBitmap.width) / 2f
+        val iconTop = (size - iconBitmap.height) / 2f
+        canvas.drawBitmap(iconBitmap, iconLeft, iconTop, null)
+
+        return bitmap
+    }
+
+    fun shortcutAction(
+        context: Context,
+        titleRes: Int,
+        iconRes: Int,
+        url: String
+    ): ShortcutInfoCompat? {
+        try {
+            val icon = IconCompat.createWithBitmap(createIcon(context, iconRes))
+
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+            intent.setPackage(context.packageName)
+            if (!intent.isValid(context)) {
+                return null
+            }
+
+            val builder = ShortcutInfoCompat.Builder(context, url)
+                .setShortLabel(context.getString(titleRes))
+                .setIcon(icon)
+                .setIntent(intent)
+
+            return builder.build()
+        } catch (e: Throwable) {
+            return null
+        }
+    }
+
+    private suspend fun createWalletIcon(
+        context: Context,
+        wallet: WalletEntity
+    ): Bitmap {
+        val iconBitmap = Emoji.getBitmap(context, wallet.label.emoji, Color.TRANSPARENT)
+
+        val size = 64.dp
+        val bitmap = createBitmap(size, size)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(wallet.label.color)
+
+        val iconLeft = (size - iconBitmap.width) / 2f
+        val iconTop = (size - iconBitmap.height) / 2f
+        canvas.drawBitmap(iconBitmap, iconLeft, iconTop, null)
+
+        return bitmap
+    }
+
+    suspend fun shortcutWallet(
+        context: Context,
+        wallet: WalletEntity
+    ): ShortcutInfoCompat? {
+        try {
+            val url = "tos://pick/${wallet.id}"
+            val icon = IconCompat.createWithBitmap(createWalletIcon(context, wallet))
+
+            val person = Person.Builder()
+                .setName(wallet.label.name.max18)
+                .setIcon(icon)
+                .setUri(url)
+                .setKey(wallet.id)
+                .build()
+
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+            intent.setPackage(context.packageName)
+
+            if (!intent.isValid(context)) {
+                return null
+            }
+
+            val builder = ShortcutInfoCompat.Builder(context, "wallet_${wallet.id}")
+                .setShortLabel(wallet.label.name)
+                .setIcon(person.icon)
+                .setPerson(person)
+                .setLongLived(true)
+                .setLocusId(LocusIdCompat(wallet.id))
+                .setIntent(intent)
+
+            return builder.build()
+        } catch (e: Throwable) {
+            return null
+        }
+    }
+}

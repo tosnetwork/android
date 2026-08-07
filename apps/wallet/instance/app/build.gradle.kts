@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = Build.namespacePrefix("tonkeeperx")
+    namespace = Build.namespacePrefix("wallet.app")
     compileSdk = Build.compileSdkVersion
     ndkVersion = Build.ndkVersion
 
@@ -22,6 +22,8 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
+
     implementation(libs.koin.core)
     implementation(libs.koin.workmanager)
     implementation(libs.kotlinX.datetime)

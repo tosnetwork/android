@@ -6,9 +6,9 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.graphics.ColorUtils
-import com.tonapps.uikit.color.backgroundContentTintColor
-import com.tonapps.uikit.color.buttonPrimaryBackgroundColor
-import com.tonapps.uikit.color.iconTertiaryColor
+import network.tos.uikit.color.backgroundContentTintColor
+import network.tos.uikit.color.buttonPrimaryBackgroundColor
+import network.tos.uikit.color.iconTertiaryColor
 import uikit.extensions.dp
 
 class RadioView @JvmOverloads constructor(

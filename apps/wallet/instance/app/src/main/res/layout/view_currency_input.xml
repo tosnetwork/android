@@ -58,7 +58,7 @@
             android:layout_height="match_parent"
             android:layout_weight="1">
 
-            <com.tonapps.tonkeeper.ui.component.coin.CoinEditText
+            <network.tos.wallet.app.ui.component.coin.CoinEditText
                 android:id="@+id/input_value"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
@@ -87,7 +87,7 @@
 
         </FrameLayout>
 
-        <com.tonapps.tonkeeper.ui.component.token.CurrencyPickerView
+        <network.tos.wallet.app.ui.component.token.CurrencyPickerView
             android:id="@+id/input_currency"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"/>

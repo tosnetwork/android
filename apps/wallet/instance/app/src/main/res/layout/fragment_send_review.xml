@@ -74,13 +74,13 @@
                 android:layout_marginVertical="@dimen/offsetLarge"
                 android:background="@drawable/bg_content">
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_wallet"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/wallet" />
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_recipient"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -110,20 +110,20 @@
                 </uikit.widget.ColumnLayout>
 
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_amount"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/amount"
                     android:visibility="gone" />
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_fee"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:title="@string/fee" />
 
-                <com.tonapps.tonkeeper.view.TransactionDetailView
+                <network.tos.wallet.app.view.TransactionDetailView
                     android:id="@+id/review_comment"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

@@ -12,7 +12,7 @@ val isCI = project.hasProperty("android.injected.signing.store.file")
 var isAPK = gradle.startParameter.projectProperties["isApk"]?.toBoolean() ?: false
 
 android {
-    namespace = Build.namespacePrefix("TonKeeper")
+    namespace = Build.namespacePrefix("wallet")
     compileSdk = Build.compileSdkVersion
 
     defaultConfig {
@@ -111,6 +111,16 @@ dependencies {
     androidTestImplementation(libs.androidX.test.core)
     androidTestImplementation(libs.androidX.test.espresso)
     androidTestImplementation(libs.androidX.test.uiautomator)
+    androidTestImplementation(libs.koin.core)
+    androidTestImplementation(project(ProjectModules.Lib.blockchain))
+    androidTestImplementation(project(ProjectModules.Lib.icu))
+    androidTestImplementation(project(ProjectModules.Lib.qr))
+    androidTestImplementation(project(ProjectModules.Lib.security))
+    androidTestImplementation(libs.zxing)
+    androidTestImplementation(project(ProjectModules.UIKit.core))
+    androidTestImplementation(project(ProjectModules.Wallet.Data.account))
+    androidTestImplementation(project(ProjectModules.Wallet.Data.passcode))
+    androidTestImplementation(project(ProjectModules.Wallet.api))
 
     implementation(libs.androidX.profileinstaller)
     baselineProfile(project(":baselineprofile:main"))

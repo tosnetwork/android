@@ -1,10 +1,10 @@
-# SignerApp
+# TOS Signer
 
-Open source secure android app for cold managing [TON crypto](https://ton.org/) wallet keys and signing blockchain transactions, designed to operate completely offline.
+Open-source Android application for cold management of TOS wallet keys and offline transaction signing.
 
 ## Features
 
-- Operates offline, compatible with [Tonkeeper](https://tonkeeper.com/).
+- Operates offline and supports the legacy signing transport used by compatible wallet releases.
 - Supports multiple keys.
 - Enables transaction signing directly within safe area in SignerApp.
 - Encrypts keys using your personal password for maximum security.
@@ -36,7 +36,7 @@ Our developers cannot access your data.
 
 ## Verify build
 
-Build APK from source code and verify it with the APK from the [Google Play Store](https://play.google.com/store/apps/details?id=com.tonapps.signer).
+Build the APK from source and compare it with the distributed TOS Signer artifact.
 
 ```shell
 $ python apkfrombundle.py signer_from_source.aab signer_from_googleplay.apk
@@ -48,8 +48,7 @@ or
 $ python apkdiff.py signer_from_source.apk signer_from_googleplay.apk
 ```
 
-If you have any issues or questions, please contact us at [@help_tonkeeper_bot](https://t.me/help_tonkeeper_bot).
-
+For project information and support channels, visit [tos.network](https://tos.network/).
 
 
 

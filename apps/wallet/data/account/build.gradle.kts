@@ -1,5 +1,5 @@
 plugins {
-    id("com.tonapps.wallet.data")
+    id("network.tos.wallet.data")
     id("kotlin-parcelize")
     kotlin("plugin.serialization")
 }

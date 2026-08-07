@@ -45,7 +45,7 @@
                 android:layout_marginEnd="@dimen/offsetMedium"
                 android:layout_gravity="center|end"
                 android:background="@drawable/bg_emoji_edit">
-                <com.tonapps.emoji.ui.EmojiView
+                <network.tos.emoji.ui.EmojiView
                     android:id="@+id/wallet_emoji"
                     android:layout_width="28dp"
                     android:layout_height="28dp"
