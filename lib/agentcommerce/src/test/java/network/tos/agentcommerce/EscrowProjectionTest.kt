@@ -30,7 +30,7 @@ class EscrowProjectionTest {
     fun `projection matches shared vectors`() {
         val root = Json.parseToJsonElement(loadVector()).jsonObject
         assertEquals(
-            "atos.native.mobile-buyer-escrow-projection.v1",
+            "tos.service.mobile-buyer-escrow-projection.v1",
             root["schema"]!!.jsonPrimitive.content,
         )
         val cases = root["cases"]!!.jsonArray

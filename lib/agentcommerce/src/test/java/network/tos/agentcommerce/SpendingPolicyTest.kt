@@ -9,7 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Decodes the SAME shared spending-policy vector the Go atosbridge.PolicyEngine
+ * Decodes the SAME shared spending-policy vector the Go servicebridge.PolicyEngine
  * is verified against, so the Kotlin owner-authorization is proven identical to
  * the canonical engine and to the iOS client.
  */
@@ -38,7 +38,7 @@ class SpendingPolicyTest {
     fun `authorize matches shared vectors`() {
         val root = Json.parseToJsonElement(loadVector()).jsonObject
         assertEquals(
-            "atos.native.mobile-buyer-spending-policy.v1",
+            "tos.service.mobile-buyer-spending-policy.v1",
             root["schema"]!!.jsonPrimitive.content,
         )
         val now = root["now_unix"]!!.jsonPrimitive.long.toULong()

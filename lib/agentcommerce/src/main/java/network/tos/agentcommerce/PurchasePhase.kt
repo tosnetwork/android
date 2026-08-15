@@ -15,7 +15,7 @@ enum class ResumeAction(val wire: String) {
 }
 
 /**
- * The crash-safe purchase-journal phase machine. Mirrors the atosbridge phase
+ * The crash-safe purchase-journal phase machine. Mirrors the servicebridge phase
  * functions so a mobile client resumes a purchase after process death with
  * exactly the same safety decision as the buyer engine.
  */

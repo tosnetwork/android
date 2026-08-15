@@ -4,7 +4,7 @@ package network.tos.agentcommerce
  * The deterministic verdict of evaluating a Quote against the owner's spending
  * policy. [OK] means proceed automatically; [MANUAL_CONFIRMATION] means within
  * policy but needing explicit owner approval; anything else blocks the spend.
- * [wire] matches the shared vectors and the Go atosbridge.PolicyEngine.
+ * [wire] matches the shared vectors and the Go servicebridge.PolicyEngine.
  */
 enum class PolicyReason(val wire: String) {
     OK("ok"),

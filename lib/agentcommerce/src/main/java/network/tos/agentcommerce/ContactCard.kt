@@ -51,7 +51,7 @@ object ContactCard {
 
     // Domain separator for the Contact Card signing preimage: the ASCII tag
     // followed by a single null byte, matching the canonical issuer.
-    private const val DOMAIN_TAG = "atos.agent.contact.v1"
+    private const val DOMAIN_TAG = "tos.service.agent.contact.v1"
 
     /**
      * Applies the pre-connection checks in a fixed order. No signature or

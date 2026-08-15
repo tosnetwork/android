@@ -38,7 +38,7 @@ class ContactCardTest {
     fun `contact card matches shared vectors`() {
         val root = Json.parseToJsonElement(loadVector()).jsonObject
         assertEquals(
-            "atos.native.mobile-buyer-contact-card.v1",
+            "tos.service.mobile-buyer-contact-card.v1",
             root["schema"]!!.jsonPrimitive.content,
         )
         val now = root["now_unix"]!!.jsonPrimitive.long.toULong()

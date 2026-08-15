@@ -10,7 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
- * Decodes the SAME shared purchase-phase vector the Go atosbridge phase functions
+ * Decodes the SAME shared purchase-phase vector the Go servicebridge phase functions
  * are verified against, so the Kotlin crash-safe resume logic — the at-most-once
  * payment invariant — is proven identical to the reference and to the iOS client.
  */
@@ -27,7 +27,7 @@ class PurchasePhaseTest {
     fun `purchase phase matches shared vectors`() {
         val root = Json.parseToJsonElement(loadVector()).jsonObject
         assertEquals(
-            "atos.native.mobile-buyer-purchase-phase.v1",
+            "tos.service.mobile-buyer-purchase-phase.v1",
             root["schema"]!!.jsonPrimitive.content,
         )
 
