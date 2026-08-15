@@ -48,6 +48,7 @@ include(":lib:sqlite")
 include(":lib:ledger")
 include(":lib:ur")
 include(":lib:base64")
+include(":lib:agentcommerce")
 
 
 include(":apps:wallet:instance:app")

@@ -23,6 +23,7 @@ class ProjectModules {
         const val ledger = ":lib:ledger"
         const val ur = ":lib:ur"
         const val base64 = ":lib:base64"
+        const val agentcommerce = ":lib:agentcommerce"
     }
 
     object UIKit {
