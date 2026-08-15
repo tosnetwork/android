@@ -184,6 +184,13 @@ make test_release_artifacts
 make test_v1_acceptance
 ```
 
+GitHub-hosted CI runs `make test_ci`, the hermetic subset containing static checks,
+JVM tests, compilation, and release-artifact inspection. The authoritative
+`make test_v1_acceptance` additionally requires a booted Android emulator and the
+three-validator TOS localnet on ports 18545-18547 with its test-only controller on
+18745; it must run on an integration host that explicitly provisions those services.
+CI must never silently skip or fabricate either external prerequisite.
+
 Future automation must be wired into `make test_v1_acceptance`. The matrix reaches
 100% only when every row is `Passed`; `Partial` and `Not covered` are explicit work,
 not implied success.
