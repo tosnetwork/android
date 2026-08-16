@@ -2,6 +2,9 @@ package network.tos.agentcommerce
 
 import java.io.ByteArrayOutputStream
 import java.net.URI
+import java.security.KeyFactory
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 
 /**
  * The caller's configured TOS network a Contact Card must bind to. A locator for
@@ -52,6 +55,12 @@ object ContactCard {
     // Domain separator for the Contact Card signing preimage: the ASCII tag
     // followed by a single null byte, matching the canonical issuer.
     private const val DOMAIN_TAG = "tos.service.agent.contact.v1"
+
+    // SubjectPublicKeyInfo prefix for a raw 32-byte Ed25519 public key:
+    // SEQUENCE(AlgorithmIdentifier(Ed25519), BIT STRING(raw key)).
+    private val ED25519_X509_PREFIX = byteArrayOf(
+        0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
+    )
 
     /**
      * Applies the pre-connection checks in a fixed order. No signature or
@@ -107,6 +116,23 @@ object ContactCard {
         out.write(bigEndian64(card.expiresAtUnix))
         out.write(card.publicKey)
         return out.toByteArray()
+    }
+
+    /** Verifies the card's signature over its exact canonical preimage. */
+    fun verifySignature(card: ContactCardFacts): Boolean {
+        if (card.publicKey.size != 32 || card.signature.size != 64) return false
+        return try {
+            val encodedKey = ED25519_X509_PREFIX + card.publicKey
+            val publicKey = KeyFactory.getInstance("Ed25519")
+                .generatePublic(X509EncodedKeySpec(encodedKey))
+            Signature.getInstance("Ed25519").run {
+                initVerify(publicKey)
+                update(contactBytes(card))
+                verify(card.signature)
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 }
 

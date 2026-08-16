@@ -6,6 +6,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -75,6 +77,13 @@ class ContactCardTest {
                 case["expect"]!!.jsonPrimitive.content,
                 ContactCard.validateStateless(facts, network, now).wire,
             )
+            if (name == "valid") {
+                assertTrue("valid Contact Card signature", ContactCard.verifySignature(facts))
+                assertFalse(
+                    "endpoint tampering must invalidate the signature",
+                    ContactCard.verifySignature(facts.copy(endpoint = "https://tampered.example")),
+                )
+            }
         }
     }
 }
