@@ -12,6 +12,7 @@ import java.math.BigInteger
  */
 
 data class TosBlockId(
+    val type: String?,
     val workchain: Int,
     val shard: String,
     val seqno: Int,
@@ -22,6 +23,7 @@ data class TosBlockId(
         fun fromJson(json: JSONObject?): TosBlockId? {
             json ?: return null
             return TosBlockId(
+                type = json.optString("@type").takeIf { it.isNotBlank() },
                 workchain = json.optInt("workchain"),
                 shard = json.optString("shard"),
                 seqno = json.optInt("seqno"),
@@ -142,17 +144,35 @@ data class TosSendResult(
 
 /** smc.runResult (runGetMethod). The stack keeps its raw JSON, parsed on demand. */
 data class TosRunResult(
+    val type: String?,
     val exitCode: Int,
     val gasUsed: Long,
     val stack: JSONArray,
+    val blockId: TosBlockId?,
 ) {
     val success: Boolean get() = exitCode == 0 || exitCode == 1
 
     companion object {
         fun fromJson(json: JSONObject): TosRunResult = TosRunResult(
+            type = json.optString("@type").takeIf { it.isNotBlank() },
             exitCode = json.optInt("exit_code"),
             gasUsed = json.optLong("gas_used"),
             stack = json.optJSONArray("stack") ?: JSONArray(),
+            blockId = TosBlockId.fromJson(json.optJSONObject("block_id")),
+        )
+    }
+}
+
+data class TosConsensusBlock(
+    val seqno: Int,
+    val observedAt: Long,
+    val blockUtime: Long,
+) {
+    companion object {
+        fun fromJson(json: JSONObject) = TosConsensusBlock(
+            seqno = json.optInt("consensus_block"),
+            observedAt = json.optLong("timestamp"),
+            blockUtime = json.optLong("last_block_utime"),
         )
     }
 }

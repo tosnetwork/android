@@ -94,14 +94,34 @@ class TosSource(
         method: String,
         stack: List<JSONArray> = emptyList(),
         testnet: Boolean = false,
+        seqno: Int? = null,
     ): TosRunResult {
         val stackJson = JSONArray().apply { stack.forEach { put(it) } }
         val params = JSONObject()
             .put("address", address)
             .put("method", method)
             .put("stack", stackJson)
+        seqno?.let { params.put("seqno", it) }
         return TosRunResult.fromJson(rpc.callObject("runGetMethod", params, testnet))
     }
+
+    fun getConsensusBlock(testnet: Boolean = false): TosConsensusBlock =
+        TosConsensusBlock.fromJson(rpc.callObject("getConsensusBlock", testnet = testnet))
+
+    fun getConfigParam(param: Int, seqno: Int, testnet: Boolean = false): String {
+        val result = rpc.callObject(
+            "getConfigParam",
+            JSONObject().put("param", param).put("seqno", seqno),
+            testnet,
+        )
+        require(result.optString("@type") == "configInfo") { "invalid config response" }
+        val config = result.optJSONObject("config") ?: error("missing config cell")
+        require(config.optString("@type") == "tvm.cell") { "invalid config cell" }
+        return config.getString("bytes")
+    }
+
+    fun resolveDnsWallet(name: String, testnet: Boolean = false): TosDnsEvidence =
+        TosDnsResolver(this).resolveWallet(name, testnet)
 
     // ---------------------------------------------------------------------
     // Send / fee estimate (available from a bare node)

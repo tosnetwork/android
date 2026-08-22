@@ -667,6 +667,9 @@ class SendScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_s
 
     private fun applyTransactionAccount(destination: SendDestination) {
         if (destination is SendDestination.TonAccount) {
+            reviewRecipientView.description = destination.dnsRenewalDeadline?.let {
+                "TOS ${if (destination.testnet) "testnet" else "mainnet"} · DNS valid through Unix $it"
+            }
             if (destination.displayName == null) {
                 reviewRecipientView.visibility = View.GONE
                 reviewRecipientView.orientation = LinearLayoutCompat.VERTICAL

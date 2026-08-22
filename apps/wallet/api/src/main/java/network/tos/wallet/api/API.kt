@@ -553,7 +553,10 @@ class API(
         testnet: Boolean
     ): AccountDetailsEntity? {
         return try {
-            val account = getAccount(query, testnet, null) ?: return null
+            val lookup = if (query.trim().lowercase().endsWith(".tos")) {
+                tos.resolveDnsWallet(query, testnet).address
+            } else query
+            val account = getAccount(lookup, testnet, null) ?: return null
             val details = AccountDetailsEntity(query, account, testnet)
             if (details.walletVersion != WalletVersion.UNKNOWN) {
                 details
@@ -863,7 +866,11 @@ class API(
             return@withContext getAccount(value, testnet)
         }
         return@withContext resolveDomain(value.lowercase().trim(), testnet)*/
-        getAccount(value, testnet, null)
+        val lookup = if (value.trim().lowercase().endsWith(".tos")) {
+            runCatching { tos.resolveDnsWallet(value, testnet).address }.getOrNull()
+                ?: return@withContext null
+        } else value
+        getAccount(lookup, testnet, null)
     }
 
     /*private suspend fun resolveDomain(domain: String, testnet: Boolean): Account? {

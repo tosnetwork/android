@@ -29,6 +29,7 @@ sealed class SendDestination {
         val testnet: Boolean,
         val tonAddressTags: TonAddressTags,
         val isBounce: Boolean,
+        val dnsRenewalDeadline: Long? = null,
     ) : SendDestination() {
 
         companion object {

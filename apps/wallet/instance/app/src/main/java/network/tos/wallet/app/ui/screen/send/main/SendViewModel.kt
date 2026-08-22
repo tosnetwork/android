@@ -500,6 +500,43 @@ class SendViewModel(
     }
 
     private suspend fun getDestinationAccount(userInput: String) = withContext(Dispatchers.IO) {
+        if (userInput.lowercase().endsWith(".tos")) {
+            val evidence = try {
+                api.tos.resolveDnsWallet(userInput, wallet.testnet)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                return@withContext SendDestination.NotFound
+            }
+            val address = runCatching { AddrStd(evidence.address) }.getOrNull()
+                ?: return@withContext SendDestination.NotFound
+            val state = try {
+                api.tos.getAccountState(evidence.address, wallet.testnet)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                return@withContext SendDestination.NotFound
+            }
+            val walletInfo = runCatching {
+                api.tos.getWalletInformation(evidence.address, wallet.testnet)
+            }.getOrNull()
+            val addressTags = TonAddressTags.of(address.toString(userFriendly = true, testOnly = wallet.testnet))
+            return@withContext SendDestination.TonAccount(
+                userInput = evidence.canonicalName,
+                isUserInputAddress = false,
+                publicKey = EmptyPrivateKeyEd25519.publicKey(),
+                address = address,
+                memoRequired = false,
+                isSuspended = false,
+                isWallet = walletInfo?.isWallet == true,
+                name = evidence.canonicalName,
+                existing = state.status == "active" || state.status == "frozen",
+                testnet = wallet.testnet,
+                tonAddressTags = addressTags,
+                isBounce = state.status == "active" && walletInfo?.isWallet != true,
+                dnsRenewalDeadline = evidence.renewalDeadline,
+            )
+        }
         val tonAddressTags = TonAddressTags.of(userInput)
         if (tonAddressTags.userFriendly && tonAddressTags.isTestnet != wallet.testnet) {
             return@withContext SendDestination.NotFound
