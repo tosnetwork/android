@@ -1,5 +1,6 @@
 package network.tos.wallet.api.tos
 
+import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,6 +9,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TosDnsResolverTest {
+    @Test
+    fun `canonical TIP-1 corpus is consumed without semantic copies`() {
+        val raw = checkNotNull(javaClass.classLoader?.getResource("tip-1-dns-v1.json")).readText()
+        val corpus = JSONObject(raw)
+        assertEquals("tos.tip-1.dns-v1.v1", corpus.getString("schema"))
+        assertEquals(
+            TosDnsResolver.MAX_RESOLVER_CONTACTS,
+            corpus.getJSONObject("resolver_policy").getInt("maximum_contacts"),
+        )
+        assertEquals(31_622_400L, corpus.getJSONObject("lifecycle").getLong("renewal_interval_seconds"))
+        assertEquals(
+            TosDnsResolver.WALLET_CATEGORY.toString(16),
+            corpus.getJSONObject("categories").getJSONObject("wallet").getString("sha256"),
+        )
+        val vectors = corpus.getJSONArray("name_encoding")
+        for (index in 0 until vectors.length()) {
+            val vector = vectors.getJSONObject(index)
+            if (vector.getString("result") == "accept") {
+                assertArrayEquals(hex(vector.getString("encoded_hex")), TosDnsResolver.encodeName(vector.getString("input")))
+            }
+        }
+    }
+
     @Test
     fun `TIP-1 name vectors are encoded byte for byte`() {
         assertEquals("alice.tos", TosDnsResolver.canonicalName("Alice.tos"))

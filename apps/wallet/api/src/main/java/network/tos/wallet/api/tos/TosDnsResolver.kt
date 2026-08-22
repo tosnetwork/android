@@ -168,7 +168,7 @@ class TosDnsResolver(private val source: TosSource) {
         const val LEASE_SECONDS = 31_622_400L
         private const val NEXT_RESOLVER_TAG = 0xba93
         private const val SMC_ADDRESS_TAG = 0x9fd3
-        private val WALLET_CATEGORY = BigInteger(
+        internal val WALLET_CATEGORY = BigInteger(
             "105311596331855300602201538317979276640056460191511695660591596829410056223515"
         )
 
