@@ -482,11 +482,7 @@ class API(
         accountId: String,
         testnet: Boolean
     ): TokenEntity? {
-        val jettonsAPI = jettons(testnet)
-        val jetton = withRetry {
-            jettonsAPI.getJettonInfo(accountId)
-        } ?: return null
-        return TokenEntity(jetton)
+        return jettonTokenFromNode(accountId, testnet)
     }
 
     fun getJettonCustomPayload(
@@ -519,33 +515,42 @@ class API(
                 return@mapNotNull null
             }
             val master = data.jettonMaster ?: return@mapNotNull null
-            val meta = withRetry { tos.getTokenData(master, testnet) }
-            val symbol = meta?.optString("jetton_symbol")?.takeIf { it.isNotBlank() } ?: "JETTON"
-            val name = meta?.optString("jetton_name")?.takeIf { it.isNotBlank() }
-                ?: "Jetton ${master.takeLast(6)}"
-            val decimals = meta?.optString("jetton_decimals")?.toIntOrNull() ?: 9
-            val image = meta?.optString("jetton_image")?.takeIf { it.isNotBlank() }
-            val token = TokenEntity(
-                blockchain = network.tos.wallet.api.entity.value.Blockchain.TON,
-                address = master,
-                name = name,
-                symbol = symbol,
-                imageUri = image?.toUriOrNull() ?: Uri.EMPTY,
-                decimals = decimals,
-                verification = TokenEntity.Verification.none,
-                isRequestMinting = false,
-                isTransferable = true,
-                customPayloadApiUri = null,
-            )
+            val token = jettonTokenFromNode(master, testnet) ?: return@mapNotNull null
             BalanceEntity(
                 token = token,
-                value = Coins.ofNano(data.balance.toString(), decimals),
+                value = Coins.ofNano(data.balance.toString(), token.decimals),
                 walletAddress = jettonWallet,
                 initializedAccount = true,
                 isRequestMinting = false,
                 isTransferable = true,
             )
         }
+    }
+
+    private fun jettonTokenFromNode(master: String, testnet: Boolean): TokenEntity? {
+        val meta = withRetry { tos.getTokenData(master, testnet) } ?: return null
+        if (meta.optString("@type") != "ext.tokens.jettonMasterData") return null
+        val offchain = fetchTep64Metadata(meta.optString("jetton_metadata_uri"))
+        fun value(nodeKey: String, jsonKey: String): String? =
+            meta.optString(nodeKey).takeIf { it.isNotBlank() }
+                ?: offchain?.optString(jsonKey)?.takeIf { it.isNotBlank() }
+        val symbol = value("jetton_symbol", "symbol") ?: "JETTON"
+        val name = value("jetton_name", "name")
+            ?: "Jetton ${master.takeLast(6)}"
+        val decimals = value("jetton_decimals", "decimals")?.toIntOrNull() ?: 9
+        val image = value("jetton_image", "image")
+        return TokenEntity(
+            blockchain = network.tos.wallet.api.entity.value.Blockchain.TON,
+            address = master,
+            name = name,
+            symbol = symbol,
+            imageUri = image?.toUriOrNull() ?: Uri.EMPTY,
+            decimals = decimals,
+            verification = TokenEntity.Verification.none,
+            isRequestMinting = false,
+            isTransferable = true,
+            customPayloadApiUri = null,
+        )
     }
 
     fun resolveAddressOrName(
@@ -626,22 +631,8 @@ class API(
     }
 
     fun getNft(address: String, testnet: Boolean): NftItem? {
-        // TOS (W4): build from the node's get_nft_data instead of tonapi.
         val data = withRetry { tos.getNftItemData(address, testnet) } ?: return null
-        return io.tonapi.models.NftItem(
-            address = address,
-            index = data.index.toLong(),
-            verified = data.collection != null,
-            metadata = emptyMap(),
-            approvedBy = emptyList(),
-            trust = io.tonapi.models.TrustType.none,
-            owner = data.owner?.let {
-                io.tonapi.models.AccountAddress(address = it, isScam = false, isWallet = true)
-            },
-            collection = data.collection?.let {
-                io.tonapi.models.NftItemCollection(address = it, name = "", description = "")
-            },
-        )
+        return nftItemFromNode(address, data, testnet)
     }
 
     fun getNftItems(
@@ -649,27 +640,104 @@ class API(
         testnet: Boolean,
         limit: Int = 1000
     ): List<NftItem>? {
-        // TOS (W4): the NFT list comes from the TOS in-node wc=0 index
-        // (getAccountNfts -> owner's NFT items); each item's index/collection/owner
-        // come from get_nft_data. TODO: parse TEP-64 metadata (name/image).
+        // TOS (W4): enumerate state-verified items from the in-node wc=0 index,
+        // then resolve ownership and TEP-64 metadata from the same node.
         val nftAddresses = withRetry { tos.getAccountNftItems(address, testnet) } ?: emptyList()
         return nftAddresses.take(limit).mapNotNull { nftAddress ->
             val data = withRetry { tos.getNftItemData(nftAddress, testnet) } ?: return@mapNotNull null
-            io.tonapi.models.NftItem(
-                address = nftAddress,
-                index = data.index.toLong(),
-                verified = data.collection != null,
-                metadata = emptyMap(),
-                approvedBy = emptyList(),
-                trust = io.tonapi.models.TrustType.none,
-                owner = data.owner?.let {
-                    io.tonapi.models.AccountAddress(address = it, isScam = false, isWallet = true)
-                },
-                collection = data.collection?.let {
-                    io.tonapi.models.NftItemCollection(address = it, name = "", description = "")
-                },
-            )
+            nftItemFromNode(nftAddress, data, testnet)
         }
+    }
+
+    private fun nftItemFromNode(
+        address: String,
+        data: network.tos.wallet.api.tos.TosNftItemData,
+        testnet: Boolean,
+    ): NftItem {
+        val itemMetadata = withRetry { tos.getTokenData(address, testnet) }
+        val collectionMetadata = data.collection?.let { collection ->
+            withRetry { tos.getTokenData(collection, testnet) }
+        }
+        val itemOffchain = fetchTep64Metadata(itemMetadata?.optString("nft_metadata_uri"))
+        val collectionOffchain = fetchTep64Metadata(collectionMetadata?.optString("collection_metadata_uri"))
+        fun text(json: org.json.JSONObject?, key: String): String? =
+            json?.optString(key)?.takeIf { it.isNotBlank() && it != "null" }
+        fun itemText(nodeKey: String, jsonKey: String): String? =
+            text(itemMetadata, nodeKey) ?: text(itemOffchain, jsonKey)
+        fun collectionText(nodeKey: String, jsonKey: String): String? =
+            text(collectionMetadata, nodeKey) ?: text(collectionOffchain, jsonKey)
+
+        val metadata = buildMap<String, io.JsonAny> {
+            itemOffchain?.keys()?.forEach { key ->
+                jsonAny(itemOffchain.opt(key))?.let { put(key, it) }
+            }
+            itemText("nft_name", "name")?.let { put("name", io.JsonAny.Primitive(it)) }
+            itemText("nft_description", "description")?.let { put("description", io.JsonAny.Primitive(it)) }
+            itemText("nft_image", "image")?.let { put("image", io.JsonAny.Primitive(it)) }
+            text(itemMetadata, "nft_metadata_uri")?.let { put("uri", io.JsonAny.Primitive(it)) }
+            // Collection metadata is a useful display fallback for items whose
+            // individual content intentionally only contains a suffix or URI.
+            if (!containsKey("name")) collectionText("collection_name", "name")?.let {
+                put("name", io.JsonAny.Primitive(it))
+            }
+            if (!containsKey("description")) collectionText("collection_description", "description")?.let {
+                put("description", io.JsonAny.Primitive(it))
+            }
+            if (!containsKey("image")) collectionText("collection_image", "image")?.let {
+                put("image", io.JsonAny.Primitive(it))
+            }
+        }
+        val collectionName = collectionText("collection_name", "name").orEmpty()
+        val collectionDescription = collectionText("collection_description", "description").orEmpty()
+        return io.tonapi.models.NftItem(
+            address = address,
+            index = data.index.toLong(),
+            verified = data.collection != null,
+            metadata = metadata,
+            approvedBy = emptyList(),
+            trust = io.tonapi.models.TrustType.none,
+            owner = data.owner?.let {
+                io.tonapi.models.AccountAddress(address = it, isScam = false, isWallet = true)
+            },
+            collection = data.collection?.let {
+                io.tonapi.models.NftItemCollection(
+                    address = it,
+                    name = collectionName,
+                    description = collectionDescription,
+                )
+            },
+        )
+    }
+
+    private fun fetchTep64Metadata(rawUri: String?): JSONObject? {
+        val uri = rawUri?.takeIf { it.isNotBlank() && it != "null" } ?: return null
+        val url = when {
+            uri.startsWith("ipfs://") -> "https://ipfs.io/ipfs/${uri.removePrefix("ipfs://")}"
+            uri.startsWith("https://") || uri.startsWith("http://") -> uri
+            else -> return null
+        }
+        return try {
+            tonAPIHttpClient.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val body = response.body ?: return null
+                if (body.contentLength() > 2_000_000) return null
+                val bytes = body.source().readByteArray(2_000_001)
+                if (bytes.size > 2_000_000) return null
+                JSONObject(bytes.decodeToString())
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun jsonAny(value: Any?): io.JsonAny? = when (value) {
+        null, JSONObject.NULL -> io.JsonAny.Primitive(null)
+        is JSONObject -> io.JsonAny.Object(buildMap {
+            value.keys().forEach { key -> jsonAny(value.opt(key))?.let { put(key, it) } }
+        })
+        is JSONArray -> io.JsonAny.Array((0 until value.length()).mapNotNull { jsonAny(value.opt(it)) })
+        is String, is Number, is Boolean -> io.JsonAny.Primitive(value)
+        else -> null
     }
 
     private fun getPublicKey(

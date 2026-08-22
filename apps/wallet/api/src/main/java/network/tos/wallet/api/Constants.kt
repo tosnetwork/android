@@ -70,21 +70,4 @@ internal object Constants {
     //   )
     val TOS_CERT_PINS: Map<String, List<String>> = emptyMap()
 
-    /**
-     * Known jetton master list (Phase 1.5).
-     *
-     * A bare TOS node cannot *enumerate* which jettons an account holds (that needs an indexer);
-     * it can only query a single balance for a known master via runGetMethod. Register the jettons
-     * you care about here (master address + display metadata) and the app queries each account
-     * balance. Empty by default = show no jettons.
-     */
-    data class TosJetton(
-        val master: String,
-        val symbol: String,
-        val name: String,
-        val decimals: Int = 9,
-        val image: String = "",
-    )
-
-    val TOS_JETTONS: List<TosJetton> = emptyList()
 }
