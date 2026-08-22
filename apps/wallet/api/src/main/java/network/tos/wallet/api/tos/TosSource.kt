@@ -57,8 +57,9 @@ class TosSource(
     // ---------------------------------------------------------------------
 
     /** getAddressInformation — replaces AccountsApi.getAccount (balance / state / code / data). */
-    fun getAccountState(address: String, testnet: Boolean = false): TosAccountState {
+    fun getAccountState(address: String, testnet: Boolean = false, seqno: Int? = null): TosAccountState {
         val params = JSONObject().put("address", address)
+        seqno?.let { params.put("seqno", it) }
         return TosAccountState.fromJson(rpc.callObject("getAddressInformation", params, testnet))
     }
 
@@ -122,6 +123,12 @@ class TosSource(
 
     fun resolveDnsWallet(name: String, testnet: Boolean = false): TosDnsEvidence =
         TosDnsResolver(this).resolveWallet(name, testnet)
+
+    fun inspectDnsDomain(
+        name: String,
+        testnet: Boolean = false,
+        now: Long = System.currentTimeMillis() / 1000,
+    ): TosDnsDomainState = TosDnsResolver(this).inspectDomain(name, testnet, now)
 
     // ---------------------------------------------------------------------
     // Send / fee estimate (available from a bare node)

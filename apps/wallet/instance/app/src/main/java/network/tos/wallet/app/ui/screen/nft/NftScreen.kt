@@ -39,6 +39,7 @@ import network.tos.uikit.list.ListCell
 import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.wallet.data.collectibles.entities.NftEntity
 import network.tos.wallet.data.core.Trust
+import network.tos.wallet.api.tos.TosDnsLifecycle
 import network.tos.wallet.localization.Localization
 import org.koin.androidx.viewmodel.ext.android.activityViewModel
 import org.koin.core.parameter.parametersOf
@@ -83,6 +84,7 @@ class NftScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_nf
     private lateinit var domainExpirationView: AppCompatTextView
 
     private var lottieView: LottieView? = null
+    private var dnsLifecycle: TosDnsLifecycle? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -230,6 +232,9 @@ class NftScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_nf
                 domainExpirationView.setTextColor(requireContext().resolveColor(UIKitColor.textSecondaryColor))
             }
         }
+        collectFlow(viewModel.domainStateFlow) { state ->
+            dnsLifecycle = state?.lifecycle
+        }
     }
 
     private fun setTrust(trust: Trust) {
@@ -319,6 +324,7 @@ class NftScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_nf
 
     private fun showGrayMenu(view: View) {
         val actionSheet = ActionSheet(requireContext())
+        addDnsActions(actionSheet)
         if (nftEntity.collection == null) {
             actionSheet.addItem(
                 HIDE_NFT_ID,
@@ -347,6 +353,11 @@ class NftScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_nf
                 HIDE_AND_REPORT_ID -> reportSpam(true)
                 VIEWER_ID -> openTonViewer()
                 BURN_ID -> burn()
+                DNS_BID_ID -> viewModel.bidMinimum()
+                DNS_FINISH_ID -> viewModel.finishAuction()
+                DNS_RELEASE_ID -> viewModel.releaseDomain()
+                DNS_SET_WALLET_ID -> viewModel.setWalletRecord()
+                DNS_DELETE_WALLET_ID -> viewModel.deleteWalletRecord()
             }
         }
         actionSheet.show(view)
@@ -354,6 +365,7 @@ class NftScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_nf
 
     private fun showMenu(view: View) {
         val actionSheet = ActionSheet(requireContext())
+        addDnsActions(actionSheet)
         if (nftEntity.collection == null) {
             actionSheet.addItem(
                 HIDE_NFT_ID,
@@ -376,9 +388,36 @@ class NftScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_nf
                 HIDE_NFT_ID -> hideCollection()
                 VIEWER_ID -> openTonViewer()
                 BURN_ID -> burn()
+                DNS_BID_ID -> viewModel.bidMinimum()
+                DNS_FINISH_ID -> viewModel.finishAuction()
+                DNS_RELEASE_ID -> viewModel.releaseDomain()
+                DNS_SET_WALLET_ID -> viewModel.setWalletRecord()
+                DNS_DELETE_WALLET_ID -> viewModel.deleteWalletRecord()
             }
         }
         actionSheet.show(view)
+    }
+
+    private fun addDnsActions(actionSheet: ActionSheet) {
+        if (!nftEntity.isDomain || nftEntity.isTelegramUsername || wallet.isWatchOnly) return
+        when (dnsLifecycle) {
+            TosDnsLifecycle.AUCTION -> actionSheet.addItem(
+                DNS_BID_ID, Localization.dns_bid_minimum, UIKitIcon.ic_refresh_16,
+            )
+            TosDnsLifecycle.AUCTION_ENDED -> actionSheet.addItem(
+                DNS_FINISH_ID, Localization.dns_finish_auction, UIKitIcon.ic_donemark_28,
+            )
+            TosDnsLifecycle.LEASED -> {
+                if (isCanSend) {
+                    actionSheet.addItem(DNS_SET_WALLET_ID, Localization.dns_set_wallet_record, UIKitIcon.ic_wallet_28)
+                    actionSheet.addItem(DNS_DELETE_WALLET_ID, Localization.dns_delete_wallet_record, UIKitIcon.ic_trash_bin_16)
+                }
+            }
+            TosDnsLifecycle.RELEASABLE -> actionSheet.addItem(
+                DNS_RELEASE_ID, Localization.dns_release_domain, UIKitIcon.ic_refresh_16,
+            )
+            else -> Unit
+        }
     }
 
     private fun showUnverifiedState() {
@@ -464,6 +503,11 @@ class NftScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_nf
         private const val HIDE_AND_REPORT_ID = 2L
         private const val VIEWER_ID = 3L
         private const val BURN_ID = 4L
+        private const val DNS_BID_ID = 10L
+        private const val DNS_FINISH_ID = 11L
+        private const val DNS_RELEASE_ID = 12L
+        private const val DNS_SET_WALLET_ID = 13L
+        private const val DNS_DELETE_WALLET_ID = 14L
 
         private const val ARG_ENTITY = "entity"
 

@@ -1,5 +1,19 @@
 <resources>
     <string name="app_name" translatable="false">TOS Wallet</string>
+    <string name="dns_bid_minimum">Place minimum valid bid</string>
+    <string name="dns_finish_auction">Finalize domain auction</string>
+    <string name="dns_release_domain">Release and re-auction domain</string>
+    <string name="dns_set_wallet_record">Link domain to this wallet</string>
+    <string name="dns_delete_wallet_record">Remove wallet record</string>
+    <string name="dns_register">Register .tos domain</string>
+    <string name="dns_register_warning">Registration opens a public auction at the current on-chain minimum. The exact lowercase name, network, destination and amount will be shown again before signing.</string>
+    <string name="dns_register_confirmation">Domain: %1$s\nNetwork: %2$s\nCollection: %3$s\nOpening bid: %4$s TOS\nCheckpoint: %5$d (%6$ds old)\n\nAvailability and price will be checked again before signing.</string>
+    <string name="dns_action_failed">Domain action was rejected or the chain state changed. Refresh and try again.</string>
+    <string name="dns_action_done">Domain transaction submitted</string>
+    <string name="dns_manage_domain">Manage .tos auction</string>
+    <string name="dns_manage_prompt">Enter the exact lowercase second-level name. Only a currently valid bid, finalization, or release/re-auction action will be offered.</string>
+    <string name="dns_manage_warning">Latest finalized state:\n%1$s\nDomain: %2$s\nNetwork: %3$s\nDestination: %4$s\nAmount: %5$s TOS\nCheckpoint: %6$d (%7$ds old)\n\nState and amount will be checked again before signing.</string>
+    <string name="collectibles_manage">Manage collectibles</string>
     <string name="ton" translatable="false">TOS</string>
     <string name="toncoin" translatable="false">TOS</string>
     <string name="bitcoin" translatable="false">Bitcoin</string>

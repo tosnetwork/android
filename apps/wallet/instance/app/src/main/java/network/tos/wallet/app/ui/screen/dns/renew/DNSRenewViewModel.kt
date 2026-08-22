@@ -3,43 +3,35 @@ package network.tos.wallet.app.ui.screen.dns.renew
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.viewModelScope
-import network.tos.blockchain.ton.TONOpCode
-import network.tos.blockchain.ton.extensions.base64
-import network.tos.blockchain.ton.extensions.storeOpCode
-import network.tos.blockchain.ton.extensions.storeQueryId
+import network.tos.blockchain.ton.extensions.equalsAddress
 import network.tos.extensions.currentTimeSeconds
-import network.tos.extensions.filterList
-import network.tos.icu.Coins
-import network.tos.wallet.app.core.entities.TransferEntity
 import network.tos.wallet.app.ui.base.BaseWalletVM
+import network.tos.wallet.app.ui.screen.dns.TosDnsTransactionBuilder
 import network.tos.wallet.app.ui.screen.dns.renew.list.Item
 import network.tos.wallet.app.ui.screen.send.transaction.SendTransactionScreen
 import network.tos.uikit.list.ListCell
+import network.tos.wallet.api.API
 import network.tos.wallet.data.account.AccountRepository
 import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.wallet.data.collectibles.CollectiblesRepository
 import network.tos.wallet.data.collectibles.entities.DnsExpiringEntity
-import network.tos.wallet.data.core.entity.RawMessageEntity
 import network.tos.wallet.data.core.entity.SignRequestEntity
+import network.tos.wallet.localization.Localization
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
-import org.ton.cell.CellBuilder
-import uikit.extensions.collectFlow
+import kotlinx.coroutines.withContext
 
 class DNSRenewViewModel(
     app: Application,
     private val wallet: WalletEntity,
     private val entities: List<DnsExpiringEntity>,
     private val collectiblesRepository: CollectiblesRepository,
-    private val accountRepository: AccountRepository
+    private val accountRepository: AccountRepository,
+    private val api: API,
 ) : BaseWalletVM(app) {
 
     private val dnsExpiringFlow = flow {
@@ -72,10 +64,14 @@ class DNSRenewViewModel(
             if (items.isEmpty()) {
                 openScreen(DNSOnSaleScreen.newInstance())
             } else {
-                val seqNo = accountRepository.getSeqno(wallet)
-                val signRequests = createSignRequest(wallet, items, seqNo)
-                if (sign(signRequests)) {
-                    successCallback()
+                try {
+                    val seqNo = accountRepository.getSeqno(wallet)
+                    val signRequests = createSignRequests(items, seqNo)
+                    if (sign(signRequests)) {
+                        successCallback()
+                    }
+                } catch (_: Throwable) {
+                    toast(Localization.sending_error)
                 }
             }
         }
@@ -92,46 +88,33 @@ class DNSRenewViewModel(
         return true
     }
 
-    companion object {
-
-        fun createSignRequest(
-            wallet: WalletEntity,
-            entities: List<DnsExpiringEntity>,
-            seqNo: Int
-        ): List<SignRequestEntity> {
-            val messagesChunks = entities.mapNotNull(::createMessage).chunked(wallet.maxMessages)
-            val requests = mutableListOf<SignRequestEntity>()
-            for ((index, messages) in messagesChunks.withIndex()) {
-                val request = SignRequestEntity.Builder()
-                    .setValidUntil(currentTimeSeconds() + 10 * 60)
-                    .setTestnet(wallet.testnet)
-                    .setFrom(wallet.contract.address)
-                    .addMessages(messages)
-                    .setSeqNo(seqNo + index)
-                    .build(Uri.EMPTY)
-                requests.add(request)
+    private suspend fun createSignRequests(
+        entities: List<DnsExpiringEntity>,
+        seqNo: Int,
+    ): List<SignRequestEntity> {
+        val now = currentTimeSeconds()
+        val messages = entities.map { entity ->
+            val dns = requireNotNull(entity.dnsItem) { "renewal item is missing" }
+            val state = withContext(Dispatchers.IO) {
+                api.tos.inspectDnsDomain(entity.name, wallet.testnet, now)
             }
-
-            return requests
-        }
-
-        private fun createMessage(entity: DnsExpiringEntity): RawMessageEntity? {
-            val dns = entity.dnsItem ?: return null
-            return createMessage(dns.address)
-        }
-
-        fun createMessage(address: String): RawMessageEntity {
-            val payload = CellBuilder.createCell {
-                storeOpCode(TONOpCode.CHANGE_DNS_RECORD)
-                storeQueryId(TransferEntity.newWalletQueryId())
-                storeUInt(0, 256)
-            }
-
-            return RawMessageEntity.of(
-                amount = Coins.of("0.02").toBigInteger(),
-                address = address,
-                payload = payload,
+            require(state.canonicalName == entity.name.lowercase()) { "DNS name changed" }
+            require(state.itemAddress.equalsAddress(dns.address)) { "DNS item identity changed" }
+            TosDnsTransactionBuilder.createMessage(
+                state = state,
+                walletAddress = wallet.address,
+                action = TosDnsTransactionBuilder.Action.Renew(),
+                now = now,
             )
+        }
+        return messages.chunked(wallet.maxMessages).mapIndexed { index, chunk ->
+            SignRequestEntity.Builder()
+                .setValidUntil(now + 10 * 60)
+                .setTestnet(wallet.testnet)
+                .setFrom(wallet.contract.address)
+                .addMessages(chunk)
+                .setSeqNo(seqNo + index)
+                .build(Uri.EMPTY)
         }
     }
 

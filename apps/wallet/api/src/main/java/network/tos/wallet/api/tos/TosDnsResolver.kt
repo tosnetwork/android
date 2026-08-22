@@ -21,8 +21,131 @@ data class TosDnsEvidence(
     val renewalDeadline: Long,
 )
 
+enum class TosDnsLifecycle { AVAILABLE, AUCTION, AUCTION_ENDED, LEASED, RELEASABLE }
+
+data class TosDnsDomainState(
+    val canonicalName: String,
+    val label: String,
+    val rootAddress: String,
+    val collectionAddress: String,
+    val itemAddress: String,
+    val lifecycle: TosDnsLifecycle,
+    val ownerAddress: String?,
+    val maximumBidAddress: String?,
+    val maximumBid: BigInteger,
+    val auctionEndTime: Long,
+    val lastFillUpTime: Long?,
+    val renewalDeadline: Long?,
+    val checkpoint: TosBlockId,
+    val observedAt: Long,
+)
+
 /** TIP-1 fail-closed wallet resolver. All reads are bound to one MC checkpoint. */
 class TosDnsResolver(private val source: TosSource) {
+    /**
+     * Inspect one second-level .tos Domain Item at a single finalized checkpoint.
+     * This is the authoritative preflight for wallet management actions; callers
+     * must refresh it immediately before asking the user to sign.
+     */
+    fun inspectDomain(
+        input: String,
+        testnet: Boolean = false,
+        now: Long = System.currentTimeMillis() / 1000,
+    ): TosDnsDomainState {
+        val name = canonicalName(input)
+        val labels = name.split('.')
+        require(labels.size == 2) { "only second-level .tos Domain Items can be managed" }
+        val label = labels.first()
+        validateRegistrationLabel(label)
+        val consensus = source.getConsensusBlock(testnet)
+        require(consensus.seqno > 0 && consensus.blockUtime > 0) { "invalid DNS checkpoint" }
+        require(abs(now - consensus.blockUtime) <= MAX_CHECKPOINT_AGE_SECONDS) { "stale DNS checkpoint" }
+        val root = configRoot(source.getConfigParam(4, consensus.seqno, testnet))
+
+        val suffixCell = CellBuilder.createCell { storeBytes("tos\u0000".encodeToByteArray()) }.base64()
+        val rootResult = getter(
+            root,
+            "dnsresolve",
+            listOf(TosSource.stackSlice(suffixCell), stackNum(NEXT_RESOLVER_CATEGORY)),
+            consensus.seqno,
+            testnet,
+        )
+        val checkpoint = bindCheckpoint(null, rootResult.blockId, consensus.seqno)
+        require(TosSource.stackReadBigInteger(rootResult.stack, 1)?.toInt() == 32) {
+            "DNS root did not consume the .tos suffix"
+        }
+        val collection = parseRecordAddress(
+            stackCell(rootResult.stack, 0) ?: error(".tos Collection is unavailable"),
+            NEXT_RESOLVER_TAG,
+            allowCapability = false,
+        )
+        val labelCell = CellBuilder.createCell { storeBytes(label.encodeToByteArray()) }
+        val index = BigInteger(1, labelCell.hash().toByteArray())
+        val mapped = getter(
+            collection,
+            "get_nft_address_by_index",
+            listOf(stackNum(index)),
+            consensus.seqno,
+            testnet,
+        )
+        bindCheckpoint(checkpoint, mapped.blockId, consensus.seqno)
+        val item = stackAddress(mapped.stack, 0)
+
+        val account = source.getAccountState(item, testnet, consensus.seqno)
+        bindCheckpoint(checkpoint, account.blockId, consensus.seqno)
+        if (account.status == "uninitialized" || account.status == "uninit" || account.status == "nonexist") {
+            return TosDnsDomainState(
+                name, label, root, collection, item, TosDnsLifecycle.AVAILABLE,
+                null, null, BigInteger.ZERO, 0, null, null, checkpoint,
+                consensus.blockUtime,
+            )
+        }
+        require(account.status == "active") { "Domain Item account is not active" }
+
+        val identity = source.runGetMethod(item, "get_nft_data", emptyList(), testnet, consensus.seqno)
+        require(identity.type == "smc.runResult") { "invalid Domain Item response" }
+        bindCheckpoint(checkpoint, identity.blockId, consensus.seqno)
+        require(identity.exitCode == 0) { "invalid Domain Item state" }
+        require(identity.stack.length() == 5) { "invalid Domain Item identity" }
+        require(TosSource.stackReadBigInteger(identity.stack, 3) == index) { "Domain Item index mismatch" }
+        require(stackAddress(identity.stack, 2) == collection) { "Domain Item Collection mismatch" }
+        val owner = stackCell(identity.stack, 1)?.let { cell ->
+            runCatching {
+                (cell.beginParse().loadAddress() as? AddrStd)?.toAccountId()
+            }.getOrNull()
+        }
+
+        val auction = getter(item, "get_auction_info", emptyList(), consensus.seqno, testnet)
+        bindCheckpoint(checkpoint, auction.blockId, consensus.seqno)
+        require(auction.stack.length() == 3) { "invalid DNS auction state" }
+        val auctionEnd = TosSource.stackReadBigInteger(auction.stack, 0)?.longValueExact()
+            ?: error("invalid DNS auction end")
+        val maximumBid = TosSource.stackReadBigInteger(auction.stack, 1) ?: BigInteger.ZERO
+        val maximumBidAddress = stackCell(auction.stack, 2)?.let { cell ->
+            runCatching { (cell.beginParse().loadAddress() as? AddrStd)?.toAccountId() }.getOrNull()
+        }
+        if (auctionEnd != 0L) {
+            val lifecycle = if (now > auctionEnd) TosDnsLifecycle.AUCTION_ENDED else TosDnsLifecycle.AUCTION
+            return TosDnsDomainState(
+                name, label, root, collection, item, lifecycle, owner,
+                maximumBidAddress, maximumBid, auctionEnd, null, null, checkpoint,
+                consensus.blockUtime,
+            )
+        }
+
+        val fill = getter(item, "get_last_fill_up_time", emptyList(), consensus.seqno, testnet)
+        bindCheckpoint(checkpoint, fill.blockId, consensus.seqno)
+        val lastFill = TosSource.stackReadBigInteger(fill.stack, 0)?.longValueExact()
+            ?: error("invalid DNS renewal clock")
+        val deadline = renewalDeadline(lastFill)
+        return TosDnsDomainState(
+            name, label, root, collection, item,
+            if (now <= deadline) TosDnsLifecycle.LEASED else TosDnsLifecycle.RELEASABLE,
+            owner, null, BigInteger.ZERO, 0, lastFill, deadline, checkpoint,
+            consensus.blockUtime,
+        )
+    }
+
     fun resolveWallet(input: String, testnet: Boolean = false, now: Long = System.currentTimeMillis() / 1000): TosDnsEvidence {
         val name = canonicalName(input)
         var remaining = encodeName(name)
@@ -171,6 +294,10 @@ class TosDnsResolver(private val source: TosSource) {
         internal val WALLET_CATEGORY = BigInteger(
             "105311596331855300602201538317979276640056460191511695660591596829410056223515"
         )
+        internal val NEXT_RESOLVER_CATEGORY = BigInteger(
+            "19f02441ee588fdb26ee24b2568dd035c3c9206e11ab979be62e55558a1d17ff",
+            16,
+        )
 
         fun canonicalName(input: String): String {
             require(input == input.trim() && !input.endsWith('.')) { "invalid DNS name" }
@@ -191,6 +318,18 @@ class TosDnsResolver(private val source: TosSource) {
         fun isComponentBoundary(consumedBytes: Int, query: ByteArray): Boolean =
             consumedBytes == query.size || consumedBytes > 0 && consumedBytes < query.size &&
                 (query[consumedBytes - 1] == 0.toByte() || query[consumedBytes] == 0.toByte())
+
+        private fun renewalDeadline(lastFill: Long): Long {
+            require(lastFill > 0 && lastFill <= Long.MAX_VALUE - LEASE_SECONDS) { "invalid DNS renewal clock" }
+            return lastFill + LEASE_SECONDS
+        }
+
+        private fun validateRegistrationLabel(label: String) {
+            val bytes = label.encodeToByteArray()
+            require(bytes.size in 4..126 && bytes.first() != '-'.code.toByte() && bytes.last() != '-'.code.toByte() &&
+                bytes.all { it in 'a'.code.toByte()..'z'.code.toByte() || it in '0'.code.toByte()..'9'.code.toByte() || it == '-'.code.toByte() }
+            ) { "invalid DNS registration label" }
+        }
 
         private fun stackNum(value: BigInteger): JSONArray = JSONArray().put("num").put(value.toString())
     }

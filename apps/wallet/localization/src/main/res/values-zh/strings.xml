@@ -1,4 +1,18 @@
 <resources>
+    <string name="dns_bid_minimum">按最低有效价格出价</string>
+    <string name="dns_finish_auction">结算域名拍卖</string>
+    <string name="dns_release_domain">释放并重新拍卖域名</string>
+    <string name="dns_set_wallet_record">将域名绑定到当前钱包</string>
+    <string name="dns_delete_wallet_record">删除钱包记录</string>
+    <string name="dns_register">注册 .tos 域名</string>
+    <string name="dns_register_warning">注册会按当前链上最低价发起公开拍卖。签名前会再次显示小写规范域名、网络、目标地址和金额。</string>
+    <string name="dns_register_confirmation">域名：%1$s\n网络：%2$s\nCollection：%3$s\n起拍价：%4$s TOS\n检查点：%5$d（%6$d 秒前）\n\n签名前会再次检查可用状态和价格。</string>
+    <string name="dns_action_failed">域名操作被拒绝或链上状态已经变化，请刷新后重试。</string>
+    <string name="dns_action_done">域名交易已提交</string>
+    <string name="dns_manage_domain">管理 .tos 拍卖</string>
+    <string name="dns_manage_prompt">请输入精确的小写二级域名。钱包只会提供当前有效的出价、结算或释放并重拍操作。</string>
+    <string name="dns_manage_warning">最新终局状态：\n%1$s\n域名：%2$s\n网络：%3$s\n目标地址：%4$s\n金额：%5$s TOS\n检查点：%6$d（%7$d 秒前）\n\n签名前会再次检查状态和金额。</string>
+    <string name="collectibles_manage">管理收藏品</string>
     <string name="transaction_expired">交易已过期</string>
     <string name="add_contact">添加到地址簿</string>
     <string name="add_to_home_screen">添加到主屏幕</string>

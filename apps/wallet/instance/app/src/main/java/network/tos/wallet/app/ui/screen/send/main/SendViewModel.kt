@@ -1163,6 +1163,8 @@ class SendViewModel(
         val transfer = tonTransferFlow.value ?: throw IllegalStateException("Ton transfer is null")
         val fee = feeFlow.value ?: throw IllegalStateException("Fee is null")
 
+        verifyDnsNftTransfer()
+
         _uiEventFlow.tryEmit(SendEvent.Loading)
 
         if (fee is SendFee.Battery) {
@@ -1255,6 +1257,23 @@ class SendViewModel(
 
         send(boc, wallet, internalMessage)
         analytics.simpleTrackEvent("send_success")
+    }
+
+    private suspend fun verifyDnsNftTransfer() {
+        if (!isNft) return
+        val nft = collectiblesRepository.getNft(
+            accountId = wallet.accountId,
+            testnet = wallet.testnet,
+            address = nftAddress,
+        ) ?: error("NFT is unavailable")
+        if (!nft.isDomain || nft.isTelegramUsername || !nft.name.endsWith(".tos")) return
+        val state = api.tos.inspectDnsDomain(nft.name, wallet.testnet)
+        require(state.itemAddress.equalsAddress(nft.address)) { "DNS item identity changed" }
+        require(state.ownerAddress?.equalsAddress(wallet.address) == true) { "DNS owner changed" }
+        require(
+            state.lifecycle == network.tos.wallet.api.tos.TosDnsLifecycle.LEASED ||
+                state.lifecycle == network.tos.wallet.api.tos.TosDnsLifecycle.RELEASABLE,
+        ) { "DNS item cannot be transferred in its current lifecycle" }
     }
 
     fun sign() {

@@ -12,7 +12,11 @@ import network.tos.wallet.app.manager.tx.TransactionManager
 import network.tos.wallet.app.ui.base.UiListState
 import network.tos.wallet.app.ui.base.BaseWalletVM
 import network.tos.wallet.app.ui.screen.collectibles.main.list.Item
+import network.tos.wallet.app.ui.screen.dns.TosDnsTransactionBuilder
+import network.tos.wallet.app.ui.screen.send.transaction.SendTransactionScreen
+import network.tos.blockchain.ton.dns.TosDnsOperation
 import network.tos.wallet.api.API
+import network.tos.wallet.api.tos.TosDnsLifecycle
 import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.wallet.data.collectibles.CollectiblesRepository
 import network.tos.wallet.data.collectibles.entities.DnsExpiringEntity
@@ -29,6 +33,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CollectiblesViewModel(
     app: Application,
@@ -39,6 +45,25 @@ class CollectiblesViewModel(
     private val transactionManager: TransactionManager,
     private val api: API
 ): BaseWalletVM(app) {
+
+    data class DomainManagementPreview(
+        val canonicalName: String,
+        val lifecycle: TosDnsLifecycle,
+        val amount: java.math.BigInteger,
+        val targetAddress: String,
+        val checkpointSequence: Int,
+        val checkpointAge: Long,
+        val testnet: Boolean,
+    )
+
+    data class DomainRegistrationPreview(
+        val canonicalName: String,
+        val amount: java.math.BigInteger,
+        val collectionAddress: String,
+        val checkpointSequence: Int,
+        val checkpointAge: Long,
+        val testnet: Boolean,
+    )
 
     private val _ltFlow = MutableStateFlow(0L)
     private val ltFlow = _ltFlow.asStateFlow()
@@ -136,6 +161,117 @@ class CollectiblesViewModel(
 
     fun refresh() {
         _ltFlow.value += 1
+    }
+
+    fun inspectDomainRegistration(input: String, completion: (DomainRegistrationPreview?) -> Unit) {
+        viewModelScope.launch {
+            val preview = try {
+                val canonical = network.tos.wallet.api.tos.TosDnsResolver.canonicalName(input)
+                require(canonical == input && canonical.count { it == '.' } == 1) {
+                    "registration requires the exact lowercase second-level name"
+                }
+                val now = System.currentTimeMillis() / 1000
+                require(now > TosDnsOperation.AUCTION_START_TIME) { "DNS registration has not launched" }
+                val state = withContext(Dispatchers.IO) {
+                    api.tos.inspectDnsDomain(canonical, wallet.testnet, now)
+                }
+                require(state.lifecycle == TosDnsLifecycle.AVAILABLE)
+                val bid = TosDnsOperation.minimumPrice(state.label.encodeToByteArray().size, now)
+                DomainRegistrationPreview(
+                    canonical, bid, state.collectionAddress, state.checkpoint.seqno,
+                    maxOf(0, now - state.observedAt), wallet.testnet,
+                )
+            } catch (_: Throwable) {
+                null
+            }
+            completion(preview)
+        }
+    }
+
+    fun registerDomain(preview: DomainRegistrationPreview, completion: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = try {
+                val now = System.currentTimeMillis() / 1000
+                val state = withContext(Dispatchers.IO) {
+                    api.tos.inspectDnsDomain(preview.canonicalName, wallet.testnet, now)
+                }
+                val bid = TosDnsOperation.minimumPrice(state.label.encodeToByteArray().size, now)
+                val request = TosDnsTransactionBuilder.createSignRequest(
+                    wallet,
+                    state,
+                    TosDnsTransactionBuilder.Action.Register(bid),
+                    now = now,
+                )
+                SendTransactionScreen.run(context, wallet, request)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+            completion(success)
+            if (success) refresh()
+        }
+    }
+
+    fun inspectDomainManagement(input: String, completion: (DomainManagementPreview?) -> Unit) {
+        viewModelScope.launch {
+            val preview = try {
+                val canonical = network.tos.wallet.api.tos.TosDnsResolver.canonicalName(input)
+                require(canonical == input && canonical.count { it == '.' } == 1)
+                val now = System.currentTimeMillis() / 1000
+                val state = withContext(Dispatchers.IO) {
+                    api.tos.inspectDnsDomain(canonical, wallet.testnet, now)
+                }
+                DomainManagementPreview(
+                    canonical, state.lifecycle, managementAmount(state, now), state.itemAddress,
+                    state.checkpoint.seqno, maxOf(0, now - state.observedAt), wallet.testnet,
+                )
+            } catch (_: Throwable) {
+                null
+            }
+            completion(preview)
+        }
+    }
+
+    fun manageDomain(preview: DomainManagementPreview, completion: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = try {
+                val now = System.currentTimeMillis() / 1000
+                val state = withContext(Dispatchers.IO) {
+                    api.tos.inspectDnsDomain(preview.canonicalName, wallet.testnet, now)
+                }
+                require(state.lifecycle == preview.lifecycle) { "DNS lifecycle changed" }
+                val action = when (state.lifecycle) {
+                    TosDnsLifecycle.AUCTION -> TosDnsTransactionBuilder.Action.Bid(
+                        TosDnsOperation.minimumNextBid(state.maximumBid),
+                    )
+                    TosDnsLifecycle.AUCTION_ENDED -> TosDnsTransactionBuilder.Action.FinishAuction
+                    TosDnsLifecycle.RELEASABLE -> TosDnsTransactionBuilder.Action.Release(
+                        TosDnsOperation.minimumPrice(state.label.encodeToByteArray().size, now),
+                    )
+                    else -> error("domain has no public auction action")
+                }
+                SendTransactionScreen.run(
+                    context,
+                    wallet,
+                    TosDnsTransactionBuilder.createSignRequest(wallet, state, action, now = now),
+                )
+                true
+            } catch (_: Throwable) {
+                false
+            }
+            completion(success)
+            if (success) refresh()
+        }
+    }
+
+    private fun managementAmount(
+        state: network.tos.wallet.api.tos.TosDnsDomainState,
+        now: Long,
+    ): java.math.BigInteger = when (state.lifecycle) {
+        TosDnsLifecycle.AUCTION -> TosDnsOperation.minimumNextBid(state.maximumBid)
+        TosDnsLifecycle.AUCTION_ENDED -> TosDnsOperation.CONTRACT_ACTION_VALUE
+        TosDnsLifecycle.RELEASABLE -> TosDnsOperation.minimumPrice(state.label.encodeToByteArray().size, now)
+        else -> error("domain has no public auction action")
     }
 
 }
