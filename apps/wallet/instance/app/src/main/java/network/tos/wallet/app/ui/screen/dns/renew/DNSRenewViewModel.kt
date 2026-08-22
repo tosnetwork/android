@@ -60,6 +60,10 @@ class DNSRenewViewModel(
 
     fun renewAll(successCallback: () -> Unit) {
         viewModelScope.launch {
+            if (wallet.isWatchOnly) {
+                toast(Localization.sending_error)
+                return@launch
+            }
             val items = dnsExpiringFlow.value.filter { !it.inSale }
             if (items.isEmpty()) {
                 openScreen(DNSOnSaleScreen.newInstance())

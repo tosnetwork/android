@@ -4,6 +4,8 @@ import network.tos.blockchain.ton.dns.TosDnsOperation
 import network.tos.wallet.api.tos.TosBlockId
 import network.tos.wallet.api.tos.TosDnsDomainState
 import network.tos.wallet.api.tos.TosDnsLifecycle
+import network.tos.wallet.data.account.Wallet
+import network.tos.wallet.data.account.entities.WalletEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -95,6 +97,21 @@ class TosDnsTransactionBuilderTest {
         )
         assertEquals(item, record.addressValue)
         assertEquals(BigInteger.valueOf(0x4eb1f0f9), record.getPayload().beginParse().loadUInt(32))
+    }
+
+    @Test
+    fun watchOnlyWalletCannotCreateDnsSignRequest() {
+        val wallet = WalletEntity.EMPTY.copy(type = Wallet.Type.Watch)
+        val now = TosDnsOperation.AUCTION_START_TIME + 1
+        val minimum = TosDnsOperation.minimumPrice(5, now)
+        assertThrows(IllegalArgumentException::class.java) {
+            TosDnsTransactionBuilder.createSignRequest(
+                wallet,
+                state(TosDnsLifecycle.AVAILABLE),
+                TosDnsTransactionBuilder.Action.Register(minimum),
+                now = now,
+            )
+        }
     }
 
     private fun state(

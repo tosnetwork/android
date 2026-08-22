@@ -86,11 +86,14 @@ object TosDnsTransactionBuilder {
         action: Action,
         seqNo: Int? = null,
         now: Long = currentTimeSeconds(),
-    ): SignRequestEntity = SignRequestEntity.Builder()
+    ): SignRequestEntity {
+        require(!wallet.isWatchOnly) { "a watch-only wallet cannot create a DNS mutation" }
+        return SignRequestEntity.Builder()
         .setValidUntil(now + 10 * 60)
         .setTestnet(wallet.testnet)
         .setFrom(wallet.contract.address)
         .apply { if (seqNo != null) setSeqNo(seqNo) }
         .addMessage(createMessage(state, wallet.address, action, now))
         .build(Uri.EMPTY)
+    }
 }
