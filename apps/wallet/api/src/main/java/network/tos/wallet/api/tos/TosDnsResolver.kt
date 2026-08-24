@@ -299,6 +299,39 @@ class TosDnsResolver(private val source: TosSource) {
             16,
         )
 
+        /**
+         * Cross-endpoint agreement check. Given the evidence produced by resolving the SAME name
+         * through two or more INDEPENDENT TOS nodes, return it only if every node agrees on the
+         * resolved wallet address, canonical name, and resolver path. A single malicious,
+         * compromised, or MITM'd endpoint that forges a `.tos -> address` mapping is rejected
+         * because an honest peer disagrees; any resolution error on any endpoint propagates and
+         * fails closed.
+         *
+         * Checkpoint and renewal deadline are per-node (each node selects its own finalized block)
+         * and are intentionally NOT compared. This is defense-in-depth against a lying endpoint,
+         * not a substitute for Merkle-proof verification: it cannot detect an attacker who controls
+         * every configured endpoint. Requires >= 2 independent results.
+         */
+        fun corroborate(results: List<TosDnsEvidence>): TosDnsEvidence {
+            require(results.size >= 2) {
+                "cross-endpoint DNS corroboration requires >= 2 independent results"
+            }
+            val primary = results.first()
+            results.drop(1).forEach { other ->
+                require(other.address == primary.address) {
+                    "DNS resolution disagreement across endpoints for ${primary.canonicalName}: " +
+                        "${primary.address} vs ${other.address}"
+                }
+                require(other.canonicalName == primary.canonicalName) {
+                    "DNS canonical-name disagreement across endpoints"
+                }
+                require(other.resolverPath == primary.resolverPath) {
+                    "DNS resolver-path disagreement across endpoints for ${primary.canonicalName}"
+                }
+            }
+            return primary
+        }
+
         fun canonicalName(input: String): String {
             require(input == input.trim() && !input.endsWith('.')) { "invalid DNS name" }
             val lowered = input.lowercase(Locale.ROOT)

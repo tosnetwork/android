@@ -124,6 +124,25 @@ class TosSource(
     fun resolveDnsWallet(name: String, testnet: Boolean = false): TosDnsEvidence =
         TosDnsResolver(this).resolveWallet(name, testnet)
 
+    /**
+     * W1 mitigation: resolve `.tos` through this node AND every independent node in
+     * [corroborators], returning the evidence only if all agree on the wallet address and
+     * resolver path (see [CorroboratingTosDns]). Use this on payment paths so a single
+     * malicious/compromised/MITM'd endpoint cannot forge the destination address. When no
+     * corroborators are configured this degrades to the single-source [resolveDnsWallet]; callers
+     * on security-sensitive paths should treat the absence of corroborators as reduced assurance.
+     */
+    fun resolveDnsWalletCorroborated(
+        name: String,
+        corroborators: List<TosSource>,
+        testnet: Boolean = false,
+    ): TosDnsEvidence =
+        if (corroborators.isEmpty()) {
+            resolveDnsWallet(name, testnet)
+        } else {
+            CorroboratingTosDns(listOf(this) + corroborators).resolveWallet(name, testnet)
+        }
+
     fun inspectDnsDomain(
         name: String,
         testnet: Boolean = false,
