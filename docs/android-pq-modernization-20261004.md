@@ -117,12 +117,92 @@ All four are rejected before the repaired signer exposes confirmation or signs.
 
 ## Executed validation
 
-This is an in-progress checkpoint. The complete Wallet device suite, final screen
-configuration matrix and authenticated Signer/Release smoke checks are still pending.
+This is an in-progress checkpoint. The repaired Wallet's complete device suite,
+unit result set, affected R8 build, lint and host artifact checks have passed.
+The final screen configuration matrix, final-hash 16KB runtime repeat,
+authenticated Signer checks and R8 device smoke are still pending.
 Earlier bounded Wallet/core evidence is pinned to
 `65e16c4e5bfb5674f68ba23916b3a77880b66a87`. A later first-send compatibility repair
 changes the production Wallet, requiring a new frozen APK, full 45-method run,
-unit run and affected Release/lint checks. These repeats are in progress.
+unit run and affected Release/lint checks. These Wallet repeats are complete.
+
+The repaired Wallet candidate is source
+`dac22965299f45080701b14cdb535e2788be67dd`. Its immutable Debug APK SHA256 is
+`86d142020f4a0050c11efd7d6e516a3e5bbc1b5efda4fcb409dffe882b795973` and
+its instrumentation APK SHA256 is
+`32ef5c7fa332f34d92ec35b74e264b15c328365e12fdeee2419ea3e1ff88d5bd`.
+The explicit app/test packaging and full requested unit task completed in
+6m28s. The unit result set contains 87 passing tests across 27 suites, zero
+failures/errors/skips; unchanged task results were reused, while the affected
+app suite executed its two new deployment regressions. The frozen result
+manifest SHA256 is
+`c34853e7df80c1bee63b20e70ead75e7bd3a6ee0ca985588df673521ad80ecb4`.
+
+A separate actual-device preflight on this pair passed the native send method
+in 26.892s. Immediately before sending the account was uninitialized; afterwards
+it was active with sequence1, and the recipient held exactly 0.01 TOS. The test
+authenticated with a passcode, changed the settings endpoint while confirmation
+was open, and verified one send, the exact Unicode comment and chain-backed
+history. Public RPC rows, original before-state and instrumentation-log hash are
+recorded in `native-first-send-final18.result.json`, SHA256
+`edd37a2c7cebdf6947bc07e05f4e0cbeb01bb4e4799719923f0a16e60f851d80`.
+This preflight is a repeat of one suite method and does not increase the final
+45-method count.
+
+The complete uniform-pair Wallet run passed all 45 scenarios: 42 distinct UI
+methods and three native runtime methods on the owned API36.1/4KB emulator.
+This includes the actual SQLite1/2/3/4-to5 upgrade matrix, both explicit recovery
+formats, RPC onboarding and persistence, accessibility, QR copy/share/decoding,
+authenticated sends, exact Unicode history, competing-sequence handling, a
+lost-response receipt check, Max, pagination, passcode/key storage and sign-out.
+No previous stopped-at-failure groups are needed to reach this count.
+`wallet-ui-final18.result.json` records every method and the uniform app/test
+hashes; its SHA256 is
+`42f6586a7e17afa8e730491d4d7daed63e324acfd940eb3b0aa2b9283fd7c018`.
+
+The affected Wallet R8 Release assembly and full lint task passed in 19m28s,
+with 43 tasks executed and 1571 up-to-date. Wallet lint has zero errors and five
+warnings. The immutable new unsigned Wallet APK SHA256 is
+`a6a7fde21e310f96288c6eec4a39a14de121e626e41f4fdc9811c4301467e1f6`.
+The repeated host gate passed its zip alignment, all twelve packaged 64-bit
+ELF checks and permission allowlist, together with the unchanged Signer65 APK's
+twelve ELF checks. `final-release18-apks/manifest.json`, SHA256
+`c40684a1e9639e8f9cdb0b5c7645383f468404a2d4134d091540b4392b45730a`,
+records the unsigned files and exact build/lint/gate logs. This new Wallet APK
+has not yet been signed for a local test or executed in an R8 device smoke.
+
+An independent read-only audit matched the frozen APK bytes, all 27 unit XML
+hashes, original first-send log, before/after account state and strict execution
+fields. It confirmed compute/action success, activation, one outgoing message,
+zero skipped actions, the exact amount/destination and UTF-8 comment. The audit
+manifest SHA256 is
+`dc766bbf2ccfa803b9e3f4faec5d78482a4af2557588ef597c71ca807799b812`.
+
+The environment restart restricted ADB5037 and GitHub network access. Final18
+screen-matrix and actual 16KB runtime repeats, local Release signing/install
+smoke, and final pushed-head CI therefore remain unfinished. Earlier matrix,
+16KB and Release65 results below are historical evidence for their own hashes.
+The last observed pushed-head dependency audit passed on source65; Android CI
+on that source failed because its artifact gate did not discover the NDK's
+`llvm-readelf` symlink. The committed gate fix needs a new current-head CI run.
+No merge readiness or store publication is claimed.
+
+The standalone Signer65 preview/raw-export regression does not establish the
+authenticated return flow. A host attempt did not complete authentication and
+provides no crash reproduction. Its accepted no-return deep-link path contains
+a null assertion at return handling. The focused repair now routes an absent
+callback to the existing QR output instead of asserting the callback is present.
+A fourth Signer device regression completes authentication, reads the actual
+displayed signature QR and verifies its 64-byte Ed25519 signature against the
+public fixture; the harness requires all four completed tests. These source
+changes are committed as
+`decad1fca2b1710939e575fe7c7e92fc51e51a9c` and have not been built or executed:
+the offline Gradle attempt failed
+before the build because its file-lock contention socket was not permitted.
+The original log is `signer-no-return-sandbox-build.log`. Previous Signer3 and
+Signer Release65 evidence is superseded for this changed Signer source. New
+Signer build, unit/device execution and Release evidence must be recorded,
+without changing the completed Wallet18 artifact provenance.
 
 - The earlier Wallet production Debug build and complete JVM run passed in
   `final-debug-unit-8.log`: 82 tests, no failures, errors or skips, including the
@@ -190,8 +270,8 @@ unit run and affected Release/lint checks. These repeats are in progress.
 - The updated full unit task has 87 passing results across 27 suites with zero
   failures, errors or skips, including the two first-deployment regressions. The
   27 XML reports are frozen in `final-unit87-results`. Wallet app/test APK packaging
-  in `wallet-first-deploy-final18-fixed.log` remains in progress; the combined build
-  is not reported as successful before it exits.
+  in `wallet-first-deploy-final18-fixed.log` completed successfully; the full unit
+  task and both explicit assembly tasks are included in that build.
 - The immutable final14 pair passed six native runtime checks on actual 16KB
   API36/API37 devices and all four existing non-payment UI boundaries on API37.
   API36 used compatibility=false and package compatibility disabled; API37 used
