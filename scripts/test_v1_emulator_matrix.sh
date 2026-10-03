@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+export ANDROID_SERIAL="${ANDROID_SERIAL:-emulator-5554}"
 adb_bin="${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb"
 app_id='network.tos.wallet'
 test_class='network.tos.wallet.V1ProductUiTest#configuredOnboardingDoesNotClipOrCrash'
@@ -16,7 +17,11 @@ restore() {
 }
 trap restore EXIT
 
-./gradlew :apps:wallet:instance:main:assembleDefaultDebug :apps:wallet:instance:main:assembleDefaultDebugAndroidTest
+if [[ "${TOS_EMULATOR_SKIP_BUILD:-0}" != 1 ]]; then
+  ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' :apps:wallet:instance:main:assembleDefaultDebug :apps:wallet:instance:main:assembleDefaultDebugAndroidTest
+else
+  python3 scripts/check_prebuilt_apks.py apps/wallet/instance/main/build/outputs/apk/default/debug/main-default-debug.apk apps/wallet/instance/main/build/outputs/apk/androidTest/default/debug/main-default-debug-androidTest.apk
+fi
 "$adb_bin" install -r -t apps/wallet/instance/main/build/outputs/apk/default/debug/main-default-debug.apk >/dev/null
 "$adb_bin" install -r -t apps/wallet/instance/main/build/outputs/apk/androidTest/default/debug/main-default-debug-androidTest.apk >/dev/null
 
@@ -30,7 +35,10 @@ run_config() {
   output=$("$adb_bin" shell am instrument -w -e class "$test_class" \
     "$app_id.test/androidx.test.runner.AndroidJUnitRunner")
   printf '%s\n' "$output"
-  [[ "$output" == *"OK (1 test)"* ]] && [[ "$output" != *"FAILURES!!!"* ]]
+  if [[ "$output" != *"OK (1 test)"* ]] || [[ "$output" == *"FAILURES!!!"* ]]; then
+    echo "v1-emulator-matrix: FAILED ($size/$font/$night/$locale)" >&2
+    exit 1
+  fi
 }
 
 run_config 720x1280 1.0 no en-US

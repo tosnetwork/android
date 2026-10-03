@@ -1,13 +1,18 @@
-.PHONY: compile release test_unit test_brand_boundary test_v1_static test_v1_emulator test_v1_emulator_matrix test_v1_localnet test_release_artifacts test_all test_ci test_v1_acceptance
+.PHONY: compile release test_unit test_lint test_brand_boundary test_v1_static test_v1_emulator test_signer_tos_emulator test_v1_emulator_matrix test_v1_localnet test_release_artifacts test_all test_ci test_v1_acceptance
+
+GRADLE := ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8'
 
 compile:
-	./gradlew :apps:wallet:instance:main:assembleDefaultDebug :apps:signer:assembleDebug
+	$(GRADLE) :apps:wallet:instance:main:assembleDefaultDebug :apps:signer:assembleDebug
 
 release:
-	./gradlew :apps:wallet:instance:main:assembleSiteRelease :apps:signer:assembleRelease
+	$(GRADLE) :apps:wallet:instance:main:assembleSiteRelease :apps:signer:assembleRelease
 
 test_unit:
-	./gradlew testDebugUnitTest
+	$(GRADLE) testDebugUnitTest
+
+test_lint:
+	$(GRADLE) :apps:wallet:instance:main:lintSiteRelease :apps:signer:lintRelease
 
 test_brand_boundary:
 	bash scripts/test_brand_boundary.sh
@@ -17,6 +22,9 @@ test_v1_static:
 
 test_v1_emulator:
 	bash scripts/test_v1_emulator.sh
+
+test_signer_tos_emulator:
+	bash scripts/test_signer_tos_emulator.sh
 
 test_v1_emulator_matrix:
 	bash scripts/test_v1_emulator_matrix.sh
@@ -29,6 +37,6 @@ test_release_artifacts: release
 
 test_all: test_brand_boundary test_v1_static test_unit
 
-test_ci: test_all compile test_release_artifacts
+test_ci: test_all compile test_lint test_release_artifacts
 
-test_v1_acceptance: test_all compile test_v1_localnet test_v1_emulator test_v1_emulator_matrix test_release_artifacts
+test_v1_acceptance: test_all compile test_lint test_v1_localnet test_v1_emulator test_signer_tos_emulator test_v1_emulator_matrix test_release_artifacts

@@ -10,6 +10,8 @@ import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.LinearLayout
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.appcompat.app.AlertDialog
+import network.tos.blockchain.TosV1Mnemonic
 import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.core.view.updatePadding
 import androidx.core.widget.NestedScrollView
@@ -186,14 +188,38 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
 
     private fun next() {
         lifecycleScope.launch {
-            setLoading()
             val words = getMnemonic()
+            val (native, legacy) = withContext(Dispatchers.IO) {
+                TosV1Mnemonic.isValid(words) to TosV1Mnemonic.isLegacyValid(words)
+            }
+            if (!native && !legacy) {
+                navigation?.toast(Localization.incorrect_phrase)
+                return@launch
+            }
+            if (native && legacy) {
+                AlertDialog.Builder(requireContext()).setTitle(R.string.recovery_profile_title)
+                    .setMessage(R.string.recovery_profile_hint)
+                    .setPositiveButton(R.string.restore_tos_wallet) { _, _ -> continueRecovery(words, TosV1Mnemonic.Profile.TOS) }
+                    .setNeutralButton(R.string.restore_legacy_wallet) { _, _ -> continueRecovery(words, TosV1Mnemonic.Profile.LEGACY) }
+                    .setNegativeButton(android.R.string.cancel, null).show()
+            } else if (legacy) {
+                AlertDialog.Builder(requireContext()).setTitle(R.string.legacy_recovery_title)
+                    .setMessage(R.string.legacy_recovery_hint)
+                    .setPositiveButton(Localization.continue_action) { _, _ -> continueRecovery(words, TosV1Mnemonic.Profile.LEGACY) }
+                    .setNegativeButton(android.R.string.cancel, null).show()
+            } else continueRecovery(words)
+        }
+    }
+
+    private fun continueRecovery(words: List<String>, profile: TosV1Mnemonic.Profile? = null) {
+        lifecycleScope.launch {
+            setLoading()
             if (TonMnemonic.isValidTONKeychain(words)) {
                 navigation?.toast(Localization.multi_account_secret_wrong)
-            } else if (initViewModel.watchRecoveryAccountId != null && initViewModel.getRecoveryWatchWallet(words) == null) {
+            } else if (initViewModel.watchRecoveryAccountId != null && initViewModel.getRecoveryWatchWallet(words, profile) == null) {
                 navigation?.toast(Localization.mnemonic_match_error)
             } else {
-                if (!initViewModel.setMnemonic(words)) {
+                if (!initViewModel.setMnemonic(words, profile)) {
                     navigation?.toast(Localization.incorrect_phrase)
                 }
             }

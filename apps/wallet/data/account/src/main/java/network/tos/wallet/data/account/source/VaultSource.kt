@@ -3,6 +3,7 @@ package network.tos.wallet.data.account.source
 import android.content.Context
 import androidx.core.content.edit
 import network.tos.blockchain.MnemonicHelper
+import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.ton.extensions.getPrivateKey
 import network.tos.blockchain.ton.extensions.hex
 import network.tos.extensions.putByteArray
@@ -45,14 +46,15 @@ internal class VaultSource(context: Context) {
         return mnemonic
     }
 
-    fun addMnemonic(mnemonic: List<String>): PublicKeyEd25519 {
-        val privateKey = MnemonicHelper.privateKey(mnemonic)
+    fun addMnemonic(mnemonic: List<String>, nativeTos: Boolean = false): PublicKeyEd25519 {
+        val privateKey = if (nativeTos) TosV1Mnemonic.privateKey(mnemonic) else MnemonicHelper.privateKey(mnemonic)
         val seed = privateKey.key.toByteArray()
         val publicKey = privateKey.publicKey()
 
         prefs.edit {
             putString(mnemonicKey(publicKey), mnemonic.joinToString(","))
             putByteArray(privateKey(publicKey), seed)
+            putBoolean(key("native_tos", publicKey), nativeTos)
         }
 
         seed.clear()
@@ -68,15 +70,17 @@ internal class VaultSource(context: Context) {
             }
             fromMnemonic
         } else {
+            require(privateKey.publicKey() == publicKey) { "Stored key does not match wallet identity" }
             privateKey
         }
     }
 
     private fun getPrivateKeyFromMnemonic(publicKey: PublicKeyEd25519): PrivateKeyEd25519? {
         val mnemonic = getMnemonic(publicKey) ?: return null
-        val seed = Mnemonic.toSeed(mnemonic.toList())
-        val privateKey = PrivateKeyEd25519(seed)
-        seed.clear()
+        val privateKey = if (prefs.getBoolean(key("native_tos", publicKey), false)) {
+            TosV1Mnemonic.privateKey(mnemonic.toList())
+        } else MnemonicHelper.privateKey(mnemonic.toList())
+        require(privateKey.publicKey() == publicKey) { "Recovered key does not match wallet identity" }
         return privateKey
     }
 

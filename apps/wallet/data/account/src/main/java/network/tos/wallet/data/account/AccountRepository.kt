@@ -1,5 +1,7 @@
 package network.tos.wallet.data.account
 
+import network.tos.blockchain.TosV1Mnemonic
+
 import android.app.KeyguardManager
 import android.content.Context
 import network.tos.blockchain.MnemonicHelper
@@ -356,9 +358,14 @@ class AccountRepository(
         testnet: Boolean,
         initialized: List<Boolean>
     ): List<WalletEntity> {
-        val publicKey = vaultSource.addMnemonic(mnemonic)
+        require(versions.isNotEmpty()) { "Wallet version is required" }
+        val nativeTos = WalletVersion.TOSV5R1 in versions
+        require(!nativeTos || versions.all { it == WalletVersion.TOSV5R1 }) { "Cannot mix TOS and legacy mnemonic derivation" }
+        require(if (nativeTos) TosV1Mnemonic.isValid(mnemonic) else TosV1Mnemonic.isLegacyValid(mnemonic)) { "Recovery phrase does not match wallet format" }
+        val networkId = if (nativeTos) api.tos.getNetworkInfo(testnet).requireNativeV5().globalId else null
+        val publicKey = vaultSource.addMnemonic(mnemonic, nativeTos = nativeTos)
         val type = if (testnet) Wallet.Type.Testnet else Wallet.Type.Default
-        return addWallet(ids, label, publicKey, versions, type, initialized = initialized)
+        return addWallet(ids, label, publicKey, versions, type, initialized = initialized, networkGlobalId = networkId)
     }
 
     suspend fun addWallet(
@@ -367,8 +374,12 @@ class AccountRepository(
         publicKey: PublicKeyEd25519,
         versions: List<WalletVersion>,
         type: Wallet.Type,
-        initialized: List<Boolean>
+        initialized: List<Boolean>,
+        networkGlobalId: Int? = null,
     ): List<WalletEntity> {
+        val networkId = networkGlobalId ?: if (WalletVersion.TOSV5R1 in versions) {
+            api.tos.getNetworkInfo(type == Wallet.Type.Testnet).requireNativeV5().globalId
+        } else null
         val list = mutableListOf<WalletEntity>()
         for ((index, version) in versions.withIndex()) {
             val entity = WalletEntity(
@@ -377,7 +388,8 @@ class AccountRepository(
                 type = type,
                 version = version,
                 label = label.create(index),
-                initialized = initialized[index]
+                initialized = initialized[index],
+                networkGlobalId = if (version == WalletVersion.TOSV5R1) networkId else null,
             )
             list.add(entity)
         }
@@ -399,8 +411,10 @@ class AccountRepository(
         label: Wallet.NewLabel,
         mnemonic: List<String>
     ): WalletEntity {
-        val publicKey = vaultSource.addMnemonic(mnemonic)
-        return addWallet(id, label, publicKey, Wallet.Type.Default, WalletVersion.V5R1, new = true, initialized = false)
+        val networkId = api.tos.getNetworkInfo(false).requireNativeV5().globalId
+        val publicKey = vaultSource.addMnemonic(mnemonic, nativeTos = true)
+        return addWallet(id, label, publicKey, Wallet.Type.Default, WalletVersion.TOSV5R1,
+            new = true, initialized = false, networkGlobalId = networkId)
     }
 
     private suspend fun addWallet(
@@ -410,15 +424,18 @@ class AccountRepository(
         type: Wallet.Type,
         version: WalletVersion,
         new: Boolean = false,
-        initialized: Boolean
+        initialized: Boolean,
+        networkGlobalId: Int? = null,
     ): WalletEntity {
+        val networkId = networkGlobalId ?: if (version == WalletVersion.TOSV5R1) api.tos.getNetworkInfo(false).requireNativeV5().globalId else null
         val entity = WalletEntity(
             id = id,
             publicKey = publicKey,
             type = type,
             version = version,
             label = label.create(0),
-            initialized = initialized
+            initialized = initialized,
+            networkGlobalId = networkId,
         )
 
         insertWallets(listOf(entity), new)
@@ -523,7 +540,9 @@ class AccountRepository(
     suspend fun getSeqno(
         wallet: WalletEntity
     ): Int = withContext(Dispatchers.IO) {
-        api.getAccountSeqno(wallet.accountId, wallet.testnet)
+        val node = api.tos.snapshot(wallet.testnet)
+        wallet.networkGlobalId?.let { node.requireNetwork(it, wallet.testnet) }
+        node.getSeqno(wallet.accountId, wallet.testnet)
     }
 
     suspend fun getValidUntil(

@@ -3,6 +3,7 @@ package network.tos.signer.screen.create.child
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
+import androidx.appcompat.app.AlertDialog
 import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import network.tos.signer.R
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.androidx.viewmodel.ext.android.getViewModel
 import org.ton.mnemonic.Mnemonic
+import network.tos.blockchain.TosV1Mnemonic
 import uikit.base.BaseFragment
 import uikit.extensions.collectFlow
 import uikit.extensions.doKeyboardAnimation
@@ -91,7 +93,7 @@ class CreatePhraseFragment: BaseFragment(R.layout.fragment_create_phrase) {
         lifecycleScope.launch(Dispatchers.Main) {
             val words = wordFormView.getWords()
             val isValid = withContext(Dispatchers.IO) {
-                Mnemonic.isValid(words)
+                TosV1Mnemonic.isValid(words) || TosV1Mnemonic.isLegacyValid(words)
             }
             nextButton.isEnabled = isValid
         }
@@ -128,7 +130,17 @@ class CreatePhraseFragment: BaseFragment(R.layout.fragment_create_phrase) {
 
     private fun saveMnemonic() {
         lifecycleScope.launch {
-            createViewModel.setMnemonic(wordFormView.getWords())
+            val words = wordFormView.getWords()
+            val both = withContext(Dispatchers.IO) {
+                TosV1Mnemonic.isValid(words) && TosV1Mnemonic.isLegacyValid(words)
+            }
+            if (both) {
+                AlertDialog.Builder(requireContext()).setTitle(R.string.recovery_profile_title)
+                    .setMessage(R.string.recovery_profile_hint)
+                    .setPositiveButton(R.string.restore_tos_key) { _, _ -> createViewModel.setMnemonic(words, TosV1Mnemonic.Profile.TOS) }
+                    .setNeutralButton(R.string.restore_legacy_key) { _, _ -> createViewModel.setMnemonic(words, TosV1Mnemonic.Profile.LEGACY) }
+                    .setNegativeButton(android.R.string.cancel, null).show()
+            } else createViewModel.setMnemonic(words)
         }
     }
 

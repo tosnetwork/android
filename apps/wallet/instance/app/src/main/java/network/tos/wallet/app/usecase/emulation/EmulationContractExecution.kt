@@ -1,6 +1,7 @@
 package network.tos.wallet.app.usecase.emulation
 
 import network.tos.blockchain.ton.contract.WalletVersion
+import network.tos.blockchain.ton.extensions.base64
 import network.tos.icu.Coins
 import network.tos.wallet.api.API
 import network.tos.wallet.data.account.entities.WalletEntity
@@ -146,8 +147,25 @@ class EmulationContractExecution(private val api: API) {
     suspend fun computeFeeTos(
         wallet: WalletEntity,
         inMsg: Cell,
-        outMsgs: List<Cell>
+        outMsgs: List<Cell>,
+        boundNode: network.tos.wallet.api.tos.TosSource? = null,
     ): Coins = withContext(Dispatchers.IO) {
+        if (wallet.version == WalletVersion.TOSV5R1) {
+            val node = boundNode ?: api.tos.snapshot(wallet.testnet)
+            node.requireNetwork(requireNotNull(wallet.networkGlobalId), wallet.testnet)
+            val state = node.getAccountState(wallet.accountId, wallet.testnet)
+            val message = wallet.contract.parseTransferMessageCell(inMsg)
+            val body = message.body.x ?: requireNotNull(message.body.y).value
+            val estimate = node.estimateFee(
+                wallet.accountId, body.base64(),
+                if (state.isActive) null else wallet.contract.getCode().base64(),
+                if (state.isActive) null else wallet.contract.getStateCell().base64(),
+                wallet.testnet,
+            )
+            require(estimate.total > 0) { "Node did not return a valid fee estimate" }
+            return@withContext Coins.of(((BigDecimal(estimate.total) * GAS_SAFETY_MULTIPLIER) /
+                GAS_SAFETY_MULTIPLIER_DENOMINATOR).toLong())
+        }
         val config = getConfig(wallet.testnet)
         val state = api.tos.getAccountState(wallet.accountId, wallet.testnet)
         val isInited = state.status == "active" || state.status == "frozen"

@@ -99,7 +99,16 @@ data class TosWalletInfo(
             accountState = json.optString("account_state"),
             // seqno / wallet_type may be null (non-wallet account).
             walletType = json.optString("wallet_type").takeIf { it.isNotBlank() && it != "null" },
-            seqno = json.optInt("seqno", 0),
+            seqno = if (json.optString("account_state") in setOf("uninit", "uninitialized")) 0 else {
+                val raw = json.get("seqno")
+                val seqno = when (raw) {
+                    is Byte, is Short, is Int, is Long -> (raw as Number).toLong()
+                    is String -> raw.takeIf { it.matches(Regex("0|[1-9][0-9]*")) }?.toLongOrNull()
+                    else -> null
+                } ?: throw IllegalArgumentException("Invalid wallet sequence number")
+                require(seqno in 0..Int.MAX_VALUE.toLong()) { "Invalid wallet sequence number" }
+                seqno.toInt()
+            },
             lastTransactionId = TosTransactionId.fromJson(json.optJSONObject("last_transaction_id")),
         )
     }
@@ -112,16 +121,30 @@ data class TosFees(
     val gasFee: Long,
     val fwdFee: Long,
 ) {
-    val total: Long get() = inFwdFee + storageFee + gasFee + fwdFee
+    val total: Long = Math.addExact(Math.addExact(inFwdFee, storageFee), Math.addExact(gasFee, fwdFee))
+
+    init {
+        require(listOf(inFwdFee, storageFee, gasFee, fwdFee).all { it >= 0 }) { "Negative network fee" }
+    }
 
     companion object {
         fun fromJson(json: JSONObject): TosFees {
-            val src = json.optJSONObject("source_fees") ?: json
+            val src = if (json.has("source_fees")) json.getJSONObject("source_fees") else json
+            fun fee(name: String): Long {
+                val raw = src.get(name)
+                val value = when (raw) {
+                    is Byte, is Short, is Int, is Long -> (raw as Number).toLong()
+                    is String -> raw.takeIf { it.matches(Regex("0|[1-9][0-9]*")) }?.toLongOrNull()
+                    else -> null
+                } ?: throw IllegalArgumentException("Invalid network fee: $name")
+                require(value >= 0) { "Negative network fee: $name" }
+                return value
+            }
             return TosFees(
-                inFwdFee = src.optLong("in_fwd_fee"),
-                storageFee = src.optLong("storage_fee"),
-                gasFee = src.optLong("gas_fee"),
-                fwdFee = src.optLong("fwd_fee"),
+                inFwdFee = fee("in_fwd_fee"),
+                storageFee = fee("storage_fee"),
+                gasFee = fee("gas_fee"),
+                fwdFee = fee("fwd_fee"),
             )
         }
     }
@@ -186,6 +209,7 @@ data class TosRawTransaction(
     val account: String,
     val dataBoc: String?,
     val inMsgHash: String?,
+    val executionSuccessful: Boolean = false,
 ) {
     companion object {
         fun fromJson(json: JSONObject): TosRawTransaction {
@@ -198,7 +222,24 @@ data class TosRawTransaction(
                 account = json.optString("account"),
                 dataBoc = json.optString("data").takeIf { it.isNotBlank() },
                 inMsgHash = json.optString("in_msg_hash").takeIf { it.isNotBlank() },
+                executionSuccessful = successfulSend(json),
             )
+        }
+
+        private fun successfulSend(json: JSONObject): Boolean {
+            val compute = json.optJSONObject("compute") ?: return false
+            val action = json.optJSONObject("action") ?: return false
+            fun integer(objectValue: JSONObject, name: String): Long? = when (val raw = objectValue.opt(name)) {
+                is Int -> raw.toLong()
+                is Long -> raw
+                else -> null
+            }
+            val outgoing = json.optJSONArray("out_msgs") ?: return false
+            return json.opt("transaction_type") == "ordinary" && json.opt("aborted") == false &&
+                compute.opt("skipped") == false && compute.opt("success") == true && integer(compute, "exit_code") == 0L &&
+                action.opt("success") == true && action.opt("valid") == true && action.opt("no_funds") == false &&
+                integer(action, "result_code") == 0L && integer(action, "skipped_actions") == 0L &&
+                outgoing.length() > 0 && integer(action, "messages_created") == outgoing.length().toLong()
         }
     }
 }

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.ResultReceiver
+import network.tos.blockchain.ton.extensions.publicKeyFromHex
 import uikit.base.BaseHiddenActivity
 
 class SignerHiddenActivity: BaseHiddenActivity() {
@@ -40,7 +41,7 @@ class SignerHiddenActivity: BaseHiddenActivity() {
             return
         }
 
-        val requestUri = "tonsign://v1/?network=ton&pk=$publicKey&body=$body"
+        val requestUri = SignerApp.createSignUri(body, publicKey.publicKeyFromHex()).toString()
         val requestIntent = Intent(Intent.ACTION_SEND, Uri.parse(requestUri))
         startActivityForResult(requestIntent, REQUEST_CODE)
     }

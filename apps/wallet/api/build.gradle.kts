@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     id("com.android.library")
@@ -20,6 +21,7 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    sourceSets.getByName("test").resources.srcDir(rootProject.file("scripts/fixtures"))
 }
 
 dependencies {
@@ -43,4 +45,10 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver3:5.2.1")
     // Use the real org.json in unit tests (Android's bundled org.json is stubbed/not-mocked).
     testImplementation("org.json:json:20231013")
+}
+
+// A real-node mapper run must not reuse a previously skipped offline test result.
+tasks.withType<Test>().configureEach {
+    inputs.property("tosTestRpc", providers.environmentVariable("TOS_TEST_RPC").orElse(""))
+    inputs.property("tosTestAddress", providers.environmentVariable("TOS_TEST_ADDRESS").orElse(""))
 }

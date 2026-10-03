@@ -50,6 +50,7 @@ abstract class BaseWalletContract(
             networkGlobalId: Int
         ): BaseWalletContract {
             return when (v.lowercase()) {
+                "tosv5r1" -> TosWalletV5R1Contract(publicKey, networkGlobalId)
                 "v3r1" -> WalletV3R1Contract(publicKey = publicKey)
                 "v3r2" -> WalletV3R2Contract(publicKey = publicKey)
                 "v4r1" -> WalletV4R1Contract(publicKey = publicKey)
@@ -81,6 +82,8 @@ abstract class BaseWalletContract(
             accountId: String,
             networkGlobalId: Int
         ): WalletVersion {
+            val tosV5 = TosWalletV5R1Contract(publicKey, networkGlobalId).address.toAccountId()
+            if (accountId.equalsAddress(tosV5)) return WalletVersion.TOSV5R1
             val v4r2 = WalletV4R2Contract(publicKey = publicKey).address.toAccountId()
             if (accountId.equalsAddress(v4r2)) {
                 return WalletVersion.V4R2

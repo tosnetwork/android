@@ -115,6 +115,10 @@ class SendViewModel(
     private val analytics: AnalyticsHelper
 ) : BaseWalletVM(app) {
 
+    // Seqno, fee preview, balance check, broadcast and retry reconciliation share
+    // this endpoint even if the RPC preference changes while confirmation is open.
+    private val sendNode = api.tos.snapshot(wallet.testnet)
+
     private val isNft: Boolean
         get() = nftAddress.isNotBlank()
 
@@ -1006,6 +1010,7 @@ class SendViewModel(
             message = transfer.getEmulationBody(jettonTransferAmount),
             params = true,
             checkTonBalance = !transfer.isTon || !transfer.max,
+            boundNode = sendNode,
         )
 
         val fee = Fee( emulated.extra.value,  emulated.extra.isRefund)
@@ -1147,8 +1152,9 @@ class SendViewModel(
     private suspend fun getSendParams(
         wallet: WalletEntity,
     ): SendMetadataEntity = withContext(Dispatchers.IO) {
-        val seqnoDeferred = async { accountRepository.getSeqno(wallet) }
-        val validUntilDeferred = async { accountRepository.getValidUntil(wallet.testnet) }
+        wallet.networkGlobalId?.let { sendNode.requireNetwork(it, wallet.testnet) }
+        val seqnoDeferred = async { sendNode.getSeqno(wallet.accountId, wallet.testnet) }
+        val validUntilDeferred = async { sendNode.getServerTime(wallet.testnet).toLong() + 150 }
 
         val seqno = seqnoDeferred.await()
         val validUntil = validUntilDeferred.await()
@@ -1334,6 +1340,7 @@ class SendViewModel(
             withBattery = withBattery,
             source = "",
             confirmationTime = 0.0,
+            boundNode = sendNode,
         )
         if (state != SendBlockchainState.SUCCESS) {
             throw SendBlockchainException.fromState(state)

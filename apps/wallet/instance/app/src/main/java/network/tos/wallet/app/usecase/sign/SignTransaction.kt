@@ -1,6 +1,8 @@
 package network.tos.wallet.app.usecase.sign
 
 import android.util.Log
+import network.tos.blockchain.ton.contract.TosV5SigningRequest
+import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.blockchain.ton.extensions.EmptyPrivateKeyEd25519.sign
 import network.tos.blockchain.ton.extensions.hex
 import network.tos.blockchain.tron.TronTransaction
@@ -79,6 +81,12 @@ class SignTransaction(
         wallet: WalletEntity,
         unsignedBody: Cell
     ): BitString {
+        if (wallet.version == WalletVersion.TOSV5R1) {
+            val slice = unsignedBody.beginParse()
+            repeat(4) { slice.loadUInt(32) }
+            val seqno = slice.loadUInt(32).toInt()
+            TosV5SigningRequest.parse(unsignedBody, requireNotNull(wallet.networkGlobalId), seqno, allowSendAll = true)
+        }
         return when (wallet.type) {
             Wallet.Type.SignerQR -> signerQR(activity, wallet, unsignedBody)
             Wallet.Type.Signer -> signerApp(activity, wallet, unsignedBody)

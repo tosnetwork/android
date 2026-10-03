@@ -21,14 +21,14 @@ data class SignArgs(private val args: Bundle) {
             v: String,
             returnResult: ReturnResultEntity,
             seqno: Int,
-            network: TonNetwork,
+            network: Int,
         ) = Bundle().apply {
             putLong(Key.ID, id)
             putString(Key.V, v)
             putString(Key.BODY, body.hex())
             putParcelable(Key.RETURN, returnResult)
             putInt(Key.SEQNO, seqno)
-            putEnum(Key.NETWORK, network)
+            putInt(Key.NETWORK, network)
         }
     }
 
@@ -37,7 +37,7 @@ data class SignArgs(private val args: Bundle) {
     val v: String = args.getString(Key.V)!!
     val returnResult = args.getObject<ReturnResultEntity>(Key.RETURN)
     val seqno = args.getInt(Key.SEQNO)
-    val network = args.getEnum(Key.NETWORK, TonNetwork.MAINNET)
+    val network = args.getInt(Key.NETWORK, -239)
 
     val bodyHex: String by lazy { body.hex() }
 }

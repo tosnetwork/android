@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-address="${TOS_TEST_ADDRESS:-UQCJFahawZUzYka4uzFTeWns-oQNfoa0VNVOAn8e8BJnXPZe}"
+address="${TOS_TEST_ADDRESS:-UQBtGJyHNQkw8Fq5PlZeUi4sUtyp1N71RgYGxssqkBNVWlJ3}"
 control="${TOS_TEST_CONTROL:-http://127.0.0.1:18745}"
 rpc_ports=(18545 18546 18547)
 
@@ -57,6 +57,15 @@ for _ in {1..45}; do
 done
 [[ "$replicated" == true ]] || { echo 'v1-localnet: transfer did not replicate to all validators' >&2; exit 1; }
 
+# This harness targets the explicit local controller above. A fresh network must
+# establish its own pagination history instead of depending on previous test runs.
+for _ in {1..6}; do
+  curl --fail --silent --show-error --max-time 65 \
+    -H 'Content-Type: application/json' \
+    --data "$(jq -cn --arg address "$address" '{address:$address,amount:0.001}')" \
+    "$control/transfer" | jq -e '(.after | tonumber) > (.before | tonumber)' >/dev/null
+done
+
 history_params="$(jq -cn --arg address "$address" '{address:$address,limit:5}')"
 first_page="$(rpc 18545 getTransactions "$history_params")"
 first_page_count="$(jq -r '.result | length' <<<"$first_page")"
@@ -76,7 +85,9 @@ jq -e --arg lt "$cursor_lt" \
   '[.result[1:][].transaction_id.lt | tonumber] | all(. < ($lt | tonumber))' <<<"$second_page" >/dev/null
 
 TOS_TEST_ADDRESS="$address" TOS_TEST_RPC='http://127.0.0.1:18545/jsonRPC' \
-  ./gradlew :apps:wallet:api:testDebugUnitTest \
+  ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.parallel=false \
+  '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+  :apps:wallet:api:testDebugUnitTest \
   --tests 'network.tos.wallet.api.tos.TosEventMapperLocalNodeTest'
 
 echo "v1-localnet: PASS (3 validators, transfer replication, cursor pagination, history mapping)"

@@ -1,0 +1,206 @@
+{
+  "notice": "Read-only existing local public fixture; no new transactions",
+  "source_commit": "ee5ad71c343eb2227a8bd42d57bea259da4da0ec",
+  "native_build_commit": "0ee44a3e3983376c6206f5ac859ae2fe803eafde",
+  "sender": "0:8550c3fd592fde03b613534af03c8733a165e9fd43b13e62e5592956e6d99439",
+  "receipt_scope": "Existing successful first-deployment transfer",
+  "rule": "getTransactions.in_msg_hash is base64 raw full external message root hash, including StateInit.",
+  "views": [
+    {
+      "endpoint": "http://127.0.0.1:18545/jsonRPC",
+      "transaction_id": {
+        "@type": "internal.transactionId",
+        "lt": "1693000001",
+        "hash": "Wukq+SmcWzn3eDEcvWke+vd4eDjd+Iz7inXBSEEopDA="
+      },
+      "rpc_in_msg_hash_base64": "NjQ1ShV99UXDta1zPb1yNb/beN/duIBhX8OI+g3WTOw=",
+      "full_external_hash_hex": "3634354a157df545c3b5ad733dbd7235bfdb78dfddb880615fc388fa0dd64cec",
+      "normalized_without_init_hash_hex": "0f91535d84072e55310172ab998947711b3d010ce15fe6e5eb9caf8680644b2e",
+      "signed_wallet_body_hash_hex": "5e9c8ce764b93228458657e411915c9d1d8d1ffc48ed50d500b8e0e966b3bd9a",
+      "state_init_hash_hex": "8550c3fd592fde03b613534af03c8733a165e9fd43b13e62e5592956e6d99439",
+      "raw_tlb_execution": {
+        "exit": 0,
+        "gas": 5616,
+        "gas_limit": 0,
+        "compute_success": true,
+        "aborted": false,
+        "action": {
+          "success": true,
+          "code": 0
+        }
+      },
+      "outgoing_count": 1,
+      "json_execution": {
+        "transaction_type": "ordinary",
+        "aborted": false,
+        "destroyed": false,
+        "compute": {
+          "skipped": false,
+          "success": true,
+          "exit_code": 0,
+          "vm_steps": 174,
+          "account_activated": true
+        },
+        "action": {
+          "success": true,
+          "valid": true,
+          "no_funds": false,
+          "result_code": 0,
+          "total_actions": 1,
+          "skipped_actions": 0,
+          "messages_created": 1
+        }
+      }
+    },
+    {
+      "endpoint": "http://127.0.0.1:18546/jsonRPC",
+      "transaction_id": {
+        "@type": "internal.transactionId",
+        "lt": "1693000001",
+        "hash": "Wukq+SmcWzn3eDEcvWke+vd4eDjd+Iz7inXBSEEopDA="
+      },
+      "rpc_in_msg_hash_base64": "NjQ1ShV99UXDta1zPb1yNb/beN/duIBhX8OI+g3WTOw=",
+      "full_external_hash_hex": "3634354a157df545c3b5ad733dbd7235bfdb78dfddb880615fc388fa0dd64cec",
+      "normalized_without_init_hash_hex": "0f91535d84072e55310172ab998947711b3d010ce15fe6e5eb9caf8680644b2e",
+      "signed_wallet_body_hash_hex": "5e9c8ce764b93228458657e411915c9d1d8d1ffc48ed50d500b8e0e966b3bd9a",
+      "state_init_hash_hex": "8550c3fd592fde03b613534af03c8733a165e9fd43b13e62e5592956e6d99439",
+      "raw_tlb_execution": {
+        "exit": 0,
+        "gas": 5616,
+        "gas_limit": 0,
+        "compute_success": true,
+        "aborted": false,
+        "action": {
+          "success": true,
+          "code": 0
+        }
+      },
+      "outgoing_count": 1,
+      "json_execution": {
+        "transaction_type": "ordinary",
+        "aborted": false,
+        "destroyed": false,
+        "compute": {
+          "skipped": false,
+          "success": true,
+          "exit_code": 0,
+          "vm_steps": 174,
+          "account_activated": true
+        },
+        "action": {
+          "success": true,
+          "valid": true,
+          "no_funds": false,
+          "result_code": 0,
+          "total_actions": 1,
+          "skipped_actions": 0,
+          "messages_created": 1
+        }
+      }
+    },
+    {
+      "endpoint": "http://127.0.0.1:18547/jsonRPC",
+      "transaction_id": {
+        "@type": "internal.transactionId",
+        "lt": "1693000001",
+        "hash": "Wukq+SmcWzn3eDEcvWke+vd4eDjd+Iz7inXBSEEopDA="
+      },
+      "rpc_in_msg_hash_base64": "NjQ1ShV99UXDta1zPb1yNb/beN/duIBhX8OI+g3WTOw=",
+      "full_external_hash_hex": "3634354a157df545c3b5ad733dbd7235bfdb78dfddb880615fc388fa0dd64cec",
+      "normalized_without_init_hash_hex": "0f91535d84072e55310172ab998947711b3d010ce15fe6e5eb9caf8680644b2e",
+      "signed_wallet_body_hash_hex": "5e9c8ce764b93228458657e411915c9d1d8d1ffc48ed50d500b8e0e966b3bd9a",
+      "state_init_hash_hex": "8550c3fd592fde03b613534af03c8733a165e9fd43b13e62e5592956e6d99439",
+      "raw_tlb_execution": {
+        "exit": 0,
+        "gas": 5616,
+        "gas_limit": 0,
+        "compute_success": true,
+        "aborted": false,
+        "action": {
+          "success": true,
+          "code": 0
+        }
+      },
+      "outgoing_count": 1,
+      "json_execution": {
+        "transaction_type": "ordinary",
+        "aborted": false,
+        "destroyed": false,
+        "compute": {
+          "skipped": false,
+          "success": true,
+          "exit_code": 0,
+          "vm_steps": 174,
+          "account_activated": true
+        },
+        "action": {
+          "success": true,
+          "valid": true,
+          "no_funds": false,
+          "result_code": 0,
+          "total_actions": 1,
+          "skipped_actions": 0,
+          "messages_created": 1
+        }
+      }
+    }
+  ],
+  "raw_rpc_fixture": {
+    "@type": "raw.transaction",
+    "block_id": {
+      "@type": "tos.blockIdExt",
+      "workchain": 0,
+      "shard": "-9223372036854775808",
+      "seqno": 1692,
+      "root_hash": "757PpwA+T6bpICElbOm7LphBcZTUM04FcOktRuP/ouo=",
+      "file_hash": "S/CrNRaRyx+5XjRpAetcBsDhlEo/99E66p3ElrPAuvU="
+    },
+    "data": "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",
+    "utime": 1791043846,
+    "transaction_id": {
+      "@type": "internal.transactionId",
+      "lt": "1693000001",
+      "hash": "Wukq+SmcWzn3eDEcvWke+vd4eDjd+Iz7inXBSEEopDA="
+    },
+    "fee": "222954",
+    "account": "8550C3FD592FDE03B613534AF03C8733A165E9FD43B13E62E5592956E6D99439",
+    "in_msg_hash": "NjQ1ShV99UXDta1zPb1yNb/beN/duIBhX8OI+g3WTOw=",
+    "in_msg": {
+      "hash": "NjQ1ShV99UXDta1zPb1yNb/beN/duIBhX8OI+g3WTOw=",
+      "kind": "external"
+    },
+    "out_msgs": [
+      {
+        "hash": "kJw6HlZvnVmz6l7/xqK0Q0oqM95KtBImpgxNo4yOHmg=",
+        "kind": "internal",
+        "source": "EQCFUMP9WS_eA7YTU0rwPIczoWXp_UOxPmLlWSlW5tmUObAk",
+        "destination": "EQBP84sY8SbjNctmRoCv6q51ZJNzB78z9E--vok_erDZINke",
+        "value": "123456789",
+        "bounced": false,
+        "created_lt": "1693000002",
+        "created_at": 1791043846
+      }
+    ],
+    "transaction_type": "ordinary",
+    "aborted": false,
+    "destroyed": false,
+    "compute": {
+      "skipped": false,
+      "success": true,
+      "exit_code": 0,
+      "vm_steps": 174,
+      "account_activated": true
+    },
+    "action": {
+      "success": true,
+      "valid": true,
+      "no_funds": false,
+      "result_code": 0,
+      "total_actions": 1,
+      "skipped_actions": 0,
+      "messages_created": 1
+    }
+  },
+  "external_message_boc_base64": "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",
+  "normalized_message_boc_base64": "te6ccgEBBQEAvwABRYgBCqGH+rJfvAdsJqaV4HkOZ0LL0/qHYnzFyrJSrc2zKHIMAQGpc2lnbgAAAAMAAAAAasEttQAAAACYXQ1JwqWew6DB73yD4vjs0jQjArW/DSseQ0VPx22CM90MeQ9lrdlbzRhMswpftDxm02f5kb4FvDm3ad+6dgQD4AICCg7DyG0DBAMAaEIAJ/nFjHiTcZrlsyNAV/VXOrJJuYPfmfon319En71YbJAgOt5oqAAAAAAAAAAAAAAAAAAAAA=="
+}

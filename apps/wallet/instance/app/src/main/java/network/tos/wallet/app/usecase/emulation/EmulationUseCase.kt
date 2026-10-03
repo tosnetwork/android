@@ -32,7 +32,8 @@ class EmulationUseCase(
         forceRelayer: Boolean = false,
         checkTonBalance: Boolean = false,
         params: Boolean = false,
-    ): Emulated = preview(message, checkTonBalance)
+        boundNode: network.tos.wallet.api.tos.TosSource? = null,
+    ): Emulated = preview(message, checkTonBalance, boundNode)
 
     suspend operator fun invoke(
         wallet: WalletEntity,
@@ -56,25 +57,26 @@ class EmulationUseCase(
     private suspend fun preview(
         message: MessageBodyEntity,
         checkBalance: Boolean,
+        boundNode: network.tos.wallet.api.tos.TosSource?,
     ): Emulated = try {
         val boc = message.createSignedBody(
             privateKey = PrivateKeyEd25519(AndroidSecureRandom),
             internalMessage = false,
         )
-        val fee = contractExecution.computeFeeTos(message.wallet, boc, message.getOutMsgs())
+        val fee = contractExecution.computeFeeTos(message.wallet, boc, message.getOutMsgs(), boundNode)
         if (checkBalance) {
             val transferAmount = message.transfers.sumOf {
                 Coins.of(it.coins.coins.toString())
             }
-            ensureBalance(message.wallet, fee + transferAmount)
+            ensureBalance(message.wallet, fee + transferAmount, boundNode)
         }
         result(fee)
     } catch (error: Throwable) {
         failure(error)
     }
 
-    private fun ensureBalance(wallet: WalletEntity, required: Coins) {
-        val state = api.tos.getAccountState(wallet.accountId, wallet.testnet)
+    private fun ensureBalance(wallet: WalletEntity, required: Coins, boundNode: network.tos.wallet.api.tos.TosSource? = null) {
+        val state = (boundNode ?: api.tos).getAccountState(wallet.accountId, wallet.testnet)
         val balance = Coins.ofNano(state.balance.toString())
         if (required > balance) {
             throw InsufficientBalanceError(balance, required)

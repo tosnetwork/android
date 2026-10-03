@@ -15,7 +15,7 @@ android {
         consumerProguardFiles("consumer-rules.pro")
     }
 
-    sourceSets
+    sourceSets.getByName("test").resources.srcDir(rootProject.file("scripts/fixtures"))
 }
 
 dependencies {
@@ -40,4 +40,3 @@ dependencies {
     }
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
 }
-

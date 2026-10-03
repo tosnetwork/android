@@ -82,4 +82,9 @@
     <string name="notfound_title">No signing key</string>
     <string name="notfound_description">Add the necessary key and try again.</string>
     <string name="ok">OK</string>
+    <string name="recovery_profile_title">Choose key format</string>
+    <string name="recovery_profile_hint">This phrase is valid for both formats and produces different keys. Choose the format used when the key was created.</string>
+    <string name="restore_tos_key">Restore TOS Key</string>
+    <string name="restore_legacy_key">Restore Legacy Key</string>
+    <string name="tos_signing_network">TOS · Network %1$d</string>
 </resources>

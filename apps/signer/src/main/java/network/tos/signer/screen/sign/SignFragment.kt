@@ -58,7 +58,7 @@ class SignFragment: BaseFragment(R.layout.fragment_sign), BaseFragment.Modal {
             v: String,
             returnResult: ReturnResultEntity,
             seqno: Int,
-            network: TonNetwork
+            network: Int
         ): SignFragment {
             val fragment = SignFragment()
             fragment.arguments = SignArgs.bundle(id, body, v, returnResult, seqno, network)
@@ -93,6 +93,10 @@ class SignFragment: BaseFragment(R.layout.fragment_sign), BaseFragment.Modal {
         closeView.setOnClickListener { reject() }
 
         subtitleView = view.findViewById(R.id.subtitle)
+        view.findViewById<AppCompatTextView>(R.id.network_label).apply {
+            visibility = if (signViewModel.isNativeTos) View.VISIBLE else View.GONE
+            text = getString(R.string.tos_signing_network, args.network)
+        }
 
         listView = view.findViewById(R.id.list)
         listView.adapter = adapter
@@ -124,6 +128,10 @@ class SignFragment: BaseFragment(R.layout.fragment_sign), BaseFragment.Modal {
 
         qrView = view.findViewById(R.id.qr)
         qrView.setOnClickListener { emulateBody(true) }
+        if (signViewModel.isNativeTos) {
+            emulateButton.visibility = View.GONE
+            qrView.visibility = View.GONE
+        }
 
         actionView = view.findViewById(R.id.action)
 
@@ -132,7 +140,13 @@ class SignFragment: BaseFragment(R.layout.fragment_sign), BaseFragment.Modal {
 
         processLoader = view.findViewById(R.id.process_loader)
 
-        collectFlow(signViewModel.actionsFlow, adapter::submitList)
+        collectFlow(signViewModel.actionsFlow) { items ->
+            adapter.submitList(items)
+            if (items.isEmpty()) {
+                slideView.visibility = View.GONE
+                navigation?.toast(R.string.unknown_error)
+            }
+        }
         collectFlow(signViewModel.keyEntity, ::setKeyEntity)
 
         ViewCompat.setOnApplyWindowInsetsListener(view) { view, insets ->
@@ -149,6 +163,10 @@ class SignFragment: BaseFragment(R.layout.fragment_sign), BaseFragment.Modal {
     }
 
     private fun copyBody() {
+        if (signViewModel.isNativeTos) {
+            requireContext().copyToClipboard(args.bodyHex)
+            return
+        }
         signViewModel.openEmulate().catch {
             navigation?.toast(R.string.unknown_error)
         }.onEach{
@@ -162,12 +180,14 @@ class SignFragment: BaseFragment(R.layout.fragment_sign), BaseFragment.Modal {
     }
 
     private fun emulateBody(qr: Boolean) {
+        if (signViewModel.isNativeTos) return
         signViewModel.openEmulate().catch {
             navigation?.toast(R.string.unknown_error)
         }.onEach{ openEmulate(it, qr) }.launchIn(lifecycleScope)
     }
 
     private fun openEmulate(body: String, qr: Boolean) {
+        if (signViewModel.isNativeTos) return
         val uri = Uri.Builder().scheme("https")
             .authority("tonviewer.com")
             .appendPath("emulate")

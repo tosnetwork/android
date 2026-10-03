@@ -1,6 +1,7 @@
 package network.tos.signer.screen.create
 
 import android.content.Context
+import network.tos.blockchain.TosV1Mnemonic
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -80,8 +81,12 @@ class CreateViewModel(
         _uiTopOffset.value = offset
     }
 
-    fun setMnemonic(mnemonic: List<String>) {
+    fun setMnemonic(mnemonic: List<String>, profile: TosV1Mnemonic.Profile? = null) {
+        val selected = profile ?: TosV1Mnemonic.recoveryProfile(mnemonic)
+            ?: throw IllegalArgumentException("Invalid or ambiguous recovery phrase")
+        require(if (selected == TosV1Mnemonic.Profile.TOS) TosV1Mnemonic.isValid(mnemonic) else TosV1Mnemonic.isLegacyValid(mnemonic))
         args.mnemonic = mnemonic
+        args.mnemonicProfile = selected
 
         viewModelScope.launch {
             if (requestPasswordCreate()) {
@@ -117,7 +122,7 @@ class CreateViewModel(
 
             if (import) {
                 val mnemonic = args.mnemonic ?: throw IllegalStateException("Mnemonic is null")
-                addNewKey(secret, name, mnemonic)
+                addNewKey(secret, name, mnemonic, args.mnemonicProfile)
             } else {
                 createNewKey(secret, name)
             }
@@ -155,21 +160,24 @@ class CreateViewModel(
         secret: SecretKey,
         name: String
     ) = withContext(Dispatchers.IO) {
-        val mnemonic = Mnemonic.generate()
-        addNewKey(secret, name, mnemonic)
+        val mnemonic = TosV1Mnemonic.generate()
+        addNewKey(secret, name, mnemonic, TosV1Mnemonic.Profile.TOS)
     }
 
     private suspend fun addNewKey(
         secret: SecretKey,
         name: String,
-        mnemonic: List<String>
+        mnemonic: List<String>,
+        profile: TosV1Mnemonic.Profile?
     ) = withContext(Dispatchers.IO) {
-        val seed = Mnemonic.toSeed(mnemonic)
-        val publicKey = PrivateKeyEd25519(seed).publicKey()
+        val selected = profile ?: TosV1Mnemonic.recoveryProfile(mnemonic)
+            ?: throw IllegalArgumentException("Invalid or ambiguous recovery phrase")
+        val native = selected == TosV1Mnemonic.Profile.TOS
+        val publicKey = TosV1Mnemonic.recoveryPrivateKey(mnemonic, selected).publicKey()
 
         val entity = keyRepository.addKey(name, publicKey)
 
-        vault.setMnemonic(secret, entity.id, mnemonic)
+        vault.setMnemonic(secret, entity.id, mnemonic, nativeTos = native)
         tryCallGC()
     }
 

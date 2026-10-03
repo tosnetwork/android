@@ -27,12 +27,20 @@ import java.math.BigInteger
  * the user's RPC setting, falling back to the application default.
  */
 class TosSource(
-    httpClient: OkHttpClient,
-    baseUrlProvider: (Boolean) -> String,
-    apiKeyProvider: () -> String? = { null },
+    private val httpClient: OkHttpClient,
+    private val baseUrlProvider: (Boolean) -> String,
+    private val apiKeyProvider: () -> String? = { null },
+    private val endpointConfigProvider: ((Boolean) -> Pair<String, String?>)? = null,
 ) {
 
-    val rpc = TosRpcClient(httpClient, baseUrlProvider, apiKeyProvider)
+    val rpc = TosRpcClient(httpClient, baseUrlProvider, apiKeyProvider, endpointConfigProvider)
+
+    /** One operation keeps one endpoint and credential even if settings change concurrently. */
+    fun snapshot(testnet: Boolean = false): TosSource {
+        val (endpoint, key) = endpointConfigProvider?.invoke(testnet)
+            ?: (baseUrlProvider(testnet) to apiKeyProvider())
+        return TosSource(httpClient, { endpoint }, { key })
+    }
 
     // ---------------------------------------------------------------------
     // Chain state
@@ -69,20 +77,32 @@ class TosSource(
         return TosWalletInfo.fromJson(rpc.callObject("getWalletInformation", params, testnet))
     }
 
-    /** seqno — replaces WalletApi.getAccountSeqno().seqno. Prefer walletInformation,
-     *  fall back to runGetMethod("seqno") on failure. */
+    /** Only a node-confirmed uninitialized account has seqno zero.
+     * Transport/authentication failures must never become a first-deployment request. */
     fun getSeqno(address: String, testnet: Boolean = false): Int {
-        return try {
-            getWalletInformation(address, testnet).seqno
-        } catch (e: Throwable) {
-            try {
-                val result = runGetMethod(address, "seqno", emptyList(), testnet)
-                stackReadNumber(result.stack, 0)?.toInt() ?: 0
-            } catch (e2: Throwable) {
-                0
-            }
+        val info = getWalletInformation(address, testnet)
+        require(info.seqno >= 0) { "Invalid wallet sequence number" }
+        require(info.isWallet || info.accountState in setOf("uninit", "uninitialized")) {
+            "Account is not a supported wallet"
         }
+        return info.seqno
     }
+
+    /** Discover the signed network identity and VM capabilities at one masterchain height. */
+    fun getNetworkInfo(testnet: Boolean = false): TosNetworkInfo {
+        val node = snapshot(testnet)
+        val block = node.getMasterchainInfo(testnet).last ?: error("Missing masterchain block")
+        return TosNetworkInfo.fromConfig(
+            node.getConfigParam(19, block.seqno, testnet),
+            node.getConfigParam(8, block.seqno, testnet),
+        )
+    }
+
+    fun requireNetwork(expectedGlobalId: Int, testnet: Boolean = false): TosNetworkInfo =
+        getNetworkInfo(testnet).also {
+            require(it.globalId == expectedGlobalId) { "RPC network does not match this wallet" }
+            it.requireNativeV5()
+        }
 
     // ---------------------------------------------------------------------
     // Read-only contract calls (available from a bare node)
@@ -159,6 +179,12 @@ class TosSource(
         return TosSendResult.fromJson(rpc.callObject("sendBocReturnHash", params, testnet))
     }
 
+    fun sendBocForNetwork(bocBase64: String, expectedGlobalId: Int, testnet: Boolean = false): TosSendResult {
+        val node = snapshot(testnet)
+        node.requireNetwork(expectedGlobalId, testnet)
+        return node.sendBoc(bocBase64, testnet)
+    }
+
     /** estimateFee — replaces the fee part of EmulationApi (full event-level emulate
      *  needs indexing/parsing; see the TODO below). */
     fun estimateFee(
@@ -199,6 +225,22 @@ class TosSource(
         return (0 until array.length()).mapNotNull { i ->
             array.optJSONObject(i)?.let { TosRawTransaction.fromJson(it) }
         }
+    }
+
+    /** A changed nonce can belong to another device. Only the exact external BOC
+     * root hash and a successful send receipt confirm this payment. StateInit is
+     * part of this hash; a normalized body/message hash cannot replace it. */
+    fun reconcileSend(address: String, bocBase64: String, initialSeqno: Int,
+        testnet: Boolean = false): TosSendReconciliation {
+        if (getSeqno(address, testnet) <= initialSeqno) return TosSendReconciliation.RETRYABLE
+        val submitted = bocBase64.cellFromBase64().hash().toByteArray()
+        val receipt = getTransactions(address, limit = 32, testnet = testnet).firstOrNull { transaction ->
+            transaction.inMsgHash?.let { encoded ->
+                runCatching { java.util.Base64.getDecoder().decode(encoded).contentEquals(submitted) }.getOrDefault(false)
+            } == true
+        }
+        return if (receipt?.executionSuccessful == true) TosSendReconciliation.CONFIRMED
+            else TosSendReconciliation.AMBIGUOUS
     }
 
     /** getTokenData — partially replaces JettonsApi.getJettonInfo / NFTApi
