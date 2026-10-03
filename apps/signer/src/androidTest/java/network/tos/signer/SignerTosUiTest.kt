@@ -70,7 +70,9 @@ class SignerTosUiTest {
 
     @Test fun nativeConfirmationShowsExactTosAmountAndNetworkAndOnlyLocalRawExport() {
         ensureNativeKey()
-        val requestBody = body(comment = "TOS 安全 🌌")
+        // A unique visible comment proves this request replaced any prior confirmation.
+        val comment = "TOS 安全 🌌 ${System.currentTimeMillis()}"
+        val requestBody = body(comment = comment)
         context.startActivity(Intent(Intent.ACTION_VIEW, uri(requestBody)).apply {
             component = ComponentName(context.packageName, "network.tos.signer.screen.root.RootActivity")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -78,14 +80,22 @@ class SignerTosUiTest {
         assertTrue(device.wait(Until.hasObject(By.text("Sign transaction")), 20_000))
         assertTrue(device.wait(Until.hasObject(By.text("TOS · Network 3")), 10_000))
         assertTrue(device.wait(Until.hasObject(By.text("0.123456789 TOS")), 10_000))
-        assertTrue(device.wait(Until.hasObject(By.text("TOS 安全 🌌")), 10_000))
+        assertTrue(device.wait(Until.hasObject(By.text(comment)), 10_000))
         assertFalse(device.hasObject(By.textContains("TON")))
+        device.waitForIdle()
         device.findObject(By.res(context.packageName, "show_audit")).click()
+        device.waitForIdle()
         assertFalse(device.hasObject(By.res(context.packageName, "emulate")))
         assertFalse(device.hasObject(By.res(context.packageName, "qr")))
         device.findObject(By.res(context.packageName, "copy")).click()
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        assertEquals(requestBody.hex(), clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString())
+        val copyDeadline = android.os.SystemClock.uptimeMillis() + 10_000
+        while (clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() != requestBody.hex()
+            && android.os.SystemClock.uptimeMillis() < copyDeadline) {
+            Thread.sleep(50)
+        }
+        assertEquals("Copy must export this visibly confirmed request, not a previous clipboard entry",
+            requestBody.hex(), clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString())
         assertEquals(context.packageName, device.currentPackageName)
 
         // An ordinary legacy key/request still reaches its original confirmation.
