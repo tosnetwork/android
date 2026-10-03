@@ -67,13 +67,9 @@ data class TransferEntity(
         get() = nftAddress != null
 
     private val stateInitRef: CellRef<StateInit>?
-        get() {
-            return if (0 >= seqno) {
-                tokenPayload?.stateInit ?: contract.stateInitRef
-            } else {
-                tokenPayload?.stateInit
-            }
-        }
+        get() = TransferStateInit.forRecipient(
+            wallet.version, seqno, contract.stateInitRef, tokenPayload?.stateInit,
+        )
 
     val testnet: Boolean
         get() = wallet.testnet

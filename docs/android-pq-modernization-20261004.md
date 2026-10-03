@@ -10,7 +10,8 @@ and targets TOS `ee5ad71c343eb2227a8bd42d57bea259da4da0ec`.
   `086a86aa9913c0ec52277adbb7e4b5695964dbb8c817ad0c305cdd345bbfac69`.
   The signature covers opcode, signed int32 global ID, plain uint32 subwallet
   number, expiry, sequence number and actions. First deployment also retains its
-  requested expiry.
+  requested expiry. Sender initialization belongs only to the external envelope;
+  native outgoing messages do not borrow the sender's deployment state.
 - TOS network identity comes from Config19 and VM capabilities from Config8 at
   one masterchain height. New wallets persist their expected global ID. Native
   sends retain one node and credential for sequence, fee, balance, broadcast and
@@ -118,8 +119,10 @@ All four are rejected before the repaired signer exposes confirmation or signs.
 
 This is an in-progress checkpoint. The complete Wallet device suite, final screen
 configuration matrix and authenticated Signer/Release smoke checks are still pending.
-Production Wallet/core validation is pinned to
-`65e16c4e5bfb5674f68ba23916b3a77880b66a87`.
+Earlier bounded Wallet/core evidence is pinned to
+`65e16c4e5bfb5674f68ba23916b3a77880b66a87`. A later first-send compatibility repair
+changes the production Wallet, requiring a new frozen APK, full 45-method run,
+unit run and affected Release/lint checks. These repeats are in progress.
 
 - The earlier Wallet production Debug build and complete JVM run passed in
   `final-debug-unit-8.log`: 82 tests, no failures, errors or skips, including the
@@ -170,9 +173,25 @@ Production Wallet/core validation is pinned to
   displayed the nonbounceable form for an uninitialized recipient. Both strings
   have valid CRC16 and decode to the same workchain0/32-byte destination; actual
   confirmation XML is retained. Test17 expects the existing normalized-address
-  fixture and resumes before authentication or broadcast. Acceptance will combine
-  22 test14, six test15, four test16 and 13 test17 completed methods, each with its
-  exact instrumentation hash and retained failed attempts.
+  fixture and resumed before authentication or broadcast. These groups completed
+  22 test14, six test15 and four test16 methods, with exact instrumentation hashes.
+  They remain earlier-candidate evidence after the subsequent production repair.
+- The actual first-send UI then failed before passcode authentication because
+  `TransferEntity` inherited a path attaching the sender's StateInit to its
+  outgoing recipient message at sequence zero. The native strict signer correctly
+  rejected recipient deployment. Native outgoing initialization now contains only
+  explicitly requested recipient state; sender deployment remains on the external
+  envelope. Legacy selection behavior remains unchanged. Two new JVM regressions
+  verify a complete native first-transfer message, strict parsing, exact amount/
+  comment/destination, sender-only external deployment and legacy/explicit init
+  selection. The first new test assertion compared StateInit object identity;
+  it now compares canonical serialized cell hashes. Failed logs remain available.
+  Final device acceptance repeats the entire suite on the repaired production APK.
+- The updated full unit task has 87 passing results across 27 suites with zero
+  failures, errors or skips, including the two first-deployment regressions. The
+  27 XML reports are frozen in `final-unit87-results`. Wallet app/test APK packaging
+  in `wallet-first-deploy-final18-fixed.log` remains in progress; the combined build
+  is not reported as successful before it exits.
 - The immutable final14 pair passed six native runtime checks on actual 16KB
   API36/API37 devices and all four existing non-payment UI boundaries on API37.
   API36 used compatibility=false and package compatibility disabled; API37 used
