@@ -18,8 +18,8 @@ fi
 output=$("$adb_bin" shell am instrument -w -e class network.tos.signer.SignerTosUiTest \
   network.tos.signer.debug.test/androidx.test.runner.AndroidJUnitRunner)
 printf '%s\n' "$output"
-if [[ "$output" != *"OK (3 tests)"* ]] || [[ "$output" == *"FAILURES!!!"* ]]; then
-  echo 'signer-tos-emulator: FAILED (instrumentation did not pass all 3 tests)' >&2
+if [[ "$output" != *"OK (4 tests)"* ]] || [[ "$output" == *"FAILURES!!!"* ]]; then
+  echo 'signer-tos-emulator: FAILED (instrumentation did not pass all 4 tests)' >&2
   exit 1
 fi
-echo 'signer-tos-emulator: PASS (3 native request, export, and vault scenarios)'
+echo 'signer-tos-emulator: PASS (4 native request, authenticated signature QR, export, and vault scenarios)'

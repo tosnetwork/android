@@ -114,6 +114,51 @@ class SignerTosUiTest {
         assertTrue(device.hasObject(By.res(context.packageName, "qr")))
     }
 
+    @Test fun authenticatedNativeRequestWithoutCallbackPublishesValidLocalSignatureQr() {
+        ensureNativeKey()
+        val requestBody = body()
+        val request = uri(requestBody)
+        assertNull(request.getQueryParameter("return"))
+        context.startActivity(Intent(Intent.ACTION_VIEW, request).apply {
+            component = ComponentName(context.packageName, "network.tos.signer.screen.root.RootActivity")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        })
+        assertTrue(device.wait(Until.hasObject(By.text("0.123456789 TOS")), 20_000))
+        val slide = requireNotNull(device.wait(Until.findObject(By.res(context.packageName, "slide")), 10_000))
+        val bounds = slide.visibleBounds
+        assertTrue(device.swipe(bounds.left + 30, bounds.centerY(), bounds.right - 30, bounds.centerY(), 40))
+        val password = requireNotNull(device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000))
+        password.text = "1234"
+        device.findObject(By.res(context.packageName, "password_button")).click()
+        assertTrue("Signing without a callback must show a local signature QR",
+            device.wait(Until.hasObject(By.res(context.packageName, "done")), 20_000))
+        val qr = requireNotNull(device.findObject(By.res(context.packageName, "qr")))
+        val qrBounds = qr.visibleBounds
+        val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        val qrBitmap = android.graphics.Bitmap.createBitmap(screenshot,
+            qrBounds.left, qrBounds.top, qrBounds.width(), qrBounds.height())
+        val scanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient(
+            com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE).build())
+        try {
+            val decoded = com.google.android.gms.tasks.Tasks.await(
+                scanner.process(com.google.mlkit.vision.common.InputImage.fromBitmap(qrBitmap, 0)),
+                30, java.util.concurrent.TimeUnit.SECONDS)
+            val published = Uri.parse(requireNotNull(decoded.single().rawValue))
+            assertEquals("tos", published.scheme)
+            assertEquals("publish", published.host)
+            val expected = network.tos.security.hex(
+                TosV1Mnemonic.privateKey(NATIVE_PHRASE.split(" ")).sign(requestBody.hash().toByteArray()))
+            assertEquals("QR must contain the signature of the confirmed unsigned body",
+                expected, published.getQueryParameter(Key.SIGN))
+            assertEquals(context.packageName, device.currentPackageName)
+        } finally {
+            scanner.close()
+            qrBitmap.recycle()
+            screenshot.recycle()
+        }
+    }
+
     @Test fun hiddenSweepAndMismatchedNetworkCannotOpenNativeConfirmation() {
         val returns = ReturnResultEntity(DeeplinkSource.App, null as Uri?)
         ensureNativeKey()

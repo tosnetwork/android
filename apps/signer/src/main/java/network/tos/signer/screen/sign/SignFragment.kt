@@ -204,7 +204,10 @@ class SignFragment: BaseFragment(R.layout.fragment_sign), BaseFragment.Modal {
         val returnResult = args.returnResult
         when (returnResult.source) {
             DeeplinkSource.App -> rootViewModel.responseSignature(signature)
-            DeeplinkSource.Default -> returnSignature(returnResult.uri!!, signature)
+            DeeplinkSource.Default -> {
+                val returnUri = returnResult.uri
+                if (returnUri != null) returnSignature(returnUri, signature) else showQR(signature)
+            }
             else -> showQR(signature)
         }
     }
