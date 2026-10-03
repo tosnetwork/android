@@ -125,9 +125,17 @@ class SignerTosUiTest {
         })
         assertTrue(device.wait(Until.hasObject(By.text("0.123456789 TOS")), 20_000))
         val slide = requireNotNull(device.wait(Until.findObject(By.res(context.packageName, "slide")), 10_000))
+        // Wait for the confirmation sheet to finish entering before measuring its handle.
+        device.waitForIdle()
         val bounds = slide.visibleBounds
-        assertTrue(device.swipe(bounds.left + 30, bounds.centerY(), bounds.right - 30, bounds.centerY(), 40))
-        val password = requireNotNull(device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000))
+        val handle = requireNotNull(slide.findObject(By.res(context.packageName, "button"))).visibleBounds
+        assertTrue(device.swipe(handle.centerX(), handle.centerY(), bounds.right - 1, handle.centerY(), 160))
+        val password = device.wait(Until.findObject(By.res(context.packageName, "internal_input")), 10_000)
+        if (password == null) {
+            device.dumpWindowHierarchy(java.io.File(context.cacheDir, "native-auth-missing-password.xml"))
+            device.takeScreenshot(java.io.File(context.cacheDir, "native-auth-missing-password.png"))
+        }
+        requireNotNull(password) { "Dragging the visible sign handle must open the authentication dialog" }
         password.text = "1234"
         device.findObject(By.res(context.packageName, "password_button")).click()
         assertTrue("Signing without a callback must show a local signature QR",
