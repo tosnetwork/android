@@ -1034,8 +1034,28 @@ class V1ProductUiTest {
 
     @Test
     fun retainedWalletControlsExposeAccessibleNames() {
+        fun clickSettled(selector: androidx.test.uiautomator.BySelector) {
+            val deadline = SystemClock.elapsedRealtime() + 10_000
+            while (SystemClock.elapsedRealtime() < deadline) {
+                val target = device.findObject(selector)
+                if (target != null) {
+                    try {
+                        target.click()
+                        return
+                    } catch (_: androidx.test.uiautomator.StaleObjectException) {
+                        // A rebuilt view can replace a node between lookup and click.
+                    }
+                }
+                SystemClock.sleep(100)
+            }
+            org.junit.Assert.fail("No settled clickable node for $selector")
+        }
+
         fun check(screen: String) {
             device.waitForIdle()
+            assertTrue("No controls became available on $screen", device.wait(
+                Until.hasObject(By.clickable(true).pkg(APP_ID)), 10_000,
+            ))
             val controls = device.findObjects(By.clickable(true).pkg(APP_ID))
             val namedBounds = device.findObjects(By.pkg(APP_ID)).mapNotNull { node ->
                 runCatching {
@@ -1059,17 +1079,25 @@ class V1ProductUiTest {
             assertTrue("Unnamed clickable controls on $screen: ${unnamed.joinToString()}", unnamed.isEmpty())
         }
 
-        launch(); check("wallet")
-        clickText("Send"); assertTrue(waitText("Address or name")); check("send")
-        launch(); clickText("Receive"); assertTrue(waitText("Receive TOS")); check("receive")
-        launch(); clickText("History"); assertTrue(waitText("Today", 30_000)); check("history")
-        launch(); clickResource("settings"); assertTrue(waitText("Settings")); check("settings")
+        launch(); assertTrue(waitResource("settings", 30_000)); check("wallet")
+        clickSettled(By.text("Send")); assertTrue(waitText("Address or name")); check("send")
+        launch(); clickSettled(By.text("Receive")); assertTrue(waitText("Receive TOS")); check("receive")
+        launch(); clickSettled(By.text("History")); assertTrue(waitText("Today", 30_000)); check("history")
+        launch(); clickSettled(By.res(APP_ID, "settings")); assertTrue(waitText("Settings")); check("settings")
         for (entry in listOf("Backup", "Security", "Currency", "RPC Node", "Language", "Appearance", "Legal")) {
             launch()
             assertTrue("Wallet did not settle before opening $entry", waitResource("settings", 30_000))
-            clickResource("settings")
+            clickSettled(By.res(APP_ID, "settings"))
             assertTrue("Settings did not open before $entry", waitText("Settings", 30_000))
-            clickText(entry)
+            clickSettled(By.text(entry))
+            if (entry == "RPC Node") {
+                assertTrue("RPC node editor did not open", device.wait(
+                    Until.hasObject(By.clazz("android.widget.EditText").pkg(APP_ID)), 10_000,
+                ))
+                assertTrue("RPC node Save button is missing", device.wait(
+                    Until.hasObject(By.res("android", "button1").pkg(APP_ID)), 10_000,
+                ))
+            }
             SystemClock.sleep(500)
             check(entry)
         }

@@ -33,7 +33,7 @@ android_sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}
 aapt2="$(find "$android_sdk_root/build-tools" -type f -name aapt2 2>/dev/null | sort -V | tail -1)"
 test -x "$aapt2" || fail "aapt2 is unavailable; cannot inspect the merged Release manifest"
 zipalign="$(dirname "$aapt2")/zipalign"
-readelf="$(find "$android_sdk_root/ndk" -type f -name llvm-readelf 2>/dev/null | sort -V | tail -1)"
+readelf="$(find "$android_sdk_root/ndk" \( -type f -o -type l \) -name llvm-readelf 2>/dev/null | sort -V | tail -1)"
 test -x "$readelf" || fail "NDK llvm-readelf is unavailable"
 for apk in "$wallet_apk" "$signer_apk"; do
   "$zipalign" -c -P 16 4 "$apk" || fail "APK packaging is not 16KB aligned: $apk"

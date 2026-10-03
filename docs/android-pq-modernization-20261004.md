@@ -116,8 +116,10 @@ All four are rejected before the repaired signer exposes confirmation or signs.
 
 ## Executed validation
 
-This is an in-progress checkpoint. Release/lint, the complete Wallet device suite,
-screen configuration matrix and final Signer device suite are still pending.
+This is an in-progress checkpoint. The complete Wallet device suite, final screen
+configuration matrix and authenticated Signer/Release smoke checks are still pending.
+Production Wallet/core validation is pinned to
+`65e16c4e5bfb5674f68ba23916b3a77880b66a87`.
 
 - The earlier Wallet production Debug build and complete JVM run passed in
   `final-debug-unit-8.log`: 82 tests, no failures, errors or skips, including the
@@ -129,7 +131,46 @@ screen configuration matrix and final Signer device suite are still pending.
   failures, errors or skips, including the real local-node mapper. That combined
   command subsequently failed when Android-test compilation found a missing
   mnemonic import in the repaired fixture. The import is fixed; the explicit
-  four-APK rebuild in `debug-fixture-import-final14.log` remains in progress.
+  four-APK rebuild in `debug-fixture-import-final14.log` passed in 3m4s.
+  The complete 85-test/26-suite XML set is frozen separately; the later localnet
+  harness repeats one mapper case and does not increase the unique unit count.
+- `localnet-final65.log` passed the three-node replication, exact values, head
+  convergence, controlled pagination setup and real-node mapper checks. Its mapper
+  actually executed one test with no failures or skips.
+- `release-lint-final65.log` passed both R8 Release builds and both full lint tasks
+  in 25 minutes: Wallet has zero errors/five warnings and Signer zero errors/105
+  warnings. `release-artifact-final65.log` passed both APK 16KB zip alignment,
+  all 24 packaged 64-bit ELF checks and the Wallet permission boundary. NDK
+  `llvm-readelf` is a symlink on both local/CI toolchains; the gate now discovers
+  executable symlinks as well as regular files.
+- Final14 Debug Wallet SHA256 is
+  `06cd7e0130d4b9d4ffe21a2dbb7bfc75593690ddaa9c129d2136f84dd8a0ea0c`;
+  its original instrumentation SHA256 is
+  `7ee356784d771682863245958f91d871cbbc9b6dc35a4044a66dc62a71dc2409`.
+  That pair passed 22 Wallet methods before the accessibility test observed no
+  controls during RPC-dialog navigation. An unchanged-pair quiet retry failed
+  earlier with `StaleObjectException` when clicking Settings. The actual RPC
+  dialog XML contains its named input and all three named buttons. The test now
+  reacquires stale nodes within a bounded deadline and waits for the actual RPC
+  editor/Save button; accessibility assertions remain intact. Remaining execution
+  uses the unchanged production APK with the rebuilt, separately hashed test APK.
+- The immutable final14 pair passed six native runtime checks on actual 16KB
+  API36/API37 devices and all four existing non-payment UI boundaries on API37.
+  API36 used compatibility=false and package compatibility disabled; API37 used
+  bionic compatibility=fatal and package compatibility disabled. Initial zero-test
+  startup ANRs, a SystemUI-overlay failure and a CPU-bound mnemonic timeout remain
+  in the attempt record. The unchanged pair passed after guest/host load settled;
+  no timeout or product edits were used for these repeats. The final compatibility
+  manifest SHA256 is
+  `cf420558f1342b41752ab8460a8b779ab4dfaab6c76334f7a5bac968cd005f05`.
+- R8 unsigned Wallet SHA256 is
+  `cf2f84db5dd69f303384ef6b81c123d44a155ea7f3408f221b2354cbbb486cd9`;
+  unsigned Signer SHA256 is
+  `2b4e147f6d7abe38b1774f0ca248d7cfe9c811d41b4ad9be1724f5d405a2c8a8`.
+  Immutable originals and separately signed local-test copies are retained in
+  `final-release65-apks`. Test signing uses the local Android debug certificate,
+  is not a store signature, and leaves the original APKs untouched. Both copies
+  passed signature verification and 16KB zip alignment; actual R8 UI smoke is pending.
 - The real SQLite migration preflight passed against the earlier native candidate:
   versions1/2/3/4 upgraded through SQLiteOpenHelper and retained legacy wallet
   version, address, contract code, public/private key and null network identity.

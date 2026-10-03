@@ -47,9 +47,21 @@ methods=(
   nativeTosFormattingCoversZeroFractionsAndMaximum
 )
 executed_methods=0
+resume_method="${TOS_EMULATOR_START_AT:-}"
+resume_pending=false
+if [[ -n "$resume_method" ]]; then
+  [[ "${TOS_EMULATOR_SKIP_BUILD:-0}" == 1 ]] || { echo 'v1-emulator: resume requires explicitly hashed prebuilt APKs' >&2; exit 1; }
+  resume_pending=true
+  echo "v1-emulator: RESUME at $resume_method using retained wallet data"
+fi
 
 run_method() {
   local method="$1" clear_data="$2"
+  if [[ "$resume_pending" == true ]]; then
+    [[ "$method" == "$resume_method" ]] || return 0
+    resume_pending=false
+    clear_data=false
+  fi
   echo "v1-emulator: RUN $method"
   "$adb_bin" shell am force-stop network.tos.wallet >/dev/null
   if [[ "$clear_data" == true ]]; then
@@ -66,10 +78,6 @@ run_method() {
   fi
   executed_methods=$((executed_methods + 1))
 }
-
-for method in "${methods[@]}"; do
-  run_method "$method" true
-done
 
 persistent_methods=(
   deterministicFundedWalletFixtureReachesHomeAndPersists
@@ -96,6 +104,16 @@ persistent_methods=(
   signOutRequiresConfirmationAndReturnsToCleanOnboarding
   unfundedGeneratedWalletRendersZeroBalanceAndEmptyHistory
 )
+if [[ -n "$resume_method" ]]; then
+  valid_resume=false
+  for method in "${persistent_methods[@]:1}"; do
+    [[ "$method" != "$resume_method" ]] || valid_resume=true
+  done
+  [[ "$valid_resume" == true ]] || { echo 'v1-emulator: resume must name a persistent method after fixture creation' >&2; exit 1; }
+fi
+for method in "${methods[@]}"; do
+  run_method "$method" true
+done
 run_method "${persistent_methods[0]}" true
 for method in "${persistent_methods[@]:1}"; do
   run_method "$method" false
