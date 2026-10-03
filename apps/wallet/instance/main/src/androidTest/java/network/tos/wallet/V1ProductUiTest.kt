@@ -692,7 +692,7 @@ class V1ProductUiTest {
         assertTrue("Confirmation did not open", waitResource("review_title", 30_000))
         assertTrue("Confirmation lost exact amount", waitTextContaining("0.01 TOS", 10_000))
         assertTrue("Confirmation lost exact Unicode comment", waitTextContaining(UNICODE_COMMENT, 10_000))
-        assertTrue("Confirmation lost exact normalized recipient", waitText(RECIPIENT_ADDRESS, 10_000))
+        assertTrue("Confirmation lost exact normalized recipient", waitText(NORMALIZED_RECIPIENT_ADDRESS, 10_000))
         val fee = device.wait(Until.findObject(By.res(APP_ID, "review_fee")), 30_000)
         assertNotNull("Confirmation fee is missing", fee)
         assertTrue("Confirmation fee was not resolved", waitEnabled("confirm_button", 60_000))

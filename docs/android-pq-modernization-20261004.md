@@ -165,8 +165,14 @@ Production Wallet/core validation is pinned to
   Product QR/Wallet code is unchanged. The first test-only MLKit integration compile
   failed because the wrapper's CameraX supertype is not exported; the existing
   public MLKit API avoids a new dependency, and the corrected test build passed.
-  Acceptance will combine 22 test14, six test15 and 17 test16 completed methods,
-  each with its exact instrumentation hash and retained failed attempts.
+  Four further methods passed with test16. The first authenticated-send test then
+  expected the bounceable input text while the actual confirmation correctly
+  displayed the nonbounceable form for an uninitialized recipient. Both strings
+  have valid CRC16 and decode to the same workchain0/32-byte destination; actual
+  confirmation XML is retained. Test17 expects the existing normalized-address
+  fixture and resumes before authentication or broadcast. Acceptance will combine
+  22 test14, six test15, four test16 and 13 test17 completed methods, each with its
+  exact instrumentation hash and retained failed attempts.
 - The immutable final14 pair passed six native runtime checks on actual 16KB
   API36/API37 devices and all four existing non-payment UI boundaries on API37.
   API36 used compatibility=false and package compatibility disabled; API37 used
