@@ -81,6 +81,31 @@ class TosWalletV5R1Test {
     private fun body(network: Int = 3, seqno: Int = 7, expiry: Long = 2000000000L) =
         TosWalletV5R1Contract(key, network).createTransferUnsignedBody(expiry, seqno, false, null, gift)
 
+    @Test fun reconciliationUsesTheSignedNonceAndRejectsOtherWalletOrNetworkHeaders() {
+        val wallet = TosWalletV5R1Contract(key, 3)
+        fun signed(unsigned: Cell) = wallet.signedBody(org.ton.bitstring.BitString(ByteArray(64)), unsigned)
+        val message = wallet.createTransferMessageCell(wallet.address, 7, signed(body()))
+        assertEquals(7, wallet.signedTransferSeqno(message))
+        assertThrows(IllegalArgumentException::class.java) {
+            TosWalletV5R1Contract(key, 4).signedTransferSeqno(message)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            wallet.signedTransferSeqno(wallet.createTransferMessageCell(
+                AddrStd.parse("0:${"22".repeat(32)}"), 7, signed(body())))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            wallet.signedTransferSeqno(wallet.createTransferMessageCell(wallet.address, 7, body()))
+        }
+        val overflow = buildCell {
+            storeUInt(0x7369676e, 32); storeInt(3, 32); storeUInt(0, 32)
+            storeUInt(2000000000L, 32); storeUInt(0xffffffffL, 32)
+            storeBit(false); storeBit(false)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            wallet.signedTransferSeqno(wallet.createTransferMessageCell(wallet.address, 7, signed(overflow)))
+        }
+    }
+
     @Test fun matchesIndependentPythonAndTosSdkVector() {
         val wallet = TosWalletV5R1Contract(key, 3)
         assertEquals("086a86aa9913c0ec52277adbb7e4b5695964dbb8c817ad0c305cdd345bbfac69", hex(wallet.getCode().hash().toByteArray()))

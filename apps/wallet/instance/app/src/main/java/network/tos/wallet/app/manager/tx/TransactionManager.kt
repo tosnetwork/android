@@ -2,6 +2,8 @@ package network.tos.wallet.app.manager.tx
 
 import android.util.Log
 import network.tos.blockchain.ton.extensions.base64
+import network.tos.blockchain.ton.extensions.cellFromBase64
+import network.tos.blockchain.ton.contract.TosWalletV5R1Contract
 import network.tos.extensions.MutableEffectFlow
 import network.tos.wallet.app.App
 import network.tos.wallet.app.worker.WidgetUpdaterWorker
@@ -161,7 +163,11 @@ class TransactionManager(
     ): SendBlockchainState {
         val node = boundNode ?: api.tos.snapshot(wallet.testnet)
         wallet.networkGlobalId?.let { node.requireNetwork(it, wallet.testnet) }
-        val initialSeqno = if (withBattery) null else node.getSeqno(wallet.accountId, wallet.testnet)
+        val initialSeqno = if (withBattery) null else {
+            val native = wallet.contract as? TosWalletV5R1Contract
+            native?.signedTransferSeqno(boc.cellFromBase64())
+                ?: node.getSeqno(wallet.accountId, wallet.testnet)
+        }
         return send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, 0, node)
     }
 
@@ -189,9 +195,10 @@ class TransactionManager(
                 network.tos.wallet.api.tos.TosSendReconciliation.RETRYABLE -> null
             }
         }
-        // Recheck after the retry delay: another device may have consumed the
-        // sequence while this device was waiting. Never replay that stale request.
-        if (attempt > 0) reconcile()?.let { return it }
+        // Native requests are also checked before their first broadcast: another
+        // device may consume the signed sequence while the user enters a passcode.
+        // Legacy initial-send behavior stays unchanged.
+        if (attempt > 0 || wallet.contract is TosWalletV5R1Contract) reconcile()?.let { return it }
         val state = if (withBattery) {
             sendWithBattery(wallet, boc, source, confirmationTime)
         } else {

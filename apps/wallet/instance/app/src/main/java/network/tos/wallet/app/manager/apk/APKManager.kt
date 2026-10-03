@@ -18,7 +18,6 @@ import network.tos.extensions.getParcelable
 import network.tos.extensions.putParcelable
 import network.tos.wallet.app.RemoteConfig
 import network.tos.wallet.app.extensions.safeCanRequestPackageInstalls
-import network.tos.wallet.app.worker.ApkDownloadWorker
 import network.tos.wallet.app.BuildConfig
 import network.tos.wallet.api.API
 import network.tos.wallet.api.entity.ApkEntity
@@ -139,17 +138,9 @@ class APKManager(
     }
 
     fun download(apk: ApkEntity) {
-        val file = getFile(apk)
-        val workerId = ApkDownloadWorker.start(context, apk.apkDownloadUrl, file.path)
-        ApkDownloadWorker.flowProgress(context, workerId).onEach {
-            if (it >= 100) {
-                _statusFlow.value = Status.Downloaded(apk, file)
-            } else {
-                _statusFlow.value = Status.Downloading(it, apk)
-            }
-        }.launchIn(scope)
-
-        _statusFlow.value = Status.Downloading(0, apk)
+        // In-app downloads are outside V1. Retained callers fail without starting
+        // a worker or requesting permissions removed from the V1 manifest.
+        _statusFlow.value = Status.Failed(apk)
     }
 
     fun install(context: Context, file: File): Boolean {

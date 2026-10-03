@@ -23,6 +23,10 @@ and targets TOS `ee5ad71c343eb2227a8bd42d57bea259da4da0ec`.
   sequence cannot confirm this payment. An unproven receipt after a nonce advance
   remains an unknown result and stops automatic replay. Only the transaction
   manager controls replay, rechecking the receipt again after each retry delay.
+  Native reconciliation uses the sequence in the signed message, checks its
+  wallet/network/subwallet binding, and checks the receipt before the first
+  broadcast as well. A competing send during passcode entry cannot reset the
+  retry baseline to a newer sequence.
 - Wallet version `5` and legacy key derivation remain stable. SQLite upgrades from
   versions `1`, `2`, `3` and `4` cumulatively reach version `5`, adding a nullable
   network field. Native TOS version `6` is distinct and
@@ -82,6 +86,8 @@ Kotlin2.2.20 and NDK27.0.12077973. Both applications compile and target API36;
 Wallet supports API24 and newer, Signer API26 and newer. API36 meets the
 [current Google Play target API requirement](https://developer.android.com/google/play/requirements/target-sdk)
 starting 2026-08-31. No store publication is part of this work.
+The automation Gemfile requires Ruby3.3 or newer; local bundle validation used
+Ruby3.4.6. The dependency-audit workflow uses Ruby3.3 to match the resolved gems.
 
 The cross-platform unit vectors verify code hash, address and unsigned signing
 hash against independent TOS SDK and Python implementations. Native mnemonic,
@@ -113,12 +119,17 @@ All four are rejected before the repaired signer exposes confirmation or signs.
 This is an in-progress checkpoint. Release/lint, the complete Wallet device suite,
 screen configuration matrix and final Signer device suite are still pending.
 
-- Final Wallet production Debug build and the complete JVM run passed in
+- The earlier Wallet production Debug build and complete JVM run passed in
   `final-debug-unit-8.log`: 82 tests, no failures, errors or skips, including the
   real local-node mapper with explicit RPC/address environment inputs. The final
   Signer policy update and its two additional JVM tests passed in
-  `signer-profile-final9.log`. The combined current XML results contain 84 tests
-  across 26 suites, with no failures, errors or skips.
+  `signer-profile-final9.log`.
+- After the signed-sequence and retired-worker fixes, the complete JVM run in
+  `debug-fixture-ru-final13.log` completed 85 tests across 26 suites with no
+  failures, errors or skips, including the real local-node mapper. That combined
+  command subsequently failed when Android-test compilation found a missing
+  mnemonic import in the repaired fixture. The import is fixed; the explicit
+  four-APK rebuild in `debug-fixture-import-final14.log` remains in progress.
 - The real SQLite migration preflight passed against the earlier native candidate:
   versions1/2/3/4 upgraded through SQLiteOpenHelper and retained legacy wallet
   version, address, contract code, public/private key and null network identity.
@@ -142,10 +153,36 @@ screen configuration matrix and final Signer device suite are still pending.
   now uses the existing Espresso dependency that supplies the runner. Device
   harnesses also explicitly fail unless instrumentation reports the expected
   completed test count; a crashed process cannot produce a successful gate.
+- The frozen production Wallet APK completed the first 20 device methods before
+  a stale test-only address prefix stopped the retained-wallet suite. The prefix,
+  recovery-word assertions and zero-wallet generator now use the isolated native
+  TOS fixture/domain. Already completed results remain separately pinned. A later
+  signed-sequence concurrency repair changes the production Wallet APK, so final
+  acceptance repeats the complete 45-method suite on a new frozen app/test pair.
+- All four size/font/theme/locale configurations passed with Wallet production
+  SHA747a7fad and instrumentation SHA65ba1af5. The final12 pair also passed the
+  three native tests on API36 and API37 with actual 16KB pages and compatibility
+  disabled, plus all four non-payment UI boundaries on API37. A first API36
+  instrumentation startup hit an ART initialization ANR before any test ran;
+  the unchanged APKs passed after the guest settled. Original failure logs remain
+  available. The compatibility manifest SHA256 is
+  `1ae6442a9bfc2d04cb723935620efe0f416ae7485bb0436dd1ef92e122babc14`.
+- The first published CI lint run identified five missing Russian translations
+  for the new Signer recovery/network text. All five are now translated, including
+  the numeric network placeholder; default/Russian coverage is 78/78 keys. No lint
+  suppression or baseline update was used. Final Signer artifacts and its three
+  device tests are repeated after this resource repair.
+- Full local lint then found an inherited APK-download worker posting notifications
+  despite V1's deliberately restricted manifest. In-app update discovery was
+  already disabled. Retained download callers now fail without scheduling work,
+  and the historical worker class terminates queued pre-upgrade requests without
+  downloading, posting notifications or starting a foreground service. The failed
+  lint log is retained; final lint is repeated without a suppression or new
+  permission.
 
-The frozen production Wallet Debug APK SHA256 is
+The earlier production Wallet Debug APK SHA256 was
 `747a7fad462920449fe62ba31be1407543acfa97abddbd248b77a72837bb2c45`.
-The frozen final Signer Debug APK SHA256 is
+The pre-translation-repair Signer Debug APK SHA256 was
 `e4b62758ef0b28b10cf44ad04d36751812a1770d2f3ab02ad749114aef47fe3f`.
 The instrumented APK hashes and final execution counts will accompany the
 completed validation record.

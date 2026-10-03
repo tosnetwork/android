@@ -5,6 +5,7 @@ import network.tos.blockchain.ton.TonNetwork
 import network.tos.blockchain.ton.contract.WalletV5R1Contract.W5Context.Client
 import network.tos.blockchain.ton.contract.WalletV5R1Contract.W5Context.Custom
 import network.tos.blockchain.ton.extensions.storeBuilder
+import network.tos.blockchain.ton.extensions.bodyCell
 import network.tos.blockchain.ton.extensions.storeOpCode
 import network.tos.blockchain.ton.extensions.storeSeqAndValidUntil
 import org.ton.api.pub.PublicKeyEd25519
@@ -13,6 +14,7 @@ import org.ton.bigint.toBigInt
 import org.ton.bitstring.BitString
 import org.ton.block.AddrStd
 import org.ton.block.Coins
+import org.ton.block.ExtInMsgInfo
 import org.ton.block.Message
 import org.ton.block.MessageRelaxed
 import org.ton.boc.BagOfCells
@@ -49,6 +51,23 @@ class TosWalletV5R1Contract(
     override fun signedBody(signature: BitString, unsignedBody: Cell) = buildCell {
         storeSlice(unsignedBody.beginParse())
         storeBits(signature)
+    }
+    /** Reconciliation follows the nonce that was actually signed, even when
+     * another device advances the account during confirmation or authentication. */
+    fun signedTransferSeqno(message: Cell): Int {
+        val external = parseTransferMessageCell(message)
+        val info = external.info as? ExtInMsgInfo ?: error("Expected external wallet message")
+        require(info.dest == address) { "Signed message belongs to another wallet" }
+        val signed = external.bodyCell
+        require(signed.bits.size >= 162 + 512) { "Incomplete signed TOS request" }
+        val slice = signed.beginParse()
+        require(slice.loadUInt(32).toLong() == TONOpCode.SIGNED_EXTERNAL.code) { "Expected external TOS request" }
+        require(slice.loadInt(32).toInt() == networkGlobalId) { "Signed network does not match wallet" }
+        require(slice.loadUInt(32).toLong() == subwalletNumber) { "Signed subwallet does not match wallet" }
+        slice.loadUInt(32) // valid_until
+        val seqno = slice.loadUInt(32).toLong()
+        require(seqno <= Int.MAX_VALUE) { "Unsupported sequence number" }
+        return seqno.toInt()
     }
     override fun createTransferUnsignedBody(
         validUntil: Long, seqNo: Int, internalMessage: Boolean,

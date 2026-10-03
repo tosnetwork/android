@@ -21,6 +21,7 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import kotlinx.coroutines.runBlocking
+import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.blockchain.ton.extensions.hex
 import network.tos.blockchain.ton.extensions.base64
@@ -41,7 +42,6 @@ import network.tos.wallet.app.helper.DateHelper
 import network.tos.wallet.app.ui.screen.qr.QRScreen
 import network.tos.icu.CurrencyFormatter.withCustomSymbol
 import org.koin.core.context.GlobalContext
-import org.ton.mnemonic.Mnemonic
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -381,7 +381,7 @@ class V1ProductUiTest {
         assertFalse(waitText("Create new wallet", 2_000))
         assertTrue(waitText("TOS", 30_000))
         assertTrue("UI did not render exact local-node balance $expectedBalance", waitTextContaining(expectedBalance, 30_000))
-        assertTrue(waitTextContaining("UQCI", 10_000))
+        assertTrue(waitTextContaining(FIXTURE_ADDRESS.take(4), 10_000))
         assertNoReachableDeferredCopy()
         assertNoFatalCrash()
     }
@@ -792,7 +792,7 @@ class V1ProductUiTest {
         val originalNode = api.tos.snapshot(wallet.testnet)
         val initialSeqno = originalNode.getSeqno(wallet.accountId, wallet.testnet)
         val privateKey = runBlocking { requireNotNull(repository.getPrivateKey(wallet.id)) }
-        fun payment(comment: String): org.ton.cell.Cell {
+        fun payment(comment: String, seqno: Int = initialSeqno): org.ton.cell.Cell {
             val transfer = org.ton.contract.wallet.WalletTransferBuilder().apply {
                 destination = org.ton.block.AddrStd.parse("0:${"22".repeat(32)}")
                 coins = org.ton.block.Coins.ofNano(2L)
@@ -801,9 +801,9 @@ class V1ProductUiTest {
                     requireNotNull(network.tos.blockchain.ton.extensions.asCellRef(comment)), null)
             }.build()
             val unsigned = wallet.contract.createTransferUnsignedBody(
-                System.currentTimeMillis() / 1000 + 600, initialSeqno, false, null, transfer)
+                System.currentTimeMillis() / 1000 + 600, seqno, false, null, transfer)
             val signed = wallet.contract.signedBody(org.ton.bitstring.BitString(privateKey.sign(unsigned.hash().toByteArray())), unsigned)
-            return wallet.contract.createTransferMessageCell(wallet.contract.address, initialSeqno, signed)
+            return wallet.contract.createTransferMessageCell(wallet.contract.address, seqno, signed)
         }
         val thisDevice = payment("PUBLIC TEST this-device-$initialSeqno")
         val otherDevice = payment("PUBLIC TEST competing-device-$initialSeqno")
@@ -833,6 +833,30 @@ class V1ProductUiTest {
             val stats = URL("http://10.0.2.2:18746/stats").readText()
             assertTrue("Competing nonce triggered an automatic replay: $stats",
                 stats.contains("\"send_calls\": 1") && stats.contains("\"dropped\": 1"))
+        } finally { api.resetCustomTosRpcEndpoint(); scenario(null) }
+
+        // Another device can win while this device is waiting for its passcode,
+        // before TransactionManager has even read the current account sequence.
+        val signedSeqno = initialSeqno + 1
+        val stale = payment("PUBLIC TEST signed-before-passcode-$signedSeqno", signedSeqno)
+        val accepted = payment("PUBLIC TEST accepted-during-passcode-$signedSeqno", signedSeqno)
+        originalNode.sendBocForNetwork(accepted.base64(), requireNotNull(wallet.networkGlobalId), wallet.testnet)
+        val deadline = SystemClock.elapsedRealtime() + 30_000
+        while (SystemClock.elapsedRealtime() < deadline &&
+            originalNode.getSeqno(wallet.accountId, wallet.testnet) <= signedSeqno) SystemClock.sleep(500)
+        assertEquals(signedSeqno + 1, originalNode.getSeqno(wallet.accountId, wallet.testnet))
+        scenario(null)
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:18746")
+        try {
+            val state = runBlocking {
+                GlobalContext.get().get<network.tos.wallet.app.manager.tx.TransactionManager>().send(
+                    wallet, stale, false, "PUBLIC TEST", 0.0, api.tos.snapshot(wallet.testnet))
+            }
+            assertEquals(network.tos.wallet.api.SendBlockchainState.UNKNOWN_ERROR, state)
+            val stats = URL("http://10.0.2.2:18746/stats").readText()
+            assertTrue("A preexisting nonce advance broadcast the stale BOC: $stats",
+                stats.contains("\"send_calls\": 0") && stats.contains("\"dropped\": 0"))
+            assertEquals(signedSeqno + 1, originalNode.getSeqno(wallet.accountId, wallet.testnet))
         } finally { api.resetCustomTosRpcEndpoint(); scenario(null) }
         assertNoFatalCrash()
     }
@@ -932,6 +956,7 @@ class V1ProductUiTest {
 
     @Test
     fun recoveryPhraseRequiresCorrectPasscode() {
+        val fixtureWords = FIXTURE_MNEMONIC.split(" ")
         launch()
         clickResource("settings")
         assertTrue(waitText("Settings"))
@@ -945,15 +970,15 @@ class V1ProductUiTest {
         assertTrue(waitText("Attention", 10_000))
         clickResource("continue_button")
         assertTrue(waitText("Enter passcode", 10_000))
-        assertFalse(hasText("mansion"))
+        assertFalse(hasText(fixtureWords.first()))
 
         enterPin("9999")
         SystemClock.sleep(1_500)
         assertTrue("Wrong passcode dismissed the authentication gate", hasText("Enter passcode"))
-        assertFalse("Wrong passcode exposed the recovery phrase", hasText("mansion"))
+        assertFalse("Wrong passcode exposed the recovery phrase", hasText(fixtureWords.first()))
         enterPin("1234")
         assertTrue(waitText("Your recovery phrase", 15_000))
-        for (word in listOf("mansion", "chef", "voice")) {
+        for (word in listOf(fixtureWords.first(), fixtureWords[1], fixtureWords.last())) {
             assertTrue("Authenticated phrase is missing word: $word", waitTextContaining(word, 5_000))
         }
         assertSecureWalletWindow()
@@ -1117,7 +1142,7 @@ class V1ProductUiTest {
         val passcodeManager = GlobalContext.get().get<PasscodeManager>()
         val wallet = runBlocking {
             if (!passcodeManager.hasPinCode()) passcodeManager.save("1234")
-            val mnemonic = Mnemonic.generate()
+            val mnemonic = TosV1Mnemonic.generate()
             accountRepository.importWallet(
                 ids = listOf("v1-zero-wallet"),
                 label = Wallet.NewLabel(listOf("Zero Wallet"), "✨", 0xfff5b800.toInt()),

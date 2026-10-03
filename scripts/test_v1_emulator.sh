@@ -46,9 +46,11 @@ methods=(
   sodiumSecretBoxRoundTripsOnAndroidAbi
   nativeTosFormattingCoversZeroFractionsAndMaximum
 )
+executed_methods=0
 
 run_method() {
   local method="$1" clear_data="$2"
+  echo "v1-emulator: RUN $method"
   "$adb_bin" shell am force-stop network.tos.wallet >/dev/null
   if [[ "$clear_data" == true ]]; then
     "$adb_bin" shell pm clear network.tos.wallet >/dev/null
@@ -62,6 +64,7 @@ run_method() {
     echo "v1-emulator: FAILED (${method})" >&2
     exit 1
   fi
+  executed_methods=$((executed_methods + 1))
 }
 
 for method in "${methods[@]}"; do
@@ -105,4 +108,4 @@ if [[ "$output" != *"OK (3 tests)"* ]] || [[ "$output" == *"FAILURES!!!"* ]]; th
   echo 'v1-emulator: FAILED (native instrumentation did not pass all 3 tests)' >&2
   exit 1
 fi
-echo "v1-emulator: PASS ($((${#methods[@]} + ${#persistent_methods[@]} + 3)) scenarios)"
+echo "v1-emulator: PASS ($((executed_methods + 3)) scenarios)"

@@ -77,4 +77,9 @@
     <string name="notfound_title">Ключ для подписания отсутствует</string>
     <string name="notfound_description">Добавьте необходимый ключ и повторите попытку.</string>
     <string name="ok">Хорошо</string>
+    <string name="recovery_profile_title">Выберите формат ключа</string>
+    <string name="recovery_profile_hint">Эта фраза действительна для обоих форматов, но создаёт разные ключи. Выберите формат, использованный при создании ключа.</string>
+    <string name="restore_tos_key">Восстановить ключ TOS</string>
+    <string name="restore_legacy_key">Восстановить ключ прежнего формата</string>
+    <string name="tos_signing_network">TOS · Сеть %1$d</string>
 </resources>

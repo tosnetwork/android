@@ -3,7 +3,7 @@
 GRADLE := ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8'
 
 compile:
-	$(GRADLE) :apps:wallet:instance:main:assembleDefaultDebug :apps:signer:assembleDebug
+	$(GRADLE) :apps:wallet:instance:main:assembleDefaultDebug :apps:wallet:instance:main:assembleDefaultDebugAndroidTest :apps:signer:assembleDebug :apps:signer:assembleDebugAndroidTest
 
 release:
 	$(GRADLE) :apps:wallet:instance:main:assembleSiteRelease :apps:signer:assembleRelease
