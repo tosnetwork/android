@@ -524,7 +524,29 @@ class V1ProductUiTest {
         assertTrue(waitText(FIXTURE_ADDRESS))
         val qrPayload = "tos://transfer/$FIXTURE_ADDRESS"
         assertEquals(qrPayload, QRScreen(currentWallet()).getQrContent(FIXTURE_ADDRESS, TokenEntity.TON))
-        assertEquals(qrPayload, decodeQr(QR.Builder(qrPayload).setSize(512).build()))
+        val qrBitmap = QR.Builder(qrPayload).setSize(512).build()
+        assertEquals(qrPayload, decodeQr(qrBitmap))
+        val scanBitmap = qrWithQuietZone(qrBitmap)
+        File(instrumentation.targetContext.cacheDir, "native-receive-qr.png").outputStream().use {
+            assertTrue(scanBitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        val scanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient(
+            com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                .build(),
+        )
+        try {
+            val decoded = com.google.android.gms.tasks.Tasks.await(
+                scanner.process(com.google.mlkit.vision.common.InputImage.fromBitmap(scanBitmap, 0)),
+                30, java.util.concurrent.TimeUnit.SECONDS,
+            )
+            assertEquals("Production QR scanner did not decode the native URI", qrPayload, decoded.single().rawValue)
+        } finally {
+            scanner.close()
+        }
+        val blank = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        Canvas(blank).drawColor(Color.WHITE)
+        assertTrue("Blank image decoded as a QR code", runCatching { decodeQr(blank) }.isFailure)
         assertEquals(FIXTURE_ADDRESS, QRScreen.shareIntent(FIXTURE_ADDRESS).getStringExtra(Intent.EXTRA_TEXT))
 
         clickText("Copy")
@@ -1263,7 +1285,7 @@ class V1ProductUiTest {
         target.click()
     }
 
-    private fun decodeQr(bitmap: Bitmap): String {
+    private fun qrWithQuietZone(bitmap: Bitmap): Bitmap {
         val readable = if (bitmap.config == Bitmap.Config.HARDWARE) {
             bitmap.copy(Bitmap.Config.ARGB_8888, false)
         } else {
@@ -1279,10 +1301,19 @@ class V1ProductUiTest {
             drawColor(Color.WHITE)
             drawBitmap(readable, quietZone.toFloat(), quietZone.toFloat(), null)
         }
+        return padded
+    }
+
+    private fun decodeQr(bitmap: Bitmap): String {
+        val padded = qrWithQuietZone(bitmap)
         val pixels = IntArray(padded.width * padded.height)
         padded.getPixels(pixels, 0, padded.width, 0, 0, padded.width, padded.height)
         val source = RGBLuminanceSource(padded.width, padded.height, pixels)
-        return MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source))).text
+        // This helper verifies a generated axis-aligned symbol. Camera detection
+        // is exercised separately through the production MLKit scanner above.
+        return MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source)), mapOf(
+            com.google.zxing.DecodeHintType.PURE_BARCODE to true,
+        )).text
     }
 
     private fun waitText(text: String, timeout: Long = 10_000): Boolean =

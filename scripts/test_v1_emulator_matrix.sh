@@ -27,6 +27,7 @@ fi
 
 run_config() {
   local size="$1" font="$2" night="$3" locale="$4"
+  echo "v1-emulator-matrix: RUN $size/$font/$night/$locale"
   "$adb_bin" shell wm size "$size" >/dev/null
   "$adb_bin" shell settings put system font_scale "$font"
   "$adb_bin" shell cmd uimode night "$night" >/dev/null

@@ -154,6 +154,19 @@ Production Wallet/core validation is pinned to
   reacquires stale nodes within a bounded deadline and waits for the actual RPC
   editor/Save button; accessibility assertions remain intact. Remaining execution
   uses the unchanged production APK with the rebuilt, separately hashed test APK.
+- Six further methods passed with test15, including the repaired accessibility
+  method and strict cold-launch/memory/navigation budgets. The subsequent receive
+  QR test exposed a ZXing detection assumption: independent pixel reconstruction
+  exactly matches all 37x37 encoded modules, but ordinary/TRY_HARDER detection
+  misses this generated symbol. The axis-aligned bitmap fidelity check now uses
+  PURE_BARCODE mode and still requires the exact native URI; a blank image must
+  fail decoding. The same actual Android bitmap also passes the production MLKit
+  QR scanner configuration, along with address copy/share assertions, on test16.
+  Product QR/Wallet code is unchanged. The first test-only MLKit integration compile
+  failed because the wrapper's CameraX supertype is not exported; the existing
+  public MLKit API avoids a new dependency, and the corrected test build passed.
+  Acceptance will combine 22 test14, six test15 and 17 test16 completed methods,
+  each with its exact instrumentation hash and retained failed attempts.
 - The immutable final14 pair passed six native runtime checks on actual 16KB
   API36/API37 devices and all four existing non-payment UI boundaries on API37.
   API36 used compatibility=false and package compatibility disabled; API37 used
