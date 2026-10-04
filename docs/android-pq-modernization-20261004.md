@@ -12,7 +12,7 @@ and targets TOS `ee5ad71c343eb2227a8bd42d57bea259da4da0ec`.
   number, expiry, sequence number and actions. First deployment also retains its
   requested expiry. Sender initialization belongs only to the external envelope;
   native outgoing messages do not borrow the sender's deployment state.
-- TOS network identity comes from Config19 and VM capabilities from Config8 at
+- TOS network identity comes from Config 19 and VM capabilities from Config 8 at
   one masterchain height. New wallets persist their expected global ID. Native
   sends retain one node and credential for sequence, fee, balance, broadcast and
   retry reconciliation. Failed or malformed sequence lookups never become a
@@ -46,8 +46,9 @@ and targets TOS `ee5ad71c343eb2227a8bd42d57bea259da4da0ec`.
   The encrypted vault also retains a native-key profile marker. A native key
   requires the strict native request profile before confirmation and again before
   authentication and signing. Native V5 bytes cannot bypass these checks by
-  changing or omitting the URI version label. Ordinary legacy requests and CSV
-  vaults remain usable with legacy keys.
+  changing or omitting the URI version label. An authenticated request without
+  a callback uses the existing signature QR output. Ordinary legacy requests and
+  CSV vaults remain usable with legacy keys.
 - Onboarding exposes RPC settings and retry before a wallet exists, so an
   unavailable default endpoint does not prevent selecting a reachable node.
 - Fastlane is resolved to `2.240.1` and rubyzip to `3.7.0`, satisfying the security
@@ -55,40 +56,40 @@ and targets TOS `ee5ad71c343eb2227a8bd42d57bea259da4da0ec`.
 - Wallet installs identify as `1.1.0` / version code `3`; the standalone signer
   identifies as `0.3.0` / code `24`.
 - The Sodium JNI wrapper links the existing static Sodium archive, and both it
-  and the blur library use NDK27's two 16KB linker flags. CameraX is updated to
+  and the blur library use NDK 27's two 16 KB linker flags. CameraX is updated to
   the compatible stable `1.6.2`. Release gates inspect every arm64/x86_64 ELF LOAD,
   reject rounded RELRO protection that covers writable sections, and require
-  16KB APK zip alignment. This follows the
+  16 KB APK zip alignment. This follows the
   [official Android page-size guidance](https://developer.android.com/guide/practices/page-sizes).
 
 ## Authentication and deployment boundary
 
 The current network uses PQ validator consensus while permitting Ed25519 user
 wallets. This update keeps the native wallet's Ed25519 authentication explicit.
-Capability discovery reports ML-DSA primitives from VM16 and experimental Falcon
-from VM19; the tested VM18 network does not advertise Falcon support. Ordinary
-native V5 creation and sending require VM6, the minimum established by independent
-execution across VM0–18: VM0–3 rejected with exit6, VM4–5 with exit5, and VM6–18
+Capability discovery reports ML-DSA primitives from VM 16 and experimental Falcon
+from VM 19; the tested VM 18 network does not advertise Falcon support. Ordinary
+native V5 creation and sending require VM 6, the minimum established by independent
+execution across VM 0–18: VM 0–3 rejected with exit 6, VM 4–5 with exit 5, and VM 6–18
 computed and acted successfully with one real outgoing message. No PQ relayer
 wallet UI, native PQ key migration, gasless service or network activation is added.
 
-The isolated three-validator development network has global ID `3` and VM18.
+The isolated three-validator development network has global ID `3` and VM 18.
 No production network ID is inferred from it. Production endpoint DNS availability
 is operational state, so onboarding permits entering a verified endpoint.
 
 ## Reproduction and test data
 
-Use JDK17 and the configured Android SDK. Resource-constrained checks use
-`--max-workers=2 -Dorg.gradle.parallel=false` with a 2GB Gradle heap. Logs for this
+Use JDK 17 and the configured Android SDK. Resource-constrained checks use
+`--max-workers=2 -Dorg.gradle.parallel=false` with a 2 GB Gradle heap. Logs for this
 run are retained in `/tmp/android-pq-20261004`.
 
-The tested toolchain is JDK17.0.20, Gradle8.14.3, Android Gradle Plugin8.12.3,
-Kotlin2.2.20 and NDK27.0.12077973. Both applications compile and target API36;
-Wallet supports API24 and newer, Signer API26 and newer. API36 meets the
+The tested toolchain is JDK 17.0.20, Gradle 8.14.3, Android Gradle Plugin 8.12.3,
+Kotlin 2.2.20 and NDK 27.0.12077973. Both applications compile and target API 36;
+Wallet supports API 24 and newer, Signer API 26 and newer. API 36 meets the
 [current Google Play target API requirement](https://developer.android.com/google/play/requirements/target-sdk)
 starting 2026-08-31. No store publication is part of this work.
-The automation Gemfile requires Ruby3.3 or newer; local bundle validation used
-Ruby3.4.6. The dependency-audit workflow uses Ruby3.3 to match the resolved gems.
+The automation Gemfile requires Ruby 3.3 or newer; local bundle validation used
+Ruby 3.4.6. The dependency-audit workflow uses Ruby 3.3 to match the resolved gems.
 
 The cross-platform unit vectors verify code hash, address and unsigned signing
 hash against independent TOS SDK and Python implementations. Native mnemonic,
@@ -117,231 +118,269 @@ All four are rejected before the repaired signer exposes confirmation or signs.
 
 ## Executed validation
 
-This is an in-progress checkpoint. The repaired Wallet's complete device suite,
-unit result set, affected R8 build, lint and host artifact checks have passed.
-The final screen configuration matrix, final-hash 16KB runtime repeat,
-authenticated Signer checks and R8 device smoke are still pending.
-Earlier bounded Wallet/core evidence is pinned to
-`65e16c4e5bfb5674f68ba23916b3a77880b66a87`. A later first-send compatibility repair
-changes the production Wallet, requiring a new frozen APK, full 45-method run,
-unit run and affected Release/lint checks. These Wallet repeats are complete.
+Local validation is complete for source/test head
+`3d776b55835cca8b3cd37cabd79b6e03f4067372`. Wallet and shared production code
+are unchanged from `dac22965299f45080701b14cdb535e2788be67dd`. Signer production
+is pinned to tree `0c66db608b69c5e8244c09694fc28871cc082f13`, with build-script
+blob `3563c234fe6ddf22abf539dc100aca4a9c71c91a`; its later UI harness repairs do
+not change the application APK. Evidence is bound to the immutable files below.
 
-The repaired Wallet candidate is source
-`dac22965299f45080701b14cdb535e2788be67dd`. Its immutable Debug APK SHA256 is
-`86d142020f4a0050c11efd7d6e516a3e5bbc1b5efda4fcb409dffe882b795973` and
-its instrumentation APK SHA256 is
-`32ef5c7fa332f34d92ec35b74e264b15c328365e12fdeee2419ea3e1ff88d5bd`.
-The explicit app/test packaging and full requested unit task completed in
-6m28s. The unit result set contains 87 passing tests across 27 suites, zero
-failures/errors/skips; unchanged task results were reused, while the affected
-app suite executed its two new deployment regressions. The frozen result
-manifest SHA256 is
-`c34853e7df80c1bee63b20e70ead75e7bd3a6ee0ca985588df673521ad80ecb4`.
+| Completed check | Result | Evidence |
+| --- | --- | --- |
+| JVM results | 87 unique tests, 27 suites; zero failures, errors or skips | `final-combined-unit87-results/manifest.json` |
+| Full Wallet device suite | 45 scenarios: 42 UI methods and three native methods | `wallet-ui-final18.result.json` |
+| Wallet screen/font/theme/locale matrix | Four configurations passed | `wallet-matrix-final18.result.json` |
+| Signer device suite | Four methods passed in 80.131s; zero failures or skips | `signer-ui-final21.result.json` |
+| Actual 16 KB kernels | API 36 three native tests, API 37 three native tests and API 37 four existing UI tests passed | `api36-final-wallet18.result.json`, `api37-final-wallet18.result.json`, `api37-final-wallet18-existing-ui.result.json` |
+| R8 builds, full lint and unsigned-artifact gates | Both applications passed; Wallet lint zero errors/five warnings, Signer zero errors/105 warnings | `wallet-release-lint-final18.log`, `signer-no-return-final19-build.log`, `release-artifact-final19.log` |
+| Actual Wallet R8 smoke | Native restore, live balance, explicit lock, new wallet and cold persistence passed | `wallet18-release-native-{restore,create}.result.json`, `wallet18-release-lock.result.json` |
+| Actual Signer R8 smoke | Native import, cold password unlock, authenticated no-return QR view and independently verified browser callback passed | `signer19-release-native-signing.result.json` |
 
-A separate actual-device preflight on this pair passed the native send method
-in 26.892s. Immediately before sending the account was uninitialized; afterwards
-it was active with sequence1, and the recipient held exactly 0.01 TOS. The test
-authenticated with a passcode, changed the settings endpoint while confirmation
-was open, and verified one send, the exact Unicode comment and chain-backed
-history. Public RPC rows, original before-state and instrumentation-log hash are
-recorded in `native-first-send-final18.result.json`, SHA256
-`edd37a2c7cebdf6947bc07e05f4e0cbeb01bb4e4799719923f0a16e60f851d80`.
-This preflight is a repeat of one suite method and does not increase the final
-45-method count.
+Repeated preflights, screen configurations and API 37 reruns are separate
+executions of existing methods. They do not inflate the 87 unique JVM or 45
+Wallet-method totals. All actual 16 KB results above use the final Wallet 18 pair;
+the full Signer device run uses the final Signer 21 test APK.
 
-The complete uniform-pair Wallet run passed all 45 scenarios: 42 distinct UI
-methods and three native runtime methods on the owned API36.1/4KB emulator.
-This includes the actual SQLite1/2/3/4-to5 upgrade matrix, both explicit recovery
-formats, RPC onboarding and persistence, accessibility, QR copy/share/decoding,
-authenticated sends, exact Unicode history, competing-sequence handling, a
-lost-response receipt check, Max, pagination, passcode/key storage and sign-out.
-No previous stopped-at-failure groups are needed to reach this count.
-`wallet-ui-final18.result.json` records every method and the uniform app/test
-hashes; its SHA256 is
+### Frozen APK provenance
+
+Paths are beneath `/tmp/android-pq-20261004`. Original unsigned Release files
+remain untouched; separately signed copies are used only for local QA.
+
+| Artifact | SHA256 |
+| --- | --- |
+| `final-wallet18-apks/wallet.apk` | `86d142020f4a0050c11efd7d6e516a3e5bbc1b5efda4fcb409dffe882b795973` |
+| `final-wallet18-apks/wallet-test.apk` | `32ef5c7fa332f34d92ec35b74e264b15c328365e12fdeee2419ea3e1ff88d5bd` |
+| `final-signer21-ui-apks/signer.apk` | `e9f9973dd8594a98ae01935e0a68e5deb3abfb2c65c9e920dce126826dced160` |
+| `final-signer21-ui-apks/signer-test.apk` | `bb9668913fde277595bada33982d045266633a8f326a8a4e3dbaa84572cacf77` |
+| `final-release18-apks/wallet-release-unsigned.apk` | `a6a7fde21e310f96288c6eec4a39a14de121e626e41f4fdc9811c4301467e1f6` |
+| `final-release18-apks/wallet-release-local-test-signed.apk` | `f75f3e7e09512799fc1bd287d77b3dce2710524ee6b2172b53e1f57737cd7a5a` |
+| `final-signer19-apks/signer-release-unsigned.apk` | `eb848613247b9b2b99a00298ed81ca4abb2483f2e1564d66ca5b0c8adaf0e552` |
+| `final-signer19-apks/signer-release-local-test-signed.apk` | `a6f6b178e2a77c644639ef1d05973208581ec121c244cea4fe50cc1b72cbdcaf` |
+
+The Wallet 18 Debug manifest is
+`c6aa8b3e590829d7c511ab489e8a54de074ffbffa5c78a82988a11402c193d11`;
+the Signer 21 device manifest is
+`1b6137fc61c381aa4f0dda98e5a6d32a741dea24fab096cc0a8f14efb9733cb6`.
+The Signer 19 build manifest, including its fresh unit XML, is
+`7b0924eb98fa784b88f150c784fb65f3b4f20d6ffd7503c26352ab5f5f0d1155`.
+
+### JVM, live-chain and device checks
+
+The explicit Wallet app/test packaging and full requested unit task passed in
+6m28s. The subsequent affected Signer unit, Debug/test packaging, R8 Release and
+full lint tasks passed in 2m27s: 58 tasks executed and 849 up-to-date. The combined
+result manifest retains 85 unchanged Wallet/core results and replaces the two
+Signer results with their fresh execution. Its unique total is 87, rather than
+89, across 27 actual XML suites. The manifest SHA256 is
+`6a2d53b87959fb51f55764ba1f7e126fe0a7eaa510d6d21fcb041a39e27205da`.
+The real local-node mapper executed with explicit RPC/address inputs; the
+localnet harness's later single-case repeat is not an additional unique test.
+
+The complete Wallet run passed on the owned API 36.1/4 KB emulator using one
+uniform app/test pair. It covers actual SQLite upgrades from versions 1/2/3/4
+to 5, stable legacy code/address/keys and null network identity, explicit dual-domain
+recovery and persistence, unavailable-node onboarding, RPC editing, accessibility,
+address copy/share/QR decoding, authenticated transfers, exact Unicode history,
+competing-device sequence handling, lost-response reconciliation, Max, pagination,
+passcode/keystore controls and sign-out. No earlier partial groups are used to
+reach 45. Its manifest SHA256 is
 `42f6586a7e17afa8e730491d4d7daed63e324acfd940eb3b0aa2b9283fd7c018`.
 
-The affected Wallet R8 Release assembly and full lint task passed in 19m28s,
-with 43 tasks executed and 1571 up-to-date. Wallet lint has zero errors and five
-warnings. The immutable new unsigned Wallet APK SHA256 is
-`a6a7fde21e310f96288c6eec4a39a14de121e626e41f4fdc9811c4301467e1f6`.
-The repeated host gate passed its zip alignment, all twelve packaged 64-bit
-ELF checks and permission allowlist, together with the unchanged Signer65 APK's
-twelve ELF checks. `final-release18-apks/manifest.json`, SHA256
-`c40684a1e9639e8f9cdb0b5c7645383f468404a2d4134d091540b4392b45730a`,
-records the unsigned files and exact build/lint/gate logs. This new Wallet APK
-has not yet been signed for a local test or executed in an R8 device smoke.
-
-An independent read-only audit matched the frozen APK bytes, all 27 unit XML
-hashes, original first-send log, before/after account state and strict execution
-fields. It confirmed compute/action success, activation, one outgoing message,
-zero skipped actions, the exact amount/destination and UTF-8 comment. The audit
-manifest SHA256 is
+A separate first-deployment preflight began with an uninitialized sender and
+ended with an active account at sequence 1. The receipt has successful compute
+and action phases, one real outgoing message and zero skipped actions. The
+recipient received exactly 0.01 TOS and the raw transaction contains the exact
+UTF-8 comment `TOS V1 测试 🌌`. Authentication, endpoint editing while confirmation
+was open, and chain-backed history were checked. This 26.892s preflight repeats
+one full-suite method. `native-first-send-final18.result.json` has SHA256
+`edd37a2c7cebdf6947bc07e05f4e0cbeb01bb4e4799719923f0a16e60f851d80`.
+An independent read-only audit matched original state, receipt fields, APK bytes,
+unit XML and the preflight log; its SHA256 is
 `dc766bbf2ccfa803b9e3f4faec5d78482a4af2557588ef597c71ca807799b812`.
 
-The environment restart restricted ADB5037 and GitHub network access. Final18
-screen-matrix and actual 16KB runtime repeats, local Release signing/install
-smoke, and final pushed-head CI therefore remain unfinished. Earlier matrix,
-16KB and Release65 results below are historical evidence for their own hashes.
-The last observed pushed-head dependency audit passed on source65; Android CI
-on that source failed because its artifact gate did not discover the NDK's
-`llvm-readelf` symlink. The committed gate fix needs a new current-head CI run.
-No merge readiness or store publication is claimed.
+The final screen matrix passed 720x1280/font 1/light/en-US,
+720x1280/font 1.3/dark/ja-JP, 1080x2400/font 1/dark/de-DE and
+1440x2560/font 1.3/light/en-US. Its manifest SHA256 is
+`4aab5080efc10e0793cec085099f01039d950fb926bcc847e68e6e25011b5d20`.
 
-The standalone Signer65 preview/raw-export regression does not establish the
-authenticated return flow. A host attempt did not complete authentication and
-provides no crash reproduction. Its accepted no-return deep-link path contains
-a null assertion at return handling. The focused repair now routes an absent
-callback to the existing QR output instead of asserting the callback is present.
-A fourth Signer device regression completes authentication, reads the actual
-displayed signature QR and verifies its 64-byte Ed25519 signature against the
-public fixture; the harness requires all four completed tests. These source
-changes are committed as
-`decad1fca2b1710939e575fe7c7e92fc51e51a9c` and have not been built or executed:
-the offline Gradle attempt failed
-before the build because its file-lock contention socket was not permitted.
-The original log is `signer-no-return-sandbox-build.log`. Previous Signer3 and
-Signer Release65 evidence is superseded for this changed Signer source. New
-Signer build, unit/device execution and Release evidence must be recorded,
-without changing the completed Wallet18 artifact provenance.
+The four final Signer methods include an authenticated no-return signature QR,
+its actual decode and comparison with a valid 64-byte Ed25519 signature, strict
+native confirmation/export, malformed or relabelled request rejection, and
+native/legacy vault recovery. The full run's manifest SHA256 is
+`69322ff74bbddb394fb4fa0e37f9beeb30a4f1569b639bc695537ec61eca2c82`.
+A separate actual Debug QR was decoded using zxing-cpp 3.1.1 and checked with
+PyNaCl 1.6.2; mutated signatures and body hashes were rejected. These are offline
+signing checks with public test data, with no blockchain broadcast.
 
-- The earlier Wallet production Debug build and complete JVM run passed in
-  `final-debug-unit-8.log`: 82 tests, no failures, errors or skips, including the
-  real local-node mapper with explicit RPC/address environment inputs. The final
-  Signer policy update and its two additional JVM tests passed in
-  `signer-profile-final9.log`.
-- After the signed-sequence and retired-worker fixes, the complete JVM run in
-  `debug-fixture-ru-final13.log` completed 85 tests across 26 suites with no
-  failures, errors or skips, including the real local-node mapper. That combined
-  command subsequently failed when Android-test compilation found a missing
-  mnemonic import in the repaired fixture. The import is fixed; the explicit
-  four-APK rebuild in `debug-fixture-import-final14.log` passed in 3m4s.
-  The complete 85-test/26-suite XML set is frozen separately; the later localnet
-  harness repeats one mapper case and does not increase the unique unit count.
-- `localnet-final65.log` passed the three-node replication, exact values, head
-  convergence, controlled pagination setup and real-node mapper checks. Its mapper
-  actually executed one test with no failures or skips.
-- `release-lint-final65.log` passed both R8 Release builds and both full lint tasks
-  in 25 minutes: Wallet has zero errors/five warnings and Signer zero errors/105
-  warnings. `release-artifact-final65.log` passed both APK 16KB zip alignment,
-  all 24 packaged 64-bit ELF checks and the Wallet permission boundary. NDK
-  `llvm-readelf` is a symlink on both local/CI toolchains; the gate now discovers
-  executable symlinks as well as regular files.
-- Final14 Debug Wallet SHA256 is
-  `06cd7e0130d4b9d4ffe21a2dbb7bfc75593690ddaa9c129d2136f84dd8a0ea0c`;
-  its original instrumentation SHA256 is
-  `7ee356784d771682863245958f91d871cbbc9b6dc35a4044a66dc62a71dc2409`.
-  That pair passed 22 Wallet methods before the accessibility test observed no
-  controls during RPC-dialog navigation. An unchanged-pair quiet retry failed
-  earlier with `StaleObjectException` when clicking Settings. The actual RPC
-  dialog XML contains its named input and all three named buttons. The test now
-  reacquires stale nodes within a bounded deadline and waits for the actual RPC
-  editor/Save button; accessibility assertions remain intact. Remaining execution
-  uses the unchanged production APK with the rebuilt, separately hashed test APK.
-- Six further methods passed with test15, including the repaired accessibility
-  method and strict cold-launch/memory/navigation budgets. The subsequent receive
-  QR test exposed a ZXing detection assumption: independent pixel reconstruction
-  exactly matches all 37x37 encoded modules, but ordinary/TRY_HARDER detection
-  misses this generated symbol. The axis-aligned bitmap fidelity check now uses
-  PURE_BARCODE mode and still requires the exact native URI; a blank image must
-  fail decoding. The same actual Android bitmap also passes the production MLKit
-  QR scanner configuration, along with address copy/share assertions, on test16.
-  Product QR/Wallet code is unchanged. The first test-only MLKit integration compile
-  failed because the wrapper's CameraX supertype is not exported; the existing
-  public MLKit API avoids a new dependency, and the corrected test build passed.
-  Four further methods passed with test16. The first authenticated-send test then
-  expected the bounceable input text while the actual confirmation correctly
-  displayed the nonbounceable form for an uninitialized recipient. Both strings
-  have valid CRC16 and decode to the same workchain0/32-byte destination; actual
-  confirmation XML is retained. Test17 expects the existing normalized-address
-  fixture and resumed before authentication or broadcast. These groups completed
-  22 test14, six test15 and four test16 methods, with exact instrumentation hashes.
-  They remain earlier-candidate evidence after the subsequent production repair.
-- The actual first-send UI then failed before passcode authentication because
-  `TransferEntity` inherited a path attaching the sender's StateInit to its
-  outgoing recipient message at sequence zero. The native strict signer correctly
-  rejected recipient deployment. Native outgoing initialization now contains only
-  explicitly requested recipient state; sender deployment remains on the external
-  envelope. Legacy selection behavior remains unchanged. Two new JVM regressions
-  verify a complete native first-transfer message, strict parsing, exact amount/
-  comment/destination, sender-only external deployment and legacy/explicit init
-  selection. The first new test assertion compared StateInit object identity;
-  it now compares canonical serialized cell hashes. Failed logs remain available.
-  Final device acceptance repeats the entire suite on the repaired production APK.
-- The updated full unit task has 87 passing results across 27 suites with zero
-  failures, errors or skips, including the two first-deployment regressions. The
-  27 XML reports are frozen in `final-unit87-results`. Wallet app/test APK packaging
-  in `wallet-first-deploy-final18-fixed.log` completed successfully; the full unit
-  task and both explicit assembly tasks are included in that build.
-- The immutable final14 pair passed six native runtime checks on actual 16KB
-  API36/API37 devices and all four existing non-payment UI boundaries on API37.
-  API36 used compatibility=false and package compatibility disabled; API37 used
-  bionic compatibility=fatal and package compatibility disabled. Initial zero-test
-  startup ANRs, a SystemUI-overlay failure and a CPU-bound mnemonic timeout remain
-  in the attempt record. The unchanged pair passed after guest/host load settled;
-  no timeout or product edits were used for these repeats. The final compatibility
-  manifest SHA256 is
-  `cf420558f1342b41752ab8460a8b779ab4dfaab6c76334f7a5bac968cd005f05`.
-- R8 unsigned Wallet SHA256 is
-  `cf2f84db5dd69f303384ef6b81c123d44a155ea7f3408f221b2354cbbb486cd9`;
-  unsigned Signer SHA256 is
-  `2b4e147f6d7abe38b1774f0ca248d7cfe9c811d41b4ad9be1724f5d405a2c8a8`.
-  Immutable originals and separately signed local-test copies are retained in
-  `final-release65-apks`. Test signing uses the local Android debug certificate,
-  is not a store signature, and leaves the original APKs untouched. Both copies
-  passed signature verification and 16KB zip alignment; actual R8 UI smoke is pending.
-- The real SQLite migration preflight passed against the earlier native candidate:
-  versions1/2/3/4 upgraded through SQLiteOpenHelper and retained legacy wallet
-  version, address, contract code, public/private key and null network identity.
-  The complete final-APK suite repeats this check; the preflight alone is not
-  counted as final device acceptance.
-- `bundle check`, the resolved Fastlane invocation and `bundle-audit check --update`
-  passed after resolving the rubyzip security update. Shell syntax, Python
-  compilation and `git diff --check` also passed.
-- ELF inspection failed on the original 4KB JNI wrapper and passed after the
-  static-Sodium/linker repairs. Independent API36/API37 16KB device checks passed
-  the three native runtime tests on frozen candidates. Final artifact hashes and
-  the full compatibility repeat are recorded after completion, separately from
-  these candidate results.
-- Initial device execution exposed test-only AlertDialog selectors expecting
-  mixed-case button labels. Current Android renders these labels in uppercase.
-  The tests now select RPC and recovery-format buttons by their semantic Android
-  button IDs and compare displayed recovery labels without case sensitivity.
-  These failures did not change the production Wallet APK.
-- The first Signer instrumentation invocation could not load AndroidJUnitRunner
-  because its new test APK lacked the runner dependency. The test configuration
-  now uses the existing Espresso dependency that supplies the runner. Device
-  harnesses also explicitly fail unless instrumentation reports the expected
-  completed test count; a crashed process cannot produce a successful gate.
-- The frozen production Wallet APK completed the first 20 device methods before
-  a stale test-only address prefix stopped the retained-wallet suite. The prefix,
-  recovery-word assertions and zero-wallet generator now use the isolated native
-  TOS fixture/domain. Already completed results remain separately pinned. A later
-  signed-sequence concurrency repair changes the production Wallet APK, so final
-  acceptance repeats the complete 45-method suite on a new frozen app/test pair.
-- All four size/font/theme/locale configurations passed with Wallet production
-  SHA747a7fad and instrumentation SHA65ba1af5. The final12 pair also passed the
-  three native tests on API36 and API37 with actual 16KB pages and compatibility
-  disabled, plus all four non-payment UI boundaries on API37. A first API36
-  instrumentation startup hit an ART initialization ANR before any test ran;
-  the unchanged APKs passed after the guest settled. Original failure logs remain
-  available. The compatibility manifest SHA256 is
-  `1ae6442a9bfc2d04cb723935620efe0f416ae7485bb0436dd1ef92e122babc14`.
-- The first published CI lint run identified five missing Russian translations
-  for the new Signer recovery/network text. All five are now translated, including
-  the numeric network placeholder; default/Russian coverage is 78/78 keys. No lint
-  suppression or baseline update was used. Final Signer artifacts and its three
-  device tests are repeated after this resource repair.
-- Full local lint then found an inherited APK-download worker posting notifications
-  despite V1's deliberately restricted manifest. In-app update discovery was
-  already disabled. Retained download callers now fail without scheduling work,
-  and the historical worker class terminates queued pre-upgrade requests without
-  downloading, posting notifications or starting a foreground service. The failed
-  lint log is retained; final lint is repeated without a suppression or new
-  permission.
+### Actual 16 KB runtime
 
-The earlier production Wallet Debug APK SHA256 was
-`747a7fad462920449fe62ba31be1407543acfa97abddbd248b77a72837bb2c45`.
-The pre-translation-repair Signer Debug APK SHA256 was
-`e4b62758ef0b28b10cf44ad04d36751812a1770d2f3ab02ad749114aef47fe3f`.
-The instrumented APK hashes and final execution counts will accompany the
-completed validation record.
+Final Wallet 18 native checks passed on ARM64 Android 16/API 36 and
+Android 17/API 37 guests reporting `PAGE_SIZE=16384`. API 36 used
+`bionic.linker.16kb.app_compat.enabled=false`; API 37 used `fatal`.
+Both reported `pm.16kb.app_compat.disabled=true`. All six packaged ARM64 libraries
+loaded: graphics-path, barhopper, image-processing, Sodium, RenderScript toolkit
+and surface utilities. The tests also executed Sodium encryption/decryption,
+wrong-key and tamper rejection, and the JNI blur impulse/pixel assertions.
+Loading the graphics-path and camera libraries does not claim full camera or
+path-iteration testing.
+
+The same final pair also passed the four existing non-payment methods on API 37:
+node replacement before wallet creation, actual old-database migration and
+explicit TOS/Legacy restoration of the dual-valid phrase with persisted keys.
+The final result manifests are:
+
+- API 36 three native tests: `55d0a5c1e38b7aedc6c1944c033381336e8332605f3ec1fb6bc4a1ea8db89cc4`.
+- API 37 three native tests: `b7086789c9abe63a3434fd55fb13f8f932bfc35b57813d94b90de7f510435906`.
+- API 37 four existing UI tests: `a0591667d7849e6b8351028cbbc42fb9216ad3ac119302afbe4fee2ae90905b4`.
+
+These ten executions completed with no failed or skipped tests. An initial host
+launch pointed at the wrong SDK and failed before guest boot; its missing-image
+log is retained separately and is not an instrumentation result.
+
+### R8 Release runtime and artifact gates
+
+The affected Wallet R8 build and full lint task passed in 19m28s, with 43 executed
+and 1571 up-to-date tasks. Both final unsigned Release APKs passed 16 KB zip
+alignment, all 24 packaged arm64/x86_64 ELF checks and the Wallet permission
+allowlist. Executable NDK `llvm-readelf` symlinks are discovered on local and CI
+toolchains. The gate log SHA256 is
+`65d3de8d36098b08423e1ca4cc6755c6e83d45f1ca7b3e75b8af2014f1b568d1`.
+Both separate QA-signed copies passed certificate verification and 16 KB zip
+alignment. Their certificate is a local test certificate, distinct from the AGP
+Debug APK certificate. Device smoke uses clean installs and does not establish a
+signed Debug-to-Release upgrade or distribution-signing acceptance.
+
+The actual QA-signed Wallet 18 R8 APK completed onboarding RPC editing to
+`http://10.0.2.2:18545`, public native 24-word restoration, PIN creation, the exact
+fixture address `UQBtGJyHNQkw8Fq5PlZeUi4sUtyp1N71RgYGxssqkBNVWlJ3` and live 100 TOS.
+Force-stop/cold launch in 804 ms retained the address and balance. The lockscreen
+setting defaults to disabled; a separate actual Security toggle enabled it.
+Another cold launch displayed the lock, rejected `0000` and accepted `1234`,
+retaining 100 TOS. These results are recorded in
+`wallet18-release-native-restore.result.json` and `wallet18-release-lock.result.json`.
+
+A new empty native wallet was also created through the actual R8 UI. Its address
+`UQBYhVBURGtQlgznUIuYwSr9NyRHjbD7jIM1HqmAKpnRd5jl` differs from the restored
+fixture and holds 0 TOS. A 935 ms cold launch remained PIN-locked; after unlock,
+Receive showed the same address. The root operator did not intentionally display
+or archive the randomly generated recovery phrase; independent review confirms
+only its absence from retained creation snapshots. The creation manifest SHA256
+is `e7408b19ab998f1afac433e2ddcf5c40a33029aaf35ad6a087da8a914991c043`.
+
+The actual QA-signed Signer 19 R8 APK imported the public native key `a71563f5709a827fad271813afc670403589781f4ac7259c7b0282b6686b2589`,
+retained it after a 2430 ms cold launch and unlocked with the original Google IME
+and password. An authenticated request without a callback completed to an enabled
+custom QR view at bounds `[84,1007][996,1919]`. `FLAG_SECURE` protects Release
+screenshots, so this result establishes the actual output view and authenticated
+completion; its QR pixels were not decoded. A separate request with a local
+return URL opened the browser and delivered the actual signature to
+`http://10.0.2.2:18765/signer`. Independent PyNaCl verification accepted the
+64-byte signature for the frozen public key and body hash
+`75746f815ed146820318296d5ae0822c5fc0b82e6e1ec8b7dd621d81fd70dc0a`;
+a changed signature and a changed body hash were both rejected. No transaction
+was broadcast. The combined R8 Signer manifest SHA256 is
+`adbc20b0e3bc443ca33f97d0355d43ab5f4e0c3d0fb7cf984773fed30532e7c5`;
+the independent callback/body-mutation result is
+`037bde0e3bf9443175b0928892cb9e871687d8d6b5cb45bedf41c519c47d4ca3`.
+
+An independent filesystem-only review passed 17 checks of the creation and Signer
+R8 records, artifact hashes, cold-persistence state and actual callback signature,
+including both tamper controls. It did not operate a device, make a network
+request or generate a new signature. Its manifest SHA256 is
+`b14c3063e3989b8e19e61bef69f185982f77807557856c3d73a0ad39560b730c`.
+Protected screenshots do not establish Release QR pixel readability, physical
+camera scanning or complete visual layout acceptance. The independently recovered
+Release signature bytes come from the actual callback.
+
+### Preserved failures and corrections
+
+Original failing logs, XML, screenshots and candidate manifests remain in the
+artifact directories; none are rewritten as successful runs. Earlier partial
+Wallet groups and old Signer 3/Release65 results are historical evidence for their
+own hashes. The final counts use the complete final runs described above.
+
+- Actual first-deployment UI exposed sender StateInit attached to the recipient
+  message. Native sender initialization was corrected in the external envelope,
+  with two discriminating JVM tests, an actual deployment preflight and the entire
+  new Wallet 45 run. The strict recipient-deployment guard was retained.
+- Signed-sequence reconciliation was corrected after a competing device could
+  advance the node sequence before the transaction manager captured its baseline.
+  Native receipt/retry checks now use the sequence in the signed request. All
+  affected unit, Wallet device and Release checks use the repaired production code.
+- Accessibility failures retained stale dialog nodes; actual XML showed the named
+  input and buttons. The harness reacquires settled nodes without weakening
+  assertions. QR detector failures were checked against exact encoded modules;
+  PURE_BARCODE fidelity, blank-image rejection and actual production MLKit decoding
+  validate the same bitmap. Legacy-prefix, normalized-recipient and mnemonic test
+  fixtures were corrected against observed native values.
+- Signer slide tests initially missed the actual thumb and password control.
+  The test uses the observed centre, settled UI and actual internal input. A later
+  clipboard check saw a prior request; a unique visible comment and exact-copy wait
+  distinguish the current body. These repairs change the test APK only; the final
+  unchanged production Signer APK passed all four methods.
+- The no-return source path contained a null assertion after successful signing.
+  The repair uses the existing QR fallback. The earlier host attempt did not
+  complete authentication and is not a reproduced-crash claim. Final Debug and
+  R8 authenticated completion are recorded separately with their stated limits.
+- CI found five missing Russian Signer translations and the artifact gate failed
+  to discover the NDK symlink. Both were fixed; no lint suppression or baseline
+  update was used. An inherited download worker conflicted with V1's restricted
+  permissions; retired callers and queued workers now terminate without starting
+  downloads or notifications. Final full lint and permission gates passed.
+- Earlier candidate 16 KB startup ANRs, SystemUI overlays and CPU-bound mnemonic
+  timeouts remain in the attempt records. Quiet retries used identical APKs and
+  unchanged deadlines. Final Wallet 18 actual 16 KB checks have their own complete
+  results. R8 host key injection also encountered a guest CPU/IRQ-pressure ANR;
+  standard IME input completed the same flow. Quick Share interception, initial
+  IME/selector assumptions and the socket-restricted pre-build attempt are retained
+  as failed host attempts without attributing an unproven product defect.
+
+`bundle check`, the resolved Fastlane invocation, dependency auditing, shell
+syntax, Python compilation and `git diff --check` passed during implementation.
+The original 4 KB JNI wrapper failed ELF inspection; the repaired wrapper passed
+host checks and actual 16 KB crypto/blur execution. These red/green records remain
+separate from final APK acceptance.
+
+### CI, remote access and validation limits
+
+Root verified successful Android CI run
+[37162130721](https://github.com/tosnetwork/android/actions/runs/37162130721)
+and dependency-audit run
+[37162130717](https://github.com/tosnetwork/android/actions/runs/37162130717)
+on tested source/test head `3d776b55835cca8b3cd37cabd79b6e03f4067372`.
+The reviewer finalizing this document checked filesystem evidence and did not
+repeat network operations. A subsequent report-only commit needs its own live
+workflow check after push; the source-head passes above are not labelled as that
+future head's results. Draft PR3 has not been merged or published to a store.
+
+Private read-only access to `toserver` succeeded through the existing Tailscale
+SSH route to node 5's localhost RPC 8015. The current access record observed
+masterchain sequence 318058. A fresh configuration read at
+2026-10-04T00:04:24Z observed global ID 3, VM 18 and four validator entries with
+algorithm ID 1. No deployment, funding, signing, broadcast or activation was
+performed on this server. All live application payment tests used the isolated
+local development chain.
+
+The current machine's public `https://rpc.tos.network` check failed at
+2026-10-03T23:46:36Z with curl error 6, `Could not resolve host`. This remains an
+operational public-endpoint limit; private SSH reachability and editable-node
+onboarding do not establish public default-endpoint availability. The access,
+configuration and DNS records are retained in
+`/Users/tomisetsu/Documents/Codex/mobile-pq-validation-20261004/remote-readonly`.
+No development or private-chain ID is silently treated as a production ID.
+
+All device evidence is from emulators, including real 16 KB guest kernels. No
+physical handset, physical camera scan, store/distribution certificate, remote
+production transaction or formal production acceptance is claimed. The full
+45-method Wallet suite and four-method Signer suite use Debug APKs; minified
+Release validation comprises the bounded actual runtime flows above. PQ validator
+consensus does not make these Ed25519 personal wallets PQ signers.
+
+The final aggregate `/tmp/android-pq-20261004/final-android-validation.result.json`
+records exact evidence hashes, production pins, 59 passed provenance/scope checks,
+completed totals and all limits. Its SHA256 is
+`a607844a94150d72b496f6da363a6a3e28618dbb45c51001153baa7f40498f23`.
+It includes separately named manifests for unit, Wallet 18, Signer 19 and Signer 21,
+so repeated filenames cannot obscure artifact identity. Earlier artifact-only
+manifests retain their original checkpoint statuses; this final aggregate records
+the completed runtime checks.
