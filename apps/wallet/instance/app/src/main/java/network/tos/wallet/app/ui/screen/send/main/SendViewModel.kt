@@ -1153,7 +1153,7 @@ class SendViewModel(
         wallet: WalletEntity,
     ): SendMetadataEntity = withContext(Dispatchers.IO) {
         wallet.networkGlobalId?.let { sendNode.requireNetwork(it, wallet.testnet) }
-        val seqnoDeferred = async { sendNode.getSeqno(wallet.accountId, wallet.testnet) }
+        val seqnoDeferred = async { sendNode.getSeqno(wallet.accountId, wallet.testnet, wallet.contract) }
         val validUntilDeferred = async { sendNode.getServerTime(wallet.testnet).toLong() + 150 }
 
         val seqno = seqnoDeferred.await()

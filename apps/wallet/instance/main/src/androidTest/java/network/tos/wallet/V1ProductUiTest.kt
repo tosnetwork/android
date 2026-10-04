@@ -25,6 +25,14 @@ import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.blockchain.ton.extensions.hex
 import network.tos.blockchain.ton.extensions.base64
+import network.tos.blockchain.ton.extensions.cellFromBase64
+import org.ton.block.ExtInMsgInfo
+import org.ton.block.IntMsgInfo
+import org.ton.block.StateInit
+import org.ton.block.Transaction
+import org.ton.cell.buildCell
+import org.ton.tlb.loadTlb
+import org.ton.tlb.storeTlb
 import network.tos.extensions.toByteArray
 import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.icu.CurrencyFormatter
@@ -106,6 +114,110 @@ class V1ProductUiTest {
             assertEquals(WalletVersion.V5R1, restored.version)
             repository.logout()
             GlobalContext.get().get<PasscodeManager>().reset()
+        }
+    }
+
+    @Test
+    fun activeLegacyV5SignsBroadcastsAndPersistsOnLocalTos() {
+        val api = GlobalContext.get().get<API>()
+        val repository = GlobalContext.get().get<AccountRepository>()
+        val passcode = GlobalContext.get().get<PasscodeManager>()
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+        val wallet = runBlocking {
+            passcode.save("1234")
+            repository.importWallet(listOf("legacy-v5-send"),
+                Wallet.NewLabel(listOf("Legacy V5 Test"), "⭐", 0xfff5b800.toInt()),
+                LEGACY_MNEMONIC.split(" "), listOf(WalletVersion.V5R1), false, listOf(false))
+                .single().also { repository.setSelectedWallet(it.id) }
+        }
+        assertEquals("0:8915a85ac195336246b8bb31537969ecfa840d7e86b454d54e027f1ef012675c", wallet.accountId)
+        assertEquals(WalletVersion.V5R1, wallet.version)
+        assertEquals(null, wallet.networkGlobalId)
+        val observer = api.tos.snapshot(false)
+        val recipient = "0:${"49".repeat(32)}"
+        try {
+            // The root runner funds this PUBLIC legacy fixture on a fresh local
+            // chain before the case. Both deployment and the second active send
+            // must pass through the App UI; no setup BOC can hide either defect.
+            val initial = observer.getAccountState(wallet.accountId)
+            assertTrue("Legacy8915 must be freshly funded and uninitialized", initial.status in setOf("uninit", "uninitialized"))
+            assertTrue("Fund the public legacy fixture with 25 local test TOS before this case",
+                initial.balance >= java.math.BigInteger.valueOf(25_000_000_000L))
+            assertEquals(0, observer.getSeqno(wallet.accountId, false, wallet.contract))
+            var finalComment = ""
+            for (beforeSeqno in 0..1) {
+                api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+                assertEquals(beforeSeqno, observer.getSeqno(wallet.accountId, false, wallet.contract))
+                if (beforeSeqno == 1) {
+                    val info = observer.rpc.callObject("getWalletInformation",
+                        org.json.JSONObject().put("address", wallet.accountId))
+                    assertFalse("This regression requires the real node's unrecognized legacy code", info.getBoolean("wallet"))
+                    assertTrue(info.isNull("seqno"))
+                }
+                val beforeBalance = observer.getAccountState(recipient).balance
+                val comment = "PUBLIC legacy V5 🌌 seq$beforeSeqno"
+                finalComment = comment
+                launch()
+                if (waitText("Enter passcode", 3_000)) enterPin("1234")
+                assertTrue(waitText("TOS", 30_000))
+                clickText("Send")
+                assertTrue(waitResource("address", 10_000))
+                val inputs = device.findObjects(By.res(APP_ID, "input_field"))
+                assertTrue(inputs.size >= 2)
+                inputs.first().text = recipient; inputs.last().text = comment
+                val amount = device.wait(Until.findObject(By.res(APP_ID, "coin_input")), 60_000)
+                assertNotNull(amount); amount!!.text = "0.001"
+                assertTrue("Legacy preview stayed blocked at seqno$beforeSeqno", waitEnabled("button", 30_000))
+                clickResource("button")
+                assertTrue(waitResource("review_title", 30_000))
+                assertTrue(waitTextContaining("0.001 TOS", 10_000))
+                assertTrue(waitTextContaining(comment, 10_000))
+                assertTrue("Legacy fee preview did not resolve", waitEnabled("confirm_button", 60_000))
+                // The already-active send also exercises endpoint replacement
+                // after review: signing and delivery must keep its captured node.
+                if (beforeSeqno == 1) api.setCustomTosRpcEndpoint("http://10.0.2.2:1")
+                clickResource("confirm_button")
+                assertTrue(waitText("Enter passcode", 15_000)); enterPin("1234")
+                val deadline = SystemClock.elapsedRealtime() + 90_000
+                while (SystemClock.elapsedRealtime() < deadline &&
+                    observer.getSeqno(wallet.accountId, false, wallet.contract) <= beforeSeqno) SystemClock.sleep(500)
+                assertEquals(beforeSeqno + 1, observer.getSeqno(wallet.accountId, false, wallet.contract))
+                val state = observer.getAccountState(wallet.accountId)
+                assertTrue("App's first send did not deploy the legacy sender", state.isActive)
+                assertEquals(wallet.contract.getCode().hash(), requireNotNull(state.codeBoc).cellFromBase64().hash())
+                val transactions = observer.getTransactions(wallet.accountId)
+                val delivered = network.tos.wallet.api.tos.TosEventMapper.toNativeTransfers(wallet.accountId, transactions)
+                    .firstOrNull { it.comment == comment && it.recipient == recipient && it.amount == 1_000_000L }
+                assertNotNull("Legacy transaction lost its exact recipient, amount or Unicode comment", delivered)
+                val receipt = transactions.firstOrNull { it.hash == delivered!!.eventId && it.executionSuccessful }
+                assertNotNull("Legacy transaction has no successful exact-value outgoing receipt", receipt)
+                val aux = Transaction.loadTlb(requireNotNull(receipt!!.dataBoc).cellFromBase64()).r1.value
+                val incoming = requireNotNull(aux.inMsg.value).value
+                assertEquals(wallet.contract.address, (incoming.info as ExtInMsgInfo).dest)
+                if (beforeSeqno == 0) {
+                    val init = requireNotNull(incoming.init.value)
+                    val senderInit = init.x ?: requireNotNull(init.y).value
+                    assertEquals(wallet.contract.stateInitRef.hash(), buildCell { storeTlb(StateInit, senderInit) }.hash())
+                } else assertEquals(null, incoming.init.value)
+                val outgoing = aux.outMsgs.map { (_, ref) -> ref.value }.single()
+                assertEquals(org.ton.block.AddrStd.parse(recipient), (outgoing.info as IntMsgInfo).dest)
+                assertEquals("Sender initialization leaked into the actual recipient output", null, outgoing.init.value)
+                assertEquals(java.math.BigInteger.valueOf(1_000_000L), observer.getAccountState(recipient).balance - beforeBalance)
+            }
+            api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+            launch()
+            if (waitText("Enter passcode", 3_000)) enterPin("1234")
+            val persisted = runBlocking { requireNotNull(repository.getWalletById(wallet.id)) }
+            assertEquals(wallet.accountId, persisted.accountId)
+            assertEquals(wallet.publicKey, persisted.publicKey)
+            assertEquals(WalletVersion.V5R1, persisted.version); assertEquals(null, persisted.networkGlobalId)
+            assertEquals(2, observer.getSeqno(persisted.accountId, false, persisted.contract))
+            assertTrue(waitText("TOS", 30_000)); clickText("History")
+            assertTrue("Legacy signed comment did not round-trip through history", waitTextContaining(finalComment, 30_000))
+            assertNoFatalCrash()
+        } finally {
+            api.resetCustomTosRpcEndpoint()
+            runBlocking { repository.logout(); passcode.reset() }
         }
     }
 

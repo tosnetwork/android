@@ -1,6 +1,7 @@
 package network.tos.wallet.app.usecase.emulation
 
 import network.tos.blockchain.ton.contract.WalletVersion
+import network.tos.blockchain.ton.contract.LegacyWalletCompatibility
 import network.tos.blockchain.ton.extensions.base64
 import network.tos.icu.Coins
 import network.tos.wallet.api.API
@@ -150,18 +151,19 @@ class EmulationContractExecution(private val api: API) {
         outMsgs: List<Cell>,
         boundNode: network.tos.wallet.api.tos.TosSource? = null,
     ): Coins = withContext(Dispatchers.IO) {
-        if (wallet.version == WalletVersion.TOSV5R1) {
+        if (wallet.version == WalletVersion.TOSV5R1 || LegacyWalletCompatibility.isSupported(wallet.contract)) {
             val node = boundNode ?: api.tos.snapshot(wallet.testnet)
-            node.requireNetwork(requireNotNull(wallet.networkGlobalId), wallet.testnet)
-            val state = node.getAccountState(wallet.accountId, wallet.testnet)
+            if (wallet.version == WalletVersion.TOSV5R1) {
+                node.requireNetwork(requireNotNull(wallet.networkGlobalId), wallet.testnet)
+            }
             val message = wallet.contract.parseTransferMessageCell(inMsg)
             val body = message.body.x ?: requireNotNull(message.body.y).value
-            val estimate = node.estimateFee(
-                wallet.accountId, body.base64(),
-                if (state.isActive) null else wallet.contract.getCode().base64(),
-                if (state.isActive) null else wallet.contract.getStateCell().base64(),
-                wallet.testnet,
-            )
+            val estimate = if (wallet.version == WalletVersion.TOSV5R1) {
+                val state = node.getAccountState(wallet.accountId, wallet.testnet)
+                node.estimateFee(wallet.accountId, body.base64(),
+                    if (state.isActive) null else wallet.contract.getCode().base64(),
+                    if (state.isActive) null else wallet.contract.getStateCell().base64(), wallet.testnet)
+            } else node.estimateLegacyWalletFee(wallet.accountId, body.base64(), wallet.contract, wallet.testnet)
             require(estimate.total > 0) { "Node did not return a valid fee estimate" }
             return@withContext Coins.of(((BigDecimal(estimate.total) * GAS_SAFETY_MULTIPLIER) /
                 GAS_SAFETY_MULTIPLIER_DENOMINATOR).toLong())

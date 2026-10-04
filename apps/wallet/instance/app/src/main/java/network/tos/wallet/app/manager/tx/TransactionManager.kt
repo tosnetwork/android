@@ -164,9 +164,13 @@ class TransactionManager(
         val node = boundNode ?: api.tos.snapshot(wallet.testnet)
         wallet.networkGlobalId?.let { node.requireNetwork(it, wallet.testnet) }
         val initialSeqno = if (withBattery) null else {
-            val native = wallet.contract as? TosWalletV5R1Contract
-            native?.signedTransferSeqno(boc.cellFromBase64())
-                ?: node.getSeqno(wallet.accountId, wallet.testnet)
+            val contract = wallet.contract
+            when {
+                contract is TosWalletV5R1Contract -> contract.signedTransferSeqno(boc.cellFromBase64())
+                network.tos.blockchain.ton.contract.LegacyWalletCompatibility.isSupported(contract) ->
+                    network.tos.blockchain.ton.contract.LegacyWalletCompatibility.signedTransferSeqno(contract, boc.cellFromBase64())
+                else -> node.getSeqno(wallet.accountId, wallet.testnet, contract)
+            }
         }
         return send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, 0, node)
     }
@@ -184,7 +188,7 @@ class TransactionManager(
     ): SendBlockchainState {
         fun reconcile(): SendBlockchainState? {
             if (initialSeqno == null) return null
-            val receipt = runCatching { node.reconcileSend(wallet.accountId, boc, initialSeqno, wallet.testnet) }
+            val receipt = runCatching { node.reconcileSend(wallet.accountId, boc, initialSeqno, wallet.testnet, wallet.contract) }
                 .getOrDefault(network.tos.wallet.api.tos.TosSendReconciliation.AMBIGUOUS)
             return when (receipt) {
                 network.tos.wallet.api.tos.TosSendReconciliation.CONFIRMED -> {
@@ -195,10 +199,12 @@ class TransactionManager(
                 network.tos.wallet.api.tos.TosSendReconciliation.RETRYABLE -> null
             }
         }
-        // Native requests are also checked before their first broadcast: another
+        // Native and ordinary legacy requests are checked before first broadcast: another
         // device may consume the signed sequence while the user enters a passcode.
-        // Legacy initial-send behavior stays unchanged.
-        if (attempt > 0 || wallet.contract is TosWalletV5R1Contract) reconcile()?.let { return it }
+        if (attempt > 0 || wallet.contract is TosWalletV5R1Contract ||
+            network.tos.blockchain.ton.contract.LegacyWalletCompatibility.isSupported(wallet.contract)) {
+            reconcile()?.let { return it }
+        }
         val state = if (withBattery) {
             sendWithBattery(wallet, boc, source, confirmationTime)
         } else {

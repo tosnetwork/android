@@ -542,7 +542,7 @@ class AccountRepository(
     ): Int = withContext(Dispatchers.IO) {
         val node = api.tos.snapshot(wallet.testnet)
         wallet.networkGlobalId?.let { node.requireNetwork(it, wallet.testnet) }
-        node.getSeqno(wallet.accountId, wallet.testnet)
+        node.getSeqno(wallet.accountId, wallet.testnet, wallet.contract)
     }
 
     suspend fun getValidUntil(

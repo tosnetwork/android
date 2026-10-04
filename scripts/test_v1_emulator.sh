@@ -28,6 +28,7 @@ trap 'kill "$fault_proxy_pid" 2>/dev/null || true' EXIT
 methods=(
   unavailableNodeCanBeReplacedFromOnboardingBeforeWalletCreation
   legacyV5WalletRetainsAddressAfterStorageRoundTrip
+  activeLegacyV5SignsBroadcastsAndPersistsOnLocalTos
   realOldDatabasesMigrateWithoutChangingLegacyWalletOrKey
   ambiguousPhraseRestoresExplicitTosFormatAndPersistedKey
   ambiguousPhraseRestoresExplicitLegacyFormatAndPersistedKey
