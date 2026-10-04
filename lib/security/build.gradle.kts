@@ -35,6 +35,7 @@ dependencies {
 
     implementation(libs.kotlinX.coroutines.android)
     implementation(libs.androidX.security)
+    implementation(libs.bcprovjdk)
     implementation(project(ProjectModules.Lib.extensions))
     compileOnly(fileTree("libs") {
         include("*.aar")

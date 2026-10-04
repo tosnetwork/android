@@ -120,6 +120,8 @@ for method in "${persistent_methods[@]:1}"; do
   run_method "$method" false
 done
 
+run_method pqWalletUiCreatesDeploysSignsAndDeletesBothProfilesOnLocalTos true
+
 output=$("$adb_bin" shell am instrument -w -e class network.tos.wallet.NativePageSizeCompatibilityTest \
   network.tos.wallet.test/androidx.test.runner.AndroidJUnitRunner)
 printf '%s\n' "$output"
@@ -127,4 +129,11 @@ if [[ "$output" != *"OK (3 tests)"* ]] || [[ "$output" == *"FAILURES!!!"* ]]; th
   echo 'v1-emulator: FAILED (native instrumentation did not pass all 3 tests)' >&2
   exit 1
 fi
-echo "v1-emulator: PASS ($((executed_methods + 3)) scenarios)"
+pq_output=$("$adb_bin" shell am instrument -w -e class network.tos.wallet.PqWalletCryptoTest,network.tos.wallet.PqWalletRepositoryTest,network.tos.wallet.PqReceiptTest \
+  network.tos.wallet.test/androidx.test.runner.AndroidJUnitRunner)
+printf '%s\n' "$pq_output"
+if [[ "$pq_output" != *"OK (5 tests)"* ]] || [[ "$pq_output" == *"FAILURES!!!"* ]]; then
+  echo 'v1-emulator: FAILED (PQ signer, protected repository or receipt controls)' >&2
+  exit 1
+fi
+echo "v1-emulator: PASS ($((executed_methods + 8)) scenarios)"

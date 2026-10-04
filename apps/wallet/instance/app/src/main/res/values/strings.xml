@@ -16,4 +16,5 @@
     <string name="recovery_profile_hint">This phrase is valid for both formats. Select the format of the wallet you are restoring. Each format has a different key and address.</string>
     <string name="restore_tos_wallet">Restore TOS Wallet</string>
     <string name="restore_legacy_wallet">Restore Legacy Wallet</string>
+    <string name="pq_wallets">PQ Wallets</string>
 </resources>

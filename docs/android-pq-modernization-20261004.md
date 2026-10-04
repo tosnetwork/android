@@ -1,5 +1,9 @@
 # Android TOS modernization and validation, 2026-10-04
 
+Historical modernization baseline at `dd3edce`, before user-wallet PQ signing.
+The following tests/claims describe that baseline; current PQ signing is documented
+in [the follow-up implementation and validation report](mobile-pq-signing-20261004.md).
+
 | Current gate, source/test `75d3473d19045185cde3a4032ac1dc365670785c` | Result | Evidence |
 | --- | --- | --- |
 | Android CI and dependency audit | PASS | Runs [37184581287](https://github.com/tosnetwork/android/actions/runs/37184581287) and [37184581240](https://github.com/tosnetwork/android/actions/runs/37184581240) |

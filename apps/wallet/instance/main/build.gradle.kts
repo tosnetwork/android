@@ -116,6 +116,7 @@ dependencies {
     androidTestImplementation(project(ProjectModules.Lib.icu))
     androidTestImplementation(project(ProjectModules.Lib.qr))
     androidTestImplementation(project(ProjectModules.Lib.security))
+    androidTestImplementation(project(ProjectModules.Lib.network))
     androidTestImplementation(project(ProjectModules.Lib.extensions))
     androidTestImplementation(libs.zxing)
     androidTestImplementation(project(ProjectModules.UIKit.core))

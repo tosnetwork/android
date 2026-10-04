@@ -1406,6 +1406,94 @@ class V1ProductUiTest {
         assertTrue(waitText("Create new wallet", 15_000))
     }
 
+    @Test fun pqWalletUiCreatesDeploysSignsAndDeletesBothProfilesOnLocalTos() {
+        val api = GlobalContext.get().get<API>()
+        val accounts = GlobalContext.get().get<AccountRepository>()
+        val pins = GlobalContext.get().get<PasscodeManager>()
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+        val fee = runBlocking {
+            pins.save("1234")
+            accounts.importWallet(listOf("pq-ui-fee-wallet"), Wallet.NewLabel(listOf("PQ UI Fee Wallet"), "⭐", 0xfff5b800.toInt()),
+                FIXTURE_MNEMONIC.split(" "), listOf(WalletVersion.TOSV5R1), false, listOf(true)).single().also { accounts.setSelectedWallet(it.id) }
+        }
+        val control = java.net.URL("http://10.0.2.2:18745/transfer").openConnection() as java.net.HttpURLConnection
+        control.requestMethod="POST";control.doOutput=true;control.readTimeout=180_000
+        control.setRequestProperty("Content-Type", "application/json")
+        control.outputStream.use { it.write(org.json.JSONObject().put("address", fee.accountId).put("amount", 150).toString().toByteArray()) }
+        assertTrue(org.json.JSONObject(control.inputStream.bufferedReader().use { it.readText() }).optBoolean("ok", true));control.disconnect()
+        val source=api.tos.snapshot(false)
+        val pq=network.tos.wallet.data.account.pq.PqWalletRepository(instrumentation.targetContext) { true }
+        val original=pq.list().map { it.id }.toSet()
+        fun action(description: String) {
+            var obj=device.findObject(By.desc(description));var tries=0
+            while(obj==null && tries++<8) {
+                device.swipe(device.displayWidth/2,device.displayHeight*4/5,device.displayWidth/2,device.displayHeight/3,20)
+                obj=device.findObject(By.desc(description))
+            }
+            assertNotNull("Missing PQ action $description",obj);obj!!.click()
+        }
+        fun form(vararg values: String) {
+            values.forEachIndexed { i,v -> val f=device.wait(Until.findObject(By.desc("pq.input.$i")),15_000);assertNotNull(f);f!!.text=v }
+            val ok=device.wait(Until.findObject(By.res("android", "button1")),10_000);assertNotNull(ok);ok!!.click()
+        }
+        fun positive() { val ok=device.wait(Until.findObject(By.res("android", "button1")),10_000);assertNotNull(ok);ok!!.click() }
+        fun authenticate() { assertTrue(waitText("Enter passcode",20_000));enterPin("1234") }
+        fun raw(a: org.ton.block.AddrStd)="${a.workchainId}:${a.address.toByteArray().joinToString("") { "%02x".format(it) }}"
+        fun active(address: String): network.tos.wallet.api.tos.TosAccountState {
+            repeat(60) { val s=source.getAccountState(address);if(s.isActive)return s;Thread.sleep(1000) }
+            throw AssertionError("PQ deployment did not confirm")
+        }
+        try {
+            launch();if(waitText("Enter passcode",3000))enterPin("1234")
+            assertTrue(waitText("TOS",30_000));clickResource("settings");assertTrue(waitText("Settings",15_000))
+            clickText("PQ Wallets");assertTrue(waitText("Create PQ wallet",15_000))
+            for((i,title) in listOf("ML-DSA-44","Falcon-512 padded").withIndex()) {
+                val name="PQ UI QA ${i+1}";action("pq.create");clickText(title);form(name);authenticate()
+                var r=pq.list().firstOrNull { it.name==name };val deadline=System.currentTimeMillis()+60_000
+                while(r==null && System.currentTimeMillis()<deadline) { Thread.sleep(500);r=pq.list().firstOrNull { it.name==name } }
+                assertNotNull("PQ creation failed",r);val record=r!!;val wallet=record.descriptor()
+                val feeSnapshot=network.tos.wallet.api.tos.TosPqFeeSnapshot.read(source,
+                    fee.contract as network.tos.blockchain.ton.contract.TosWalletV5R1Contract,19,false)
+                assertTrue("Fee wallet has insufficient balance",feeSnapshot.balance>java.math.BigInteger.valueOf(25_000_000_000L))
+                val relay = network.tos.blockchain.ton.contract.TosPqRelay(wallet)
+                val estimateUnsigned = relay.feeSigningMessage(relay.deployment(5_000_000_000L,20_000_000_000L),record.network,feeSnapshot.seqno,feeSnapshot.chainTime,feeSnapshot.chainTime+600)
+                val estimateBody = org.ton.cell.buildCell { storeSlice(estimateUnsigned.beginParse());storeBytes(ByteArray(64)) }
+                val payer = fee.contract as network.tos.blockchain.ton.contract.TosWalletV5R1Contract
+                java.io.File(instrumentation.targetContext.filesDir, "pq-deployment-estimate.json").writeText(org.json.JSONObject()
+                    .put("address",raw(payer.address)).put("body",estimateBody.base64()).put("init_code",payer.getCode().base64()).put("init_data",payer.getStateCell().base64()).toString())
+                try { source.estimateFee(raw(payer.address),estimateBody.base64(),if(feeSnapshot.seqno==0)payer.getCode().base64() else null,
+                    if(feeSnapshot.seqno==0)payer.getStateCell().base64() else null) }
+                catch(error: network.tos.network.OkHttpError) { throw AssertionError("PUBLIC deployment fee estimate: ${error.statusCode}: ${error.body}") }
+                action("pq.wallet.${record.id}");action("pq.deploy");form("5","20")
+                assertTrue("Deployment confirmation missing",device.wait(Until.hasObject(By.textContains("Fee wallet pays")),10_000))
+                positive();assertTrue(waitText("Review network fees",20_000));positive();authenticate()
+                active(raw(wallet.moduleAddress));val deployed=active(raw(wallet.address))
+                assertEquals(0uL,wallet.authCounters(deployed.codeBoc!!.cellFromBase64(),deployed.dataBoc!!.cellFromBase64()).second)
+                val recipient="0:"+(if(i==0)"6a" else "6b").repeat(32);val before=source.getAccountState(recipient).balance
+                action("pq.send");form(recipient,"0.01","PUBLIC PQ UI 🌌 ${i+1}","2")
+                assertTrue(device.wait(Until.hasObject(By.text("Confirm PQ transfer")),10_000));positive();authenticate();assertTrue(waitText("Review network fees",20_000));positive();authenticate()
+                var moved=java.math.BigInteger.ZERO;val paidDeadline=System.currentTimeMillis()+60_000
+                while(moved.signum()==0 && System.currentTimeMillis()<paidDeadline) { Thread.sleep(1000);moved=source.getAccountState(recipient).balance-before }
+                assertEquals(java.math.BigInteger.valueOf(10_000_000),moved)
+                val state=source.getAccountState(raw(wallet.address))
+                assertEquals(1uL,wallet.authCounters(state.codeBoc!!.cellFromBase64(),state.dataBoc!!.cellFromBase64()).second)
+                assertTrue(source.getTransactions(raw(wallet.address)).any { it.executionSuccessful })
+                action("pq.history");assertTrue(device.wait(Until.hasObject(By.textContains("Balance:")),15_000))
+                assertTrue("Exact recipient receipt was not reconciled",device.wait(Until.hasObject(By.textContains("Submission: DELIVERED")),15_000))
+                action("pq.delete");positive();authenticate()
+                val deleted=System.currentTimeMillis()+30_000
+                while(pq.list().any { it.id==record.id } && System.currentTimeMillis()<deleted)Thread.sleep(500)
+                assertFalse(pq.list().any { it.id==record.id });assertTrue(waitText("Create PQ wallet",15_000))
+            }
+            assertNoFatalCrash()
+        } catch (failure: Throwable) {
+            device.dumpWindowHierarchy(java.io.File(instrumentation.targetContext.filesDir, "pq-ui-failure.xml"))
+            throw failure
+        } finally {
+            runBlocking { for(r in pq.list().filter { it.id !in original })pq.delete(r.id);accounts.logout();pins.reset() }
+        }
+    }
+
     private fun launchImport() {
         launch()
         clickText("Import existing wallet")

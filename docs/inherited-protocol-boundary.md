@@ -67,7 +67,10 @@ metadata binds the derivation format to the saved public key.
 PQ validator consensus does not change Ed25519 wallet authentication into PQ
 authentication. The native V5 wallet remains an Ed25519 wallet. Config8 capability
 discovery distinguishes ML-DSA primitive support from the experimental Falcon
-profile, which requires VM version `19`. This release does not create or sign PQ
-relayer wallets, activate validators, or enable a gasless backend. Offline TOS V5
+profile, which requires VM version `19`. The ordinary native wallet retains Ed25519 authentication. The separate
+Settings → PQ Wallets flow now creates ML-DSA-44/Falcon padded module-only
+accounts with their own seeds, signatures and paid transport; see
+[the PQ signing report](mobile-pq-signing-20261004.md). This change does not
+activate validators or enable a gasless backend. Offline TOS V5
 signing only accepts ordinary send mode `3`; hidden carry or sweep modes fail
 before confirmation.
