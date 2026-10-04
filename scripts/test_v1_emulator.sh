@@ -53,7 +53,7 @@ resume_pending=false
 if [[ -n "$resume_method" ]]; then
   [[ "${TOS_EMULATOR_SKIP_BUILD:-0}" == 1 ]] || { echo 'v1-emulator: resume requires explicitly hashed prebuilt APKs' >&2; exit 1; }
   resume_pending=true
-  echo "v1-emulator: RESUME at $resume_method using retained wallet data"
+  echo "v1-emulator: RESUME at $resume_method using verified prebuilt APKs"
 fi
 
 run_method() {
@@ -61,7 +61,8 @@ run_method() {
   if [[ "$resume_pending" == true ]]; then
     [[ "$method" == "$resume_method" ]] || return 0
     resume_pending=false
-    clear_data=false
+    # The separate PQ flow sets up its own fee wallet and starts clean.
+    [[ "$method" == pqWalletUiCreatesDeploysSignsAndDeletesBothProfilesOnLocalTos ]] || clear_data=false
   fi
   echo "v1-emulator: RUN $method"
   "$adb_bin" shell am force-stop network.tos.wallet >/dev/null
@@ -110,7 +111,8 @@ if [[ -n "$resume_method" ]]; then
   for method in "${persistent_methods[@]:1}"; do
     [[ "$method" != "$resume_method" ]] || valid_resume=true
   done
-  [[ "$valid_resume" == true ]] || { echo 'v1-emulator: resume must name a persistent method after fixture creation' >&2; exit 1; }
+  [[ "$resume_method" != pqWalletUiCreatesDeploysSignsAndDeletesBothProfilesOnLocalTos ]] || valid_resume=true
+  [[ "$valid_resume" == true ]] || { echo 'v1-emulator: resume must name a persistent method after fixture creation or the separate PQ flow' >&2; exit 1; }
 fi
 for method in "${methods[@]}"; do
   run_method "$method" true

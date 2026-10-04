@@ -1474,7 +1474,25 @@ class V1ProductUiTest {
                 assertTrue(device.wait(Until.hasObject(By.text("Confirm PQ transfer")),10_000));positive();authenticate();assertTrue(waitText("Review network fees",20_000));positive();authenticate()
                 var moved=java.math.BigInteger.ZERO;val paidDeadline=System.currentTimeMillis()+60_000
                 while(moved.signum()==0 && System.currentTimeMillis()<paidDeadline) { Thread.sleep(1000);moved=source.getAccountState(recipient).balance-before }
-                assertEquals(java.math.BigInteger.valueOf(10_000_000),moved)
+                val gross = java.math.BigInteger.valueOf(10_000_000)
+                val outgoingRef = source.getTransactions(raw(wallet.address)).filter { it.executionSuccessful }
+                    .flatMap { tx -> Transaction.loadTlb(requireNotNull(tx.dataBoc).cellFromBase64()).r1.value.outMsgs.map { (_, ref) -> ref } }
+                    .single { ref -> (ref.value.info as? IntMsgInfo)?.let { info ->
+                        info.dest == org.ton.block.AddrStd.parse(recipient) && info.value.coins.amount.value == gross && !info.bounced
+                    } == true }
+                val outgoingCell = outgoingRef.toCell(Message.tlbCodec(AnyTlbConstructor))
+                val outgoingHash = java.util.Base64.getEncoder().encodeToString(outgoingCell.hash().toByteArray())
+                val recipientRows = source.rpc.callArray("getTransactions",org.json.JSONObject().put("address",recipient).put("limit",64))
+                val recipientRow = (0 until recipientRows.length()).map { recipientRows.getJSONObject(it) }.single { it.opt("in_msg_hash") == outgoingHash }
+                val recipientTx = Transaction.loadTlb(recipientRow.getString("data").cellFromBase64())
+                val incomingRef = requireNotNull(recipientTx.r1.value.inMsg.value)
+                assertEquals(outgoingCell.hash(),incomingRef.toCell(Message.tlbCodec(AnyTlbConstructor)).hash())
+                assertTrue(recipientTx.r1.value.outMsgs.none())
+                val recipientFee = recipientTx.totalFees.coins.amount.value
+                assertEquals(recipientRow.getString("fee").toBigInteger(),recipientFee)
+                assertTrue(recipientTx.totalFees.other.dict.none())
+                assertTrue(recipientFee >= java.math.BigInteger.ZERO && recipientFee < gross)
+                assertEquals("Exact incoming credit must subtract only its BOC-bound fee",gross-recipientFee,moved)
                 val state=source.getAccountState(raw(wallet.address))
                 assertEquals(1uL,wallet.authCounters(state.codeBoc!!.cellFromBase64(),state.dataBoc!!.cellFromBase64()).second)
                 assertTrue(source.getTransactions(raw(wallet.address)).any { it.executionSuccessful })
