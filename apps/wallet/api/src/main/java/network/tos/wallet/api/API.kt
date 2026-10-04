@@ -105,6 +105,12 @@ class API(
             apiKeyProvider = {
                 config.tosApiKey.takeIf { customTosRpcEndpoint == null && it.isNotBlank() }
             },
+            endpointConfigProvider = { testnet ->
+                val custom = customTosRpcEndpoint
+                val current = config
+                (custom ?: if (testnet) current.tosApiTestnetHost else current.tosApiMainnetHost) to
+                    current.tosApiKey.takeIf { custom == null && it.isNotBlank() }
+            },
         )
     }
 
@@ -594,7 +600,7 @@ class API(
                 wallet = it,
                 testnet = testnet
             ) }.map {
-                if (it.walletVersion == WalletVersion.UNKNOWN) {
+                if (it.walletVersion == WalletVersion.UNKNOWN || it.walletVersion == WalletVersion.V5R1) {
                     it.copy(
                         walletVersion = BaseWalletContract.resolveVersion(
                             pk,
@@ -909,22 +915,29 @@ class API(
         testnet: Boolean,
         source: String,
         confirmationTime: Double,
+        expectedNetworkGlobalId: Int? = null,
+        boundNode: network.tos.wallet.api.tos.TosSource? = null,
     ): SendBlockchainState = withContext(Dispatchers.IO) {
         // TOS (Phase 1.5): send now uses the TOS node JSON-RPC (sendBocReturnHash) instead of tonapi.
         // The original meta (platform/version/source/confirmation_time) was for tonkeeper backend
-        // analytics only and is not needed by TOS. Do not gate retries on a separate
-        // liveness probe: it can race with block application and suppress an idempotent
-        // replay after an ambiguous response. sendBoc is the authoritative operation.
-        withRetry {
-            val result = tos.sendBoc(boc, testnet)
+        // analytics only and is not needed by TOS. Submit once: TransactionManager
+        // owns replay decisions after checking this exact message's receipt.
+        val node = boundNode ?: tos.snapshot(testnet)
+        try {
+            expectedNetworkGlobalId?.let { node.requireNetwork(it, testnet) }
+            val result = node.sendBoc(boc, testnet)
             if (result.accepted) SendBlockchainState.SUCCESS else SendBlockchainState.UNKNOWN_ERROR
-        } ?: SendBlockchainState.UNKNOWN_ERROR
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            SendBlockchainState.UNKNOWN_ERROR
+        }
     }
 
     fun getAccountSeqno(
         accountId: String,
         testnet: Boolean,
-    ): Int = withRetry { tos.getSeqno(accountId, testnet) } ?: 0
+    ): Int = tos.getSeqno(accountId, testnet)
 
     suspend fun resolveAccount(
         value: String,

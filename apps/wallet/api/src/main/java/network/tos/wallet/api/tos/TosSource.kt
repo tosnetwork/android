@@ -1,17 +1,27 @@
 package network.tos.wallet.api.tos
 
 import network.tos.blockchain.ton.extensions.base64
+import network.tos.blockchain.ton.extensions.bocFromBase64
 import network.tos.blockchain.ton.extensions.cellFromBase64
 import network.tos.blockchain.ton.extensions.loadAddress
 import network.tos.blockchain.ton.extensions.storeAddress
 import network.tos.blockchain.ton.extensions.toAccountId
 import network.tos.blockchain.ton.extensions.toRawAddress
+import network.tos.blockchain.ton.contract.BaseWalletContract
+import network.tos.blockchain.ton.contract.LegacyWalletCompatibility
 import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
 import org.ton.block.AddrStd
+import org.ton.cell.Cell
 import org.ton.cell.CellBuilder
 import java.math.BigInteger
+
+/** Ordinary cells from one strictly verified legacy account snapshot.
+ * Only an explicitly empty uninitialized state has null code/data. */
+data class TosLegacyWalletState(val seqno: Int, val code: Cell?, val data: Cell?) {
+    val isActive: Boolean get() = code != null
+}
 
 /**
  * TosSource — high-level entry point for the data layer to reach the TOS node JSON-RPC.
@@ -27,12 +37,20 @@ import java.math.BigInteger
  * the user's RPC setting, falling back to the application default.
  */
 class TosSource(
-    httpClient: OkHttpClient,
-    baseUrlProvider: (Boolean) -> String,
-    apiKeyProvider: () -> String? = { null },
+    private val httpClient: OkHttpClient,
+    private val baseUrlProvider: (Boolean) -> String,
+    private val apiKeyProvider: () -> String? = { null },
+    private val endpointConfigProvider: ((Boolean) -> Pair<String, String?>)? = null,
 ) {
 
-    val rpc = TosRpcClient(httpClient, baseUrlProvider, apiKeyProvider)
+    val rpc = TosRpcClient(httpClient, baseUrlProvider, apiKeyProvider, endpointConfigProvider)
+
+    /** One operation keeps one endpoint and credential even if settings change concurrently. */
+    fun snapshot(testnet: Boolean = false): TosSource {
+        val (endpoint, key) = endpointConfigProvider?.invoke(testnet)
+            ?: (baseUrlProvider(testnet) to apiKeyProvider())
+        return TosSource(httpClient, { endpoint }, { key })
+    }
 
     // ---------------------------------------------------------------------
     // Chain state
@@ -69,20 +87,84 @@ class TosSource(
         return TosWalletInfo.fromJson(rpc.callObject("getWalletInformation", params, testnet))
     }
 
-    /** seqno — replaces WalletApi.getAccountSeqno().seqno. Prefer walletInformation,
-     *  fall back to runGetMethod("seqno") on failure. */
-    fun getSeqno(address: String, testnet: Boolean = false): Int {
-        return try {
-            getWalletInformation(address, testnet).seqno
-        } catch (e: Throwable) {
-            try {
-                val result = runGetMethod(address, "seqno", emptyList(), testnet)
-                stackReadNumber(result.stack, 0)?.toInt() ?: 0
-            } catch (e2: Throwable) {
-                0
-            }
+    /** Only a node-confirmed uninitialized account has seqno zero.
+     * Transport/authentication failures must never become a first-deployment request. */
+    fun getSeqno(address: String, testnet: Boolean = false, walletContract: BaseWalletContract? = null): Int {
+        val node = snapshot(testnet)
+        if (walletContract != null && LegacyWalletCompatibility.isSupported(walletContract)) {
+            return node.readLegacyWalletState(address, testnet, walletContract, allowUninitialized = true).seqno
         }
+        val raw = node.rpc.callObject("getWalletInformation", JSONObject().put("address", address), testnet)
+        // Only the explicit unsupported-active response enters compatibility.
+        // Auth/transport failures and malformed recognized-wallet seqnos propagate.
+        if (raw.opt("wallet") == false && raw.opt("account_state") == "active" &&
+            raw.has("seqno") && raw.isNull("seqno")) {
+            require(walletContract == null) { "Account does not match this wallet contract" }
+            return node.readLegacyWalletState(address, testnet, null, allowUninitialized = false).seqno
+        }
+        val info = TosWalletInfo.fromJson(raw)
+        require(info.seqno >= 0) { "Invalid wallet sequence number" }
+        require(info.isWallet || info.accountState in setOf("uninit", "uninitialized")) {
+            "Account is not a supported wallet"
+        }
+        return info.seqno
     }
+
+    fun getLegacyWalletState(address: String, walletContract: BaseWalletContract,
+        testnet: Boolean = false): TosLegacyWalletState {
+        require(LegacyWalletCompatibility.isSupported(walletContract)) { "Unsupported legacy wallet contract" }
+        return snapshot(testnet).readLegacyWalletState(address, testnet, walletContract, allowUninitialized = true)
+    }
+
+    private fun readLegacyWalletState(address: String, testnet: Boolean,
+        expected: BaseWalletContract?, allowUninitialized: Boolean): TosLegacyWalletState {
+        val requested = AddrStd.parse(address)
+        expected?.let { require(it.address == requested) { "Legacy wallet address mismatch" } }
+        val state = rpc.callObject("getAddressInformation", JSONObject().put("address", address), testnet)
+        val status = state.get("state")
+        if (status == "uninit" || status == "uninitialized") {
+            require(allowUninitialized && expected != null &&
+                state.get("code") == "" && state.get("data") == "") { "Invalid legacy deployment state" }
+            return TosLegacyWalletState(0, null, null)
+        }
+        require(status == "active") { "Legacy wallet is not active" }
+        val code = state.get("code") as? String ?: error("Missing legacy wallet code")
+        val data = state.get("data") as? String ?: error("Missing legacy wallet data")
+        require(code.isNotBlank() && data.isNotBlank()) { "Incomplete legacy wallet state" }
+        // Compatibility must never choose the first of several attacker-supplied
+        // roots. The profile verifier also requires ordinary code/data cells.
+        val codeCell = code.bocFromBase64().roots.single()
+        val dataCell = data.bocFromBase64().roots.single()
+        val seqno = LegacyWalletCompatibility.verifiedSeqno(requested, codeCell, dataCell, expected)
+        return TosLegacyWalletState(seqno, codeCell, dataCell)
+    }
+
+    /** Verify the very snapshot used to decide whether estimation needs sender
+     * initialization. Frozen/unknown/malformed states must not become deployment. */
+    fun estimateLegacyWalletFee(address: String, bodyBoc: String, walletContract: BaseWalletContract,
+        testnet: Boolean = false): TosFees {
+        val node = snapshot(testnet)
+        val state = node.getLegacyWalletState(address, walletContract, testnet)
+        return node.estimateFee(address, bodyBoc,
+            if (state.isActive) null else walletContract.getCode().base64(),
+            if (state.isActive) null else walletContract.getStateCell().base64(), testnet)
+    }
+
+    /** Discover the signed network identity and VM capabilities at one masterchain height. */
+    fun getNetworkInfo(testnet: Boolean = false): TosNetworkInfo {
+        val node = snapshot(testnet)
+        val block = node.getMasterchainInfo(testnet).last ?: error("Missing masterchain block")
+        return TosNetworkInfo.fromConfig(
+            node.getConfigParam(19, block.seqno, testnet),
+            node.getConfigParam(8, block.seqno, testnet),
+        )
+    }
+
+    fun requireNetwork(expectedGlobalId: Int, testnet: Boolean = false): TosNetworkInfo =
+        getNetworkInfo(testnet).also {
+            require(it.globalId == expectedGlobalId) { "RPC network does not match this wallet" }
+            it.requireNativeV5()
+        }
 
     // ---------------------------------------------------------------------
     // Read-only contract calls (available from a bare node)
@@ -159,6 +241,12 @@ class TosSource(
         return TosSendResult.fromJson(rpc.callObject("sendBocReturnHash", params, testnet))
     }
 
+    fun sendBocForNetwork(bocBase64: String, expectedGlobalId: Int, testnet: Boolean = false): TosSendResult {
+        val node = snapshot(testnet)
+        node.requireNetwork(expectedGlobalId, testnet)
+        return node.sendBoc(bocBase64, testnet)
+    }
+
     /** estimateFee — replaces the fee part of EmulationApi (full event-level emulate
      *  needs indexing/parsing; see the TODO below). */
     fun estimateFee(
@@ -199,6 +287,23 @@ class TosSource(
         return (0 until array.length()).mapNotNull { i ->
             array.optJSONObject(i)?.let { TosRawTransaction.fromJson(it) }
         }
+    }
+
+    /** A changed nonce can belong to another device. Only the exact external BOC
+     * root hash and a successful send receipt confirm this payment. StateInit is
+     * part of this hash; a normalized body/message hash cannot replace it. */
+    fun reconcileSend(address: String, bocBase64: String, initialSeqno: Int,
+        testnet: Boolean = false, walletContract: BaseWalletContract? = null): TosSendReconciliation {
+        val node = snapshot(testnet)
+        if (node.getSeqno(address, testnet, walletContract) <= initialSeqno) return TosSendReconciliation.RETRYABLE
+        val submitted = bocBase64.cellFromBase64().hash().toByteArray()
+        val receipt = node.getTransactions(address, limit = 32, testnet = testnet).firstOrNull { transaction ->
+            transaction.inMsgHash?.let { encoded ->
+                runCatching { java.util.Base64.getDecoder().decode(encoded).contentEquals(submitted) }.getOrDefault(false)
+            } == true
+        }
+        return if (receipt?.executionSuccessful == true) TosSendReconciliation.CONFIRMED
+            else TosSendReconciliation.AMBIGUOUS
     }
 
     /** getTokenData — partially replaces JettonsApi.getJettonInfo / NFTApi

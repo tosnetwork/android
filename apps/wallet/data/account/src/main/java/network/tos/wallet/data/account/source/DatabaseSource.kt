@@ -25,7 +25,7 @@ internal class DatabaseSource(
 
     private companion object {
         private const val DATABASE_NAME = "account"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
 
         private const val WALLET_TABLE_NAME = "wallet"
         private const val WALLET_TABLE_ID_COLUMN = "id"
@@ -39,6 +39,7 @@ internal class DatabaseSource(
         private const val WALLET_TABLE_KEYSTONE_XFP_COLUMN = "keystone_xfp"
         private const val WALLET_TABLE_KEYSTONE_PATH_COLUMN = "keystone_path"
         private const val WALLET_TABLE_INITIALIZED_COLUMN = "initialized"
+        private const val WALLET_TABLE_NETWORK_COLUMN = "network_global_id"
 
         private val walletFields = arrayOf(
             WALLET_TABLE_ID_COLUMN,
@@ -50,7 +51,8 @@ internal class DatabaseSource(
             WALLET_TABLE_LEDGER_ACCOUNT_INDEX_COLUMN,
             WALLET_TABLE_KEYSTONE_XFP_COLUMN,
             WALLET_TABLE_KEYSTONE_PATH_COLUMN,
-            WALLET_TABLE_INITIALIZED_COLUMN
+            WALLET_TABLE_INITIALIZED_COLUMN,
+            WALLET_TABLE_NETWORK_COLUMN
         ).joinToString(",")
 
         private fun WalletEntity.toValues(): ContentValues {
@@ -69,6 +71,7 @@ internal class DatabaseSource(
                 values.put(WALLET_TABLE_KEYSTONE_PATH_COLUMN, it.path)
             }
             values.put(WALLET_TABLE_INITIALIZED_COLUMN, initialized)
+            networkGlobalId?.let { values.put(WALLET_TABLE_NETWORK_COLUMN, it) }
             return values
         }
     }
@@ -84,7 +87,8 @@ internal class DatabaseSource(
                 "$WALLET_TABLE_LEDGER_ACCOUNT_INDEX_COLUMN INTEGER," +
                 "$WALLET_TABLE_KEYSTONE_XFP_COLUMN TEXT," +
                 "$WALLET_TABLE_KEYSTONE_PATH_COLUMN TEXT," +
-                "$WALLET_TABLE_INITIALIZED_COLUMN INTEGER DEFAULT 0" +
+                "$WALLET_TABLE_INITIALIZED_COLUMN INTEGER DEFAULT 0," +
+                "$WALLET_TABLE_NETWORK_COLUMN INTEGER" +
                 ");")
 
         val walletIndexPrefix = "idx_$WALLET_TABLE_NAME"
@@ -94,18 +98,21 @@ internal class DatabaseSource(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (1 >= oldVersion && newVersion == 2) {
+        if (oldVersion < 2 && newVersion >= 2) {
             db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_LEDGER_DEVICE_ID_COLUMN TEXT;")
             db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_LEDGER_ACCOUNT_INDEX_COLUMN INTEGER;")
         }
 
-        if (2 >= oldVersion && newVersion == 3) {
+        if (oldVersion < 3 && newVersion >= 3) {
             db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_KEYSTONE_XFP_COLUMN TEXT;")
             db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_KEYSTONE_PATH_COLUMN TEXT;")
         }
 
-        if (3 >= oldVersion && newVersion == 4) {
+        if (oldVersion < 4 && newVersion >= 4) {
             db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_INITIALIZED_COLUMN INTEGER;")
+        }
+        if (oldVersion < 5 && newVersion >= 5) {
+            db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_NETWORK_COLUMN INTEGER;")
         }
     }
 
@@ -195,6 +202,7 @@ internal class DatabaseSource(
         val keystoneXfpIndex = cursor.getColumnIndex(WALLET_TABLE_KEYSTONE_XFP_COLUMN)
         val keystonePathIndex = cursor.getColumnIndex(WALLET_TABLE_KEYSTONE_PATH_COLUMN)
         val initializedIndex = cursor.getColumnIndex(WALLET_TABLE_INITIALIZED_COLUMN)
+        val networkIndex = cursor.getColumnIndex(WALLET_TABLE_NETWORK_COLUMN)
         val accounts = mutableListOf<WalletEntity>()
         while (cursor.moveToNext()) {
             val label = cursor.getBlob(labelIndex).toParcel<Wallet.Label>() ?: continue
@@ -205,7 +213,8 @@ internal class DatabaseSource(
                 type = Wallet.typeOf(cursor.getInt(typeIndex)),
                 version = walletVersion(cursor.getInt(versionIndex)),
                 label = label,
-                initialized = cursor.getInt(initializedIndex) == 1
+                initialized = cursor.getInt(initializedIndex) == 1,
+                networkGlobalId = if (cursor.isNull(networkIndex)) null else cursor.getInt(networkIndex)
             )
             if (wallet.type == Wallet.Type.Ledger) {
                 val ledger = WalletEntity.Ledger(

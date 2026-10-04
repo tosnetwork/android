@@ -47,3 +47,30 @@ and upstream dependency metadata that this project does not control.
 Before the first public release, compatibility aliases must not be introduced without
 a concrete external contract. After release, application IDs and persisted schemas
 become stable and future changes require explicit, versioned migration tests.
+
+## TOS wallet and recovery formats
+
+TOS V5R1 is stored as wallet version `6` (`tosV5R1`). Its signed request includes
+the node's `global_id` separately from the plain subwallet number, and uses the
+frozen TOS contract code. The network ID is discovered from chain configuration
+and persisted with the wallet; the development chain ID `3` is not a production
+default. One native send holds one RPC endpoint and credential through sequence
+lookup, fee preview, signing, broadcast, and retry reconciliation.
+
+Development wallets stored as version `5` keep the inherited V5 code, packed wallet
+ID, address and key. Database version `5` adds a nullable `network_global_id`
+column; existing legacy rows remain null. Recovery explicitly distinguishes native
+TOS salts from inherited recovery salts. A phrase valid in both formats requires
+the user to select TOS or Legacy; automatic recovery rejects the ambiguity. Vault
+metadata binds the derivation format to the saved public key.
+
+PQ validator consensus does not change Ed25519 wallet authentication into PQ
+authentication. The native V5 wallet remains an Ed25519 wallet. Config8 capability
+discovery distinguishes ML-DSA primitive support from the experimental Falcon
+profile, which requires VM version `19`. The ordinary native wallet retains Ed25519 authentication. The separate
+Settings → PQ Wallets flow now creates ML-DSA-44/Falcon padded module-only
+accounts with their own seeds, signatures and paid transport; see
+[the PQ signing report](mobile-pq-signing-20261004.md). This change does not
+activate validators or enable a gasless backend. Offline TOS V5
+signing only accepts ordinary send mode `3`; hidden carry or sweep modes fail
+before confirmation.

@@ -23,6 +23,7 @@ import network.tos.wallet.app.core.Fee
 import network.tos.wallet.app.core.SendBlockchainException
 import network.tos.wallet.app.core.entities.SendMetadataEntity
 import network.tos.wallet.app.core.entities.TransferEntity
+import network.tos.wallet.app.core.entities.isNativeMaxAmount
 import network.tos.wallet.app.extensions.isPrintableAscii
 import network.tos.wallet.app.extensions.isSafeModeEnabled
 import network.tos.wallet.app.extensions.with
@@ -114,6 +115,10 @@ class SendViewModel(
     private val signUseCase: SignUseCase,
     private val analytics: AnalyticsHelper
 ) : BaseWalletVM(app) {
+
+    // Seqno, fee preview, balance check, broadcast and retry reconciliation share
+    // this endpoint even if the RPC preference changes while confirmation is open.
+    private val sendNode = api.tos.snapshot(wallet.testnet)
 
     private val isNft: Boolean
         get() = nftAddress.isNotBlank()
@@ -768,7 +773,7 @@ class SendViewModel(
             builder.setBounceable(true)
             builder.setAmount(amount.value)
         } else {
-            builder.setMax(amount.value == getTONBalance())
+            builder.setMax(isNativeMaxAmount(amount.value, getTONBalance()))
             builder.setAmount(amount.value)
             builder.setBounceable(destination.isBounce)
         }
@@ -1006,6 +1011,7 @@ class SendViewModel(
             message = transfer.getEmulationBody(jettonTransferAmount),
             params = true,
             checkTonBalance = !transfer.isTon || !transfer.max,
+            boundNode = sendNode,
         )
 
         val fee = Fee( emulated.extra.value,  emulated.extra.isRefund)
@@ -1033,7 +1039,9 @@ class SendViewModel(
                         fee.amount.value
                     )
                 } else "",
-                convertedFormat = if (fee is SendFee.TokenFee) {
+                // Native TOS previews display the chain fee directly; their
+                // converted description is hidden by SendScreen.
+                convertedFormat = if (fee is SendFee.TokenFee && fee !is SendFee.Ton) {
                     val rates = ratesRepository.getRates(currency, fee.amount.token.address)
                     val converted = rates.convert(fee.amount.token.address, fee.amount.value)
                     CurrencyFormatter.format(
@@ -1044,6 +1052,8 @@ class SendViewModel(
                 insufficientFunds = false,
                 failed = false
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             null
         }
@@ -1147,8 +1157,9 @@ class SendViewModel(
     private suspend fun getSendParams(
         wallet: WalletEntity,
     ): SendMetadataEntity = withContext(Dispatchers.IO) {
-        val seqnoDeferred = async { accountRepository.getSeqno(wallet) }
-        val validUntilDeferred = async { accountRepository.getValidUntil(wallet.testnet) }
+        wallet.networkGlobalId?.let { sendNode.requireNetwork(it, wallet.testnet) }
+        val seqnoDeferred = async { sendNode.getSeqno(wallet.accountId, wallet.testnet, wallet.contract) }
+        val validUntilDeferred = async { sendNode.getServerTime(wallet.testnet).toLong() + 150 }
 
         val seqno = seqnoDeferred.await()
         val validUntil = validUntilDeferred.await()
@@ -1334,6 +1345,7 @@ class SendViewModel(
             withBattery = withBattery,
             source = "",
             confirmationTime = 0.0,
+            boundNode = sendNode,
         )
         if (state != SendBlockchainState.SUCCESS) {
             throw SendBlockchainException.fromState(state)

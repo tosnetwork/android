@@ -14,7 +14,7 @@ sealed class RootAction {
         val v: String,
         val returnResult: ReturnResultEntity,
         val seqno: Int,
-        val network: TonNetwork
+        val network: Int
     ): RootAction()
 
     data class ResponseSignature(val signature: ByteArray): RootAction() {

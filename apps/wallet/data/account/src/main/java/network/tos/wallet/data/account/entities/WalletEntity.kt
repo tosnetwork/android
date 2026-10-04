@@ -35,6 +35,7 @@ data class WalletEntity(
     val ledger: Ledger? = null,
     val keystone: Keystone? = null,
     val initialized: Boolean,
+    val networkGlobalId: Int? = null,
 ): Parcelable {
 
     companion object {
@@ -72,8 +73,9 @@ data class WalletEntity(
     ) : Parcelable
 
     val contract: BaseWalletContract by lazy {
-        val network = if (testnet) TonNetwork.TESTNET.value else TonNetwork.MAINNET.value
+        val network = networkGlobalId ?: if (testnet) TonNetwork.TESTNET.value else TonNetwork.MAINNET.value
 
+        require(version != WalletVersion.TOSV5R1 || networkGlobalId != null) { "TOS wallet network is required" }
         BaseWalletContract.create(publicKey, version.title, network)
     }
 
@@ -110,7 +112,7 @@ data class WalletEntity(
         get() = type == Wallet.Type.Keystone
 
     val isW5: Boolean
-        get() = version == WalletVersion.V5BETA || version == WalletVersion.V5R1
+        get() = version == WalletVersion.V5BETA || version == WalletVersion.V5R1 || version == WalletVersion.TOSV5R1
 
     val isExternal: Boolean
         get() = signer || isLedger || isKeystone
@@ -127,6 +129,7 @@ data class WalletEntity(
         ledger = parcel.readParcelableCompat(),
         keystone = parcel.readParcelableCompat(),
         initialized = parcel.readBooleanCompat(),
+        networkGlobalId = if (parcel.readByte().toInt() == 1) parcel.readInt() else null,
     )
 
     fun isMyAddress(address: String): Boolean {
@@ -173,6 +176,8 @@ data class WalletEntity(
         parcel.writeParcelable(ledger, flags)
         parcel.writeParcelable(keystone, flags)
         parcel.writeBooleanCompat(initialized)
+        parcel.writeByte(if (networkGlobalId != null) 1.toByte() else 0.toByte())
+        networkGlobalId?.let(parcel::writeInt)
     }
 
     override fun describeContents(): Int {

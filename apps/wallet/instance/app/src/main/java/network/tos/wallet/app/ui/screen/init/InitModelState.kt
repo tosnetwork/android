@@ -1,6 +1,7 @@
 package network.tos.wallet.app.ui.screen.init
 
 import android.graphics.Color
+import network.tos.blockchain.TosV1Mnemonic
 import android.os.Parcel
 import android.os.Parcelable
 import androidx.lifecycle.SavedStateHandle
@@ -76,6 +77,10 @@ class InitModelState(private val savedStateHandle: SavedStateHandle) {
     var watchAccount: AccountDetailsEntity?
         get() = savedStateHandle[WATCH_ACCOUNT_KEY]
         set(value) = savedStateHandle.set(WATCH_ACCOUNT_KEY, value)
+
+    var mnemonicProfile: TosV1Mnemonic.Profile?
+        get() = savedStateHandle.get<String>("mnemonic_profile")?.let { TosV1Mnemonic.Profile.valueOf(it) }
+        set(value) = savedStateHandle.set("mnemonic_profile", value?.name)
 
     var mnemonic: List<String>?
         get() = savedStateHandle[MNEMONIC_KEY]

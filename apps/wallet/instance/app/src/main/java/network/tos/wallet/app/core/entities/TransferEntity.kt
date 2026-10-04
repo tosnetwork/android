@@ -67,21 +67,15 @@ data class TransferEntity(
         get() = nftAddress != null
 
     private val stateInitRef: CellRef<StateInit>?
-        get() {
-            return if (0 >= seqno) {
-                tokenPayload?.stateInit ?: contract.stateInitRef
-            } else {
-                tokenPayload?.stateInit
-            }
-        }
+        get() = TransferStateInit.forRecipient(
+            wallet.version, seqno, contract.stateInitRef, tokenPayload?.stateInit,
+        )
 
     val testnet: Boolean
         get() = wallet.testnet
 
     val sendMode: Int
-        get() {
-            return if (max && isTon) (TonSendMode.CARRY_ALL_REMAINING_BALANCE.value + TonSendMode.IGNORE_ERRORS.value) else (TonSendMode.PAY_GAS_SEPARATELY.value + TonSendMode.IGNORE_ERRORS.value)
-        }
+        get() = transferSendMode(max, isTon)
 
     val isValidComment: Boolean
         get() {
@@ -414,3 +408,11 @@ data class TransferEntity(
 
     }
 }
+
+/** MAX round-trips through a text field, which can remove trailing decimal zeros. */
+internal fun isNativeMaxAmount(amount: Coins, balance: Coins): Boolean =
+    amount.compareTo(balance) == 0
+
+internal fun transferSendMode(max: Boolean, isTon: Boolean): Int =
+    if (max && isTon) TonSendMode.CARRY_ALL_REMAINING_BALANCE.value + TonSendMode.IGNORE_ERRORS.value
+    else TonSendMode.PAY_GAS_SEPARATELY.value + TonSendMode.IGNORE_ERRORS.value

@@ -25,6 +25,8 @@ class Holder(
         itemIconView.position = item.position
         itemIconView.text = item.currency
         itemIconView.description = item.name
+        // The row remains clickable when its text is clipped by the viewport.
+        itemIconView.contentDescription = "${item.currency}, ${item.name}"
 
         if (item.selected) {
             itemIconView.iconRes = UIKitIcon.ic_donemark_thin_28

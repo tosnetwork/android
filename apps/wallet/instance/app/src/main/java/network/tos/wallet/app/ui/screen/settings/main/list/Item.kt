@@ -69,6 +69,9 @@ sealed class Item(type: Int, val name: String): BaseListItem(type) {
         name = "currency"
     )
 
+    class PqWallets(position: ListCell.Position): Text(
+        titleRes = R.string.pq_wallets, value = "ML-DSA / Falcon", position = position, name = "pq_wallets")
+
     class RpcNode(
         endpoint: String,
         position: ListCell.Position

@@ -1,0 +1,108 @@
+package network.tos.blockchain.ton.contract
+
+import network.tos.blockchain.ton.TONOpCode
+import network.tos.blockchain.ton.TonNetwork
+import network.tos.blockchain.ton.contract.WalletV5R1Contract.W5Context.Client
+import network.tos.blockchain.ton.contract.WalletV5R1Contract.W5Context.Custom
+import network.tos.blockchain.ton.extensions.storeBuilder
+import network.tos.blockchain.ton.extensions.bodyCell
+import network.tos.blockchain.ton.extensions.storeOpCode
+import network.tos.blockchain.ton.extensions.storeSeqAndValidUntil
+import org.ton.api.pub.PublicKeyEd25519
+import org.ton.bigint.BigInt
+import org.ton.bigint.toBigInt
+import org.ton.bitstring.BitString
+import org.ton.block.AddrStd
+import org.ton.block.Coins
+import org.ton.block.ExtInMsgInfo
+import org.ton.block.Message
+import org.ton.block.MessageRelaxed
+import org.ton.boc.BagOfCells
+import org.ton.cell.Cell
+import org.ton.cell.CellBuilder
+import org.ton.cell.buildCell
+import org.ton.contract.wallet.WalletTransfer
+import org.ton.crypto.hex
+import org.ton.tlb.CellRef
+import org.ton.tlb.constructor.AnyTlbConstructor
+import org.ton.tlb.storeRef
+import java.math.BigInteger
+
+/** TOS V5R1. Ed25519 user authentication is independent of PQ validator consensus.
+ * Network ID is signed separately; persisted legacy V5 wallets keep their original contract. */
+class TosWalletV5R1Contract(
+    publicKey: PublicKeyEd25519,
+    val networkGlobalId: Int,
+    val subwalletNumber: Long = 0,
+    workchain: Int = DEFAULT_WORKCHAIN,
+) : BaseWalletContract(workchain, publicKey) {
+    init { require(subwalletNumber in 0..0xffffffffL) { "Subwallet ID must be uint32" } }
+    override val features = WalletFeature.SIGNED_INTERNALS
+    override val maxMessages = 255
+    override fun getWalletVersion() = WalletVersion.TOSV5R1
+    override fun getCode() = CODE
+    override fun getStateCell() = buildCell {
+        storeBit(true)
+        storeUInt(0, 32)
+        storeUInt(subwalletNumber, 32)
+        storeBytes(publicKey.key.toByteArray())
+        storeBit(false)
+    }
+    override fun signedBody(signature: BitString, unsignedBody: Cell) = buildCell {
+        storeSlice(unsignedBody.beginParse())
+        storeBits(signature)
+    }
+    /** Reconciliation follows the nonce that was actually signed, even when
+     * another device advances the account during confirmation or authentication. */
+    fun signedTransferSeqno(message: Cell): Int {
+        val external = parseTransferMessageCell(message)
+        val info = external.info as? ExtInMsgInfo ?: error("Expected external wallet message")
+        require(info.dest == address) { "Signed message belongs to another wallet" }
+        val signed = external.bodyCell
+        require(signed.bits.size >= 162 + 512) { "Incomplete signed TOS request" }
+        val slice = signed.beginParse()
+        require(slice.loadUInt(32).toLong() == TONOpCode.SIGNED_EXTERNAL.code) { "Expected external TOS request" }
+        require(slice.loadInt(32).toInt() == networkGlobalId) { "Signed network does not match wallet" }
+        require(slice.loadUInt(32).toLong() == subwalletNumber) { "Signed subwallet does not match wallet" }
+        slice.loadUInt(32) // valid_until
+        val seqno = slice.loadUInt(32).toLong()
+        require(seqno <= Int.MAX_VALUE) { "Unsupported sequence number" }
+        return seqno.toInt()
+    }
+    override fun createTransferUnsignedBody(
+        validUntil: Long, seqNo: Int, internalMessage: Boolean,
+        queryId: BigInt?, vararg gifts: WalletTransfer,
+    ): Cell {
+        require(gifts.size in 1..maxMessages) { "Expected 1-$maxMessages messages" }
+        require(seqNo >= 0) { "Sequence number must be nonnegative" }
+        require(validUntil in 1..0xffffffffL) { "Expiry must be a positive uint32" }
+        var list = Cell.empty()
+        for (gift in gifts) {
+            list = buildCell {
+                storeRef(list)
+                storeOpCode(TONOpCode.OUT_ACTION_SEND_MSG_TAG)
+                storeUInt(gift.sendMode, 8)
+                storeRef(MessageRelaxed.tlbCodec(AnyTlbConstructor), CellRef(createIntMsg(gift)))
+            }
+        }
+        return buildCell {
+            storeOpCode(if (internalMessage) TONOpCode.SIGNED_INTERNAL else TONOpCode.SIGNED_EXTERNAL)
+            storeInt(networkGlobalId, 32)
+            storeUInt(subwalletNumber, 32)
+            // TOS applies expiry even to first deployment; never replace it with UINT32_MAX.
+            storeUInt(validUntil, 32)
+            storeUInt(seqNo, 32)
+            storeBit(true)
+            storeRef(list)
+            storeBit(false)
+        }
+    }
+    override fun removePlugin(seqNo: Int, validUntil: Long, queryId: BigInteger,
+        forwardAmount: Coins, pluginAddress: AddrStd): Cell =
+        throw UnsupportedOperationException("TOS V5 extension removal is unavailable")
+    companion object {
+        // Frozen TOS SDK code verified against ee5ad71c3 and a fresh FunC build:
+        // 086a86aa9913c0ec52277adbb7e4b5695964dbb8c817ad0c305cdd345bbfac69.
+        @JvmField val CODE = BagOfCells(hex("b5ee9c72410225010007e2000114ff00f4a413f4bcf2c80b01020120020302014804050124f220d70b1f82107369676ebaf2e08a7f8ad81c0202cc0607020120121302b5d90e8698180b8d8492f81c7a690eba4e090492f81f010eb858f90410820aaaa245d4c9836097d201800f807701890410832bc3a375e90c10839b4b73a5ed8492f81f0410832bc3a375d718118906ba4c081505cc8987038456c714081c04f7bdda89a10083ae43ae17ffda89a1020283ae43e8086241ae9523a924da03c5a2a82647021c21b6784380031e9a63b67841a1ae160380071d0603b6792263c4ffda89a1a401a63f020241ae31e80860093443083f75e5ae24034803bc49a1ae160384032cd844e0da8267bc05919401963e039e2de8019993daa9c067090a0d0b019aed44d0810141d721f4043120d74a91d4926d01e2d16ef2e70f8020d72101d074d721fa4030fa44f828fa443058bd915be0ed44d0810141d721f4058307f40e6fa1319130e18040d721707fdb3c1e01f404206e9530705470008e14d0d301d33fd33fd3ffd123c20024c104b0f2e70ee223c300f2e7080620d74981010bba21d74ac000b0f2e71120d70b02c004f2e711fa44f828fa445033ba5213bd12b0f2e71126baf2e70804d31f01821041555448baf2e713d4f404d121d0d21ff83512baf2e709fa40f82812c7050c01e401206e9530705470008e14d0d301d33fd33fd3ffd123c20024c104b0f2e70ee25b02d0d301fa40d121c20022c104b0f2e70e02c20121c001b0f2d70e22843fbaf2d71202a4700220d74981010bba21d74ac000b0f2e71120d70b02c004f2e711fa44f828fa445033ba5213bd12b0f2e711120f01fcc000f2e713017f21d73930709421c700b38e2d01d72820761e436c20d749c008f2e09320d74ac002f2e09320d71d06c712c2005230b0f2d089d74cd7393001a4e86c128407bbf2e093d74ac000f2e09320d09420c700b38e21d72820761e436cd30721802cb0c300f2d713018100c0b08100c0baf2d713d430d0e830017f1102ecf2e70ad33f5114baf2e70bd33f5117baf2e70c26843fbaf2d712d31f21f823bcf823500ba012bb19b0f2e70d07d307d4d124c0038eb225db3c286ef2d71008d020d7498308ba21d74ac000b0f2e710028230544f532d41555448c8cb3fccc9f9004005f910f2e710973234066ef2e710e203a44303040d0e01f4208407b0807fb021ab0784efb022abf702c07f0184efbab0018100edbeb0f2d7102083f7baf2d7102082f0c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037abaf2d710208306baf2d7102082f026e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05ba10001a03c8cb0112cb3fcb3fcbffc902001803c8cb0112cb3fcb3fcbffc900faf2d7102082f0ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7fbaf2d7102082f026e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85baf2d71020c000f2d71082f0c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fabaf2d7100078ed44d0d200d31f810120d718f40430049a21841fbaf2d71201a401de24d0d70b01c201966c22706d4133de02c8ca00cb1f01cf16f400ccc9ed54ed5502012014150019be5f0f6a2684080a0eb90fa02c02012016170201481a1b006db7f5dda89a1020283ae43e8086241ae9523a924da03c5a240dd2a60e0a8e0011c29a1a603a67fa67fa7ffa247840049820961e5ce1dc5002015818190019adce76a2684020eb90eb85ffc00019af1df6a2684010eb90eb858fc00017b325fb51341c75c875c2c7e00011b262fb513435c2802001feeda2edfbed44d0810141d721f4043120d74a91d4926d01e2d1206e913099d0d70b01c201f2d70fe2218308d722028308d723208020d721d21ff83512baf2e094d31fd31fd31fed44d0d200d31f20d31fd3ffd70a000af90140ccf9109a28945f0adb31e1f2c087df02b35007b0f2d0845125baf2e0855036baf2e086f823bb1d014af2d08821841fbaf2d0852292f800de01a47fc8ca00cb1f01cf16c9ed542092f80fde70db3c1e03f6eda2edfb02f404216e91328e4d521321d73930709421c700b38e2d01d72820761e436c20d749c008f2e09320d74ac002f2e09320d71d06c712c2005230b0f2d089d74cd7393001a4e86c128407bbf2e093d74ac000f2e093ed55e201d20001c000925f03e020d70b07c005e30231ebd72c0814209170e30e5210b11f2021014c016eb312b1f2d71378d721d33ffa40d1ed44d0810141d721f4043120d74a91d4926d01e2d15922000c01d72c081c1201908e3930d72c08248e2d21f2e092d200ed44d0d2005113baf2d08f54503091319c01810140d721d70a00f2e08ee2c8ca0058cf16c9ed5493f2c08de2e30d20d74a935bdb31e1d74cd02401e202206e9530705470008e14d0d301d33fd33fd3ffd123c20024c104b0f2e70ee25b01c201f2d70f66baf2e70b20843fbaf2d7127101a4700320d74981010bba21d74ac000b0f2e71120d70b02c004f2e711fa44f828fa445033ba5213bd12b0f2e711413003c8cb0112cb3fcb3fcbffc970230074ed44d0d200d31f810120d718f40430049a21841fbaf2d71201a401de24d0d70b01c201966c22706d4133de02c8ca00cb1f01cf16f400ccc9ed54009801fa4001fa44f828fa443058baf2e091ed44d0810141d718f404059d7fc8ca0040338307f453f2e08b8e14128307f45bf2e08c21d70a00216e01b3b0f2d090e2c858cf16f40058cf16c9ed54c7bcc44c")).first()
+    }
+}

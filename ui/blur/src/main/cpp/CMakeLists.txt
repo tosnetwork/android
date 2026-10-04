@@ -69,6 +69,8 @@ add_library(# Sets the name of the library.
         TaskProcessor.cpp
         Utils.cpp
         ${ASM_SOURCES})
+set_target_properties(renderscript-toolkit PROPERTIES LINK_FLAGS
+        "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
 
 # Searches for a specified prebuilt library and stores the path as a
 # variable. Because CMake includes system libraries in the search path by

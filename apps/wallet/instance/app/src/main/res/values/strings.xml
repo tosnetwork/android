@@ -7,4 +7,14 @@
     <string name="rpc_node_save">Save</string>
     <string name="rpc_node_reset">Restore default</string>
     <string name="rpc_node_invalid">Enter a valid HTTP or HTTPS RPC address</string>
+    <string name="rpc_node_unavailable">Node unavailable</string>
+    <string name="rpc_node_connect_hint">Connect to a TOS node to verify the wallet network. Change the node address or retry.</string>
+    <string name="rpc_node_retry">Retry</string>
+    <string name="legacy_recovery_title">Legacy wallet recovery</string>
+    <string name="legacy_recovery_hint">This phrase belongs to the legacy wallet format. Recovery preserves its original key and address.</string>
+    <string name="recovery_profile_title">Choose wallet format</string>
+    <string name="recovery_profile_hint">This phrase is valid for both formats. Select the format of the wallet you are restoring. Each format has a different key and address.</string>
+    <string name="restore_tos_wallet">Restore TOS Wallet</string>
+    <string name="restore_legacy_wallet">Restore Legacy Wallet</string>
+    <string name="pq_wallets">PQ Wallets</string>
 </resources>

@@ -3,7 +3,7 @@ package network.tos.signer.screen.sign
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import network.tos.blockchain.ton.TonNetwork
+import network.tos.blockchain.ton.contract.TosV5SigningRequest
 import network.tos.blockchain.ton.contract.BaseWalletContract
 import network.tos.blockchain.ton.extensions.EmptyPrivateKeyEd25519
 import network.tos.blockchain.ton.extensions.hex
@@ -11,6 +11,7 @@ import network.tos.blockchain.ton.extensions.loadString
 import network.tos.blockchain.ton.tlb.JettonTransfer
 import network.tos.blockchain.ton.tlb.NftTransfer
 import network.tos.icu.CurrencyFormatter
+import network.tos.icu.Coins as TosCoins
 import network.tos.signer.core.repository.KeyRepository
 import network.tos.signer.password.Password
 import network.tos.signer.screen.sign.list.SignItem
@@ -19,7 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
@@ -46,12 +50,13 @@ class SignViewModel(
     private val unsignedBody: Cell,
     private val v: String,
     private val seqno: Int,
-    private val network: TonNetwork,
+    private val network: Int,
     private val repository: KeyRepository,
     private val vault: SignerVault,
 ): ViewModel() {
 
     val keyEntity = repository.getKey(id).filterNotNull()
+    val isNativeTos = v.equals("tosv5r1", ignoreCase = true)
 
     private var normalizedV = v
 
@@ -60,18 +65,23 @@ class SignViewModel(
 
     init {
         viewModelScope.launch {
-            _actionsFlow.value = parseBoc()
+            _actionsFlow.value = runCatching { parseBoc() }.getOrElse { emptyList() }
         }
     }
 
-    fun sign(context: Context) = Password.authenticate(context).safeArea {
-        vault.getPrivateKey(it, id)
-    }.map {
-        sign(it)
+    fun sign(context: Context) = flow {
+        requireSupportedRequest()
+        emitAll(Password.authenticate(context).safeArea {
+            vault.getPrivateKey(it, id)
+        }.map {
+            require(it.publicKey() == keyEntity.first().publicKey) { "Signer key identity mismatch" }
+            sign(it)
+        })
     }.flowOn(Dispatchers.IO).take(1)
 
     fun openEmulate() = keyEntity.map {
-        val contract = BaseWalletContract.create(it.publicKey, normalizedV, network.value)
+        require(!isNativeTos) { "External emulation is unavailable for native TOS" }
+        val contract = BaseWalletContract.create(it.publicKey, normalizedV, network)
         val cell = contract.createTransferMessageCell(
             address = contract.address,
             privateKey = EmptyPrivateKeyEd25519.invoke(),
@@ -82,8 +92,12 @@ class SignViewModel(
     }.flowOn(Dispatchers.IO).take(1)
 
     private fun sign(privateKey: PrivateKeyEd25519): ByteArray {
+        requireSupportedRequest()
         return privateKey.sign(unsignedBody.hash().toByteArray())
     }
+
+    private fun requireSupportedRequest() = SignerRequestPolicy.requireSupported(
+        unsignedBody, v, network, seqno, vault.isNativeTosKey(id))
 
     private fun parseV4Boc(): List<SignItem> {
         val items = mutableListOf<SignItem>()
@@ -133,7 +147,16 @@ class SignViewModel(
     }
 
     private fun parseBoc(): List<SignItem> {
+        requireSupportedRequest()
         val items = mutableListOf<SignItem>()
+        if (v.equals("tosv5r1", ignoreCase = true)) {
+            val request = TosV5SigningRequest.parse(unsignedBody, network, seqno)
+            return request.transfers.mapIndexed { index, transfer ->
+                SignItem.Send(target = parseAddress(transfer.destination, false), value = formatCoins(transfer.coins),
+                    comment = transfer.comment, position = ListCell.getPosition(request.transfers.size, index),
+                    value2 = null, extra = false)
+            }
+        }
         items.addAll(parseV4Boc())
 
         val v5Boc = parseV5Boc()
@@ -241,8 +264,9 @@ class SignViewModel(
     }
 
     private fun formatCoins(coins: Coins): String {
-        val value = BigDecimal(coins.amount.toLong() / 1000000000L.toDouble())
-        return CurrencyFormatter.format("TON", value).toString()
+        val value = BigDecimal(coins.amount.toString()).movePointLeft(9)
+        return if (isNativeTos) CurrencyFormatter.formatFull("TOS", TosCoins.of(value), 9).toString()
+            else CurrencyFormatter.format("TON", value).toString()
     }
 
     private fun parseAddress(address: MsgAddressInt, bounceable: Boolean = true): String {

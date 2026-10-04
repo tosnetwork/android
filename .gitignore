@@ -9,4 +9,5 @@ captures
 *.apk
 .kotlin
 /build
-
+**/build/
+__pycache__/

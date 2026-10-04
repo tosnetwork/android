@@ -32,6 +32,21 @@ done
 android_sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 aapt2="$(find "$android_sdk_root/build-tools" -type f -name aapt2 2>/dev/null | sort -V | tail -1)"
 test -x "$aapt2" || fail "aapt2 is unavailable; cannot inspect the merged Release manifest"
+zipalign="$(dirname "$aapt2")/zipalign"
+readelf="$(find "$android_sdk_root/ndk" \( -type f -o -type l \) -name llvm-readelf 2>/dev/null | sort -V | tail -1)"
+test -x "$readelf" || fail "NDK llvm-readelf is unavailable"
+for apk in "$wallet_apk" "$signer_apk"; do
+  unzip -Z1 "$apk" >"$apk_listing"
+  for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+    grep -Fqx "lib/$abi/libtos_mobile_pq.so" "$apk_listing" \
+      || fail "APK lacks the PQ native library for $abi: $apk"
+  done
+  unzip -p "$apk" assets/tos-pq-notices.txt \
+    | cmp -s lib/security/src/main/assets/tos-pq-notices.txt - \
+    || fail "APK lacks the complete PQ cryptography notices: $apk"
+  "$zipalign" -c -P 16 4 "$apk" || fail "APK packaging is not 16KB aligned: $apk"
+  python3 scripts/check_android_16k.py "$apk" "$readelf"
+done
 while IFS= read -r permission; do
   case "$permission" in
     android.permission.INTERNET|android.permission.ACCESS_NETWORK_STATE|android.permission.VIBRATE|android.permission.USE_BIOMETRIC|android.permission.USE_FINGERPRINT|network.tos.wallet.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION) ;;

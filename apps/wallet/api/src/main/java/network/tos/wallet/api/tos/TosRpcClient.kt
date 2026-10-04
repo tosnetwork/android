@@ -26,13 +26,16 @@ class TosRpcClient(
     /** (testnet) -> base url, e.g. https://rpc.tos.network or http://127.0.0.1:18545 */
     private val baseUrlProvider: (Boolean) -> String,
     private val apiKeyProvider: () -> String? = { null },
+    private val endpointConfigProvider: ((Boolean) -> Pair<String, String?>)? = null,
 ) {
 
     private val idCounter = AtomicLong(0)
 
     /** Returns the raw result value (may be a JSONObject or a JSONArray). */
     fun callRaw(method: String, params: JSONObject = JSONObject(), testnet: Boolean = false): Any {
-        val endpoint = baseUrlProvider(testnet).trimEnd('/') + "/jsonRPC"
+        val (baseUrl, apiKey) = endpointConfigProvider?.invoke(testnet)
+            ?: (baseUrlProvider(testnet) to apiKeyProvider())
+        val endpoint = baseUrl.trimEnd('/') + "/jsonRPC"
         val payload = JSONObject()
             .put("jsonrpc", "2.0")
             .put("id", idCounter.incrementAndGet())
@@ -40,7 +43,7 @@ class TosRpcClient(
             .put("params", params)
 
         val headers = ArrayMap<String, String>()
-        apiKeyProvider()?.takeIf { it.isNotBlank() }?.let { headers["X-API-Key"] = it }
+        apiKey?.takeIf { it.isNotBlank() }?.let { headers["X-API-Key"] = it }
 
         val response = httpClient.postJSON(endpoint, payload.toString(), headers)
         val text = response.body?.string() ?: throw TosRpcException(-32603, "Empty RPC response")

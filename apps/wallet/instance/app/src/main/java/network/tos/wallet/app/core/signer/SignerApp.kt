@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import network.tos.blockchain.ton.extensions.hex
+import network.tos.blockchain.ton.extensions.cellFromHex
 import org.ton.api.pub.PublicKeyEd25519
 import org.ton.boc.BagOfCells
 import org.ton.cell.Cell
@@ -11,7 +12,7 @@ import org.ton.crypto.hex
 
 object SignerApp {
 
-    private const val STORE_LINK = "https://play.google.com/store/apps/details?id=network.tos.singer"
+    private const val STORE_LINK = "https://play.google.com/store/apps/details?id=network.tos.signer"
 
     fun openAppOrInstall(context: Context) {
         try {
@@ -43,7 +44,22 @@ object SignerApp {
     }
 
     fun createSignUri(boc: String, publicKey: PublicKeyEd25519): Uri {
-        val url = "tonsign://v1/?network=ton&pk=${publicKey.hex()}&body=$boc"
-        return Uri.parse(url)
+        val cell = boc.cellFromHex()
+        val builder = Uri.parse("tonsign://v1/").buildUpon()
+            .appendQueryParameter("pk", publicKey.hex()).appendQueryParameter("body", boc)
+        if (cell.bits.size == 162) {
+            val slice = cell.beginParse()
+            slice.loadUInt(32)
+            val networkId = slice.loadInt(32).toInt()
+            slice.loadUInt(32)
+            slice.loadUInt(32)
+            val seqno = slice.loadUInt(32).toInt()
+            network.tos.blockchain.ton.contract.TosV5SigningRequest.parse(cell, networkId, seqno)
+            builder.appendQueryParameter("network", networkId.toString())
+                .appendQueryParameter("v", "tosv5r1").appendQueryParameter("seqno", seqno.toString())
+        } else {
+            builder.appendQueryParameter("network", "mainnet")
+        }
+        return builder.build()
     }
 }

@@ -4,6 +4,11 @@ import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.ContentValues
+import android.database.DatabaseErrorHandler
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -16,11 +21,27 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import kotlinx.coroutines.runBlocking
+import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.ton.contract.WalletVersion
+import network.tos.blockchain.ton.extensions.hex
+import network.tos.blockchain.ton.extensions.base64
+import network.tos.blockchain.ton.extensions.cellFromBase64
+import org.ton.block.ExtInMsgInfo
+import org.ton.block.IntMsgInfo
+import org.ton.block.Message
+import org.ton.block.StateInit
+import org.ton.block.Transaction
+import org.ton.cell.buildCell
+import org.ton.tlb.loadTlb
+import org.ton.tlb.storeTlb
+import org.ton.tlb.constructor.AnyTlbConstructor
+import network.tos.extensions.toByteArray
+import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.icu.CurrencyFormatter
 import network.tos.icu.Coins
 import network.tos.qr.QR
 import network.tos.security.Sodium
+import network.tos.security.Security
 import network.tos.wallet.api.API
 import network.tos.wallet.data.account.AccountRepository
 import network.tos.wallet.data.account.Wallet
@@ -31,7 +52,6 @@ import network.tos.wallet.app.helper.DateHelper
 import network.tos.wallet.app.ui.screen.qr.QRScreen
 import network.tos.icu.CurrencyFormatter.withCustomSymbol
 import org.koin.core.context.GlobalContext
-import org.ton.mnemonic.Mnemonic
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,6 +63,11 @@ import java.security.KeyStore
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import java.io.File
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.RGBLuminanceSource
@@ -53,6 +78,341 @@ class V1ProductUiTest {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val device = UiDevice.getInstance(instrumentation)
+
+    @Test
+    fun unavailableNodeCanBeReplacedFromOnboardingBeforeWalletCreation() {
+        val api = GlobalContext.get().get<API>()
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:1")
+        launch()
+        clickText("Create new wallet")
+        assertTrue(waitText("Node unavailable", 30_000))
+        // Android's AlertDialog transforms action text to uppercase. Select its
+        // neutral action by semantic resource ID instead of changing product copy.
+        device.wait(Until.findObject(By.res("android", "button3")), 10_000)!!.click()
+        val input = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000)
+            ?: device.wait(Until.findObject(By.clazz("androidx.appcompat.widget.AppCompatEditText")), 10_000)
+        assertNotNull("Onboarding RPC editor is missing", input)
+        input!!.text = "http://10.0.2.2:18545"
+        device.wait(Until.findObject(By.res("android", "button1")), 10_000)!!.click()
+        clickText("Create new wallet")
+        assertTrue(waitText("Create passcode", 30_000))
+        device.pressBack()
+        device.pressBack()
+        device.pressBack()
+    }
+
+    @Test
+    fun legacyV5WalletRetainsAddressAfterStorageRoundTrip() {
+        val repository = GlobalContext.get().get<AccountRepository>()
+        runBlocking {
+            GlobalContext.get().get<PasscodeManager>().save("1234")
+            val wallet = repository.importWallet(
+                listOf("legacy-v5"), Wallet.NewLabel(listOf("Legacy"), "⭐", 0xfff5b800.toInt()),
+                LEGACY_MNEMONIC.split(" "), listOf(WalletVersion.V5R1), false, listOf(false),
+            ).single()
+            val restored = repository.getWalletById(wallet.id)!!
+            assertEquals("0:8915a85ac195336246b8bb31537969ecfa840d7e86b454d54e027f1ef012675c", restored.accountId)
+            assertEquals(null, restored.networkGlobalId)
+            assertEquals(WalletVersion.V5R1, restored.version)
+            repository.logout()
+            GlobalContext.get().get<PasscodeManager>().reset()
+        }
+    }
+
+    @Test
+    fun activeLegacyV5SignsBroadcastsAndPersistsOnLocalTos() {
+        val api = GlobalContext.get().get<API>()
+        val repository = GlobalContext.get().get<AccountRepository>()
+        val passcode = GlobalContext.get().get<PasscodeManager>()
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+        val wallet = runBlocking {
+            passcode.save("1234")
+            repository.importWallet(listOf("legacy-v5-send"),
+                Wallet.NewLabel(listOf("Legacy V5 Test"), "⭐", 0xfff5b800.toInt()),
+                LEGACY_MNEMONIC.split(" "), listOf(WalletVersion.V5R1), false, listOf(false))
+                .single().also { repository.setSelectedWallet(it.id) }
+        }
+        assertEquals("0:8915a85ac195336246b8bb31537969ecfa840d7e86b454d54e027f1ef012675c", wallet.accountId)
+        assertEquals(WalletVersion.V5R1, wallet.version)
+        assertEquals(null, wallet.networkGlobalId)
+        val observer = api.tos.snapshot(false)
+        val recipient = "0:${"49".repeat(32)}"
+        try {
+            // The root runner funds this PUBLIC legacy fixture on a fresh local
+            // chain before the case. Both deployment and the second active send
+            // must pass through the App UI; no setup BOC can hide either defect.
+            val initial = observer.getAccountState(wallet.accountId)
+            assertTrue("Legacy8915 must be freshly funded and uninitialized", initial.status in setOf("uninit", "uninitialized"))
+            assertTrue("Fund the public legacy fixture with 25 local test TOS before this case",
+                initial.balance >= java.math.BigInteger.valueOf(25_000_000_000L))
+            assertEquals(0, observer.getSeqno(wallet.accountId, false, wallet.contract))
+            var finalComment = ""
+            for (beforeSeqno in 0..1) {
+                api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+                assertEquals(beforeSeqno, observer.getSeqno(wallet.accountId, false, wallet.contract))
+                if (beforeSeqno == 1) {
+                    val info = observer.rpc.callObject("getWalletInformation",
+                        org.json.JSONObject().put("address", wallet.accountId))
+                    assertFalse("This regression requires the real node's unrecognized legacy code", info.getBoolean("wallet"))
+                    assertTrue(info.isNull("seqno"))
+                }
+                val beforeBalance = observer.getAccountState(recipient).balance
+                val comment = "PUBLIC legacy V5 🌌 seq$beforeSeqno"
+                finalComment = comment
+                launch()
+                if (waitText("Enter passcode", 3_000)) enterPin("1234")
+                assertTrue(waitText("TOS", 30_000))
+                clickText("Send")
+                assertTrue(waitResource("address", 10_000))
+                val inputs = device.findObjects(By.res(APP_ID, "input_field"))
+                assertTrue(inputs.size >= 2)
+                inputs.first().text = recipient; inputs.last().text = comment
+                val amount = device.wait(Until.findObject(By.res(APP_ID, "coin_input")), 60_000)
+                assertNotNull(amount); amount!!.text = "0.001"
+                assertTrue("Legacy preview stayed blocked at seqno$beforeSeqno", waitEnabled("button", 30_000))
+                clickResource("button")
+                assertTrue(waitResource("review_title", 30_000))
+                assertTrue(waitTextContaining("0.001 TOS", 10_000))
+                assertTrue(waitTextContaining(comment, 10_000))
+                assertTrue("Legacy fee preview did not resolve", waitEnabled("confirm_button", 60_000))
+                // The already-active send also exercises endpoint replacement
+                // after review: signing and delivery must keep its captured node.
+                if (beforeSeqno == 1) api.setCustomTosRpcEndpoint("http://10.0.2.2:1")
+                clickResource("confirm_button")
+                assertTrue(waitText("Enter passcode", 15_000)); enterPin("1234")
+                val deadline = SystemClock.elapsedRealtime() + 90_000
+                while (SystemClock.elapsedRealtime() < deadline &&
+                    observer.getSeqno(wallet.accountId, false, wallet.contract) <= beforeSeqno) SystemClock.sleep(500)
+                assertEquals(beforeSeqno + 1, observer.getSeqno(wallet.accountId, false, wallet.contract))
+                val state = observer.getAccountState(wallet.accountId)
+                assertTrue("App's first send did not deploy the legacy sender", state.isActive)
+                assertEquals(wallet.contract.getCode().hash(), requireNotNull(state.codeBoc).cellFromBase64().hash())
+                val transactions = observer.getTransactions(wallet.accountId)
+                val delivered = network.tos.wallet.api.tos.TosEventMapper.toNativeTransfers(wallet.accountId, transactions)
+                    .firstOrNull { it.comment == comment && it.recipient == recipient && it.amount == 1_000_000L }
+                assertNotNull("Legacy transaction lost its exact recipient, amount or Unicode comment", delivered)
+                val receipt = transactions.firstOrNull { it.hash == delivered!!.eventId && it.executionSuccessful }
+                assertNotNull("Legacy transaction has no successful exact-value outgoing receipt", receipt)
+                val aux = Transaction.loadTlb(requireNotNull(receipt!!.dataBoc).cellFromBase64()).r1.value
+                val incoming = requireNotNull(aux.inMsg.value).value
+                assertEquals(wallet.contract.address, (incoming.info as ExtInMsgInfo).dest)
+                if (beforeSeqno == 0) {
+                    val init = requireNotNull(incoming.init.value)
+                    val senderInit = init.x ?: requireNotNull(init.y).value
+                    assertEquals(wallet.contract.stateInitRef.hash(), buildCell { storeTlb(StateInit, senderInit) }.hash())
+                } else assertEquals(null, incoming.init.value)
+                val outgoingRef = aux.outMsgs.map { (_, ref) -> ref }.single()
+                val outgoingCell = outgoingRef.toCell(Message.tlbCodec(AnyTlbConstructor))
+                val outgoing = outgoingRef.value
+                val outgoingInfo = outgoing.info as IntMsgInfo
+                val grossAmount = java.math.BigInteger.valueOf(1_000_000L)
+                assertEquals(wallet.contract.address, outgoingInfo.src)
+                assertEquals(org.ton.block.AddrStd.parse(recipient), outgoingInfo.dest)
+                assertEquals(grossAmount, outgoingInfo.value.coins.amount.value)
+                assertFalse("Legacy sender output is bounced", outgoingInfo.bounced)
+                assertTrue(outgoingInfo.value.other.dict.none())
+                assertEquals("Sender initialization leaked into the actual recipient output", null, outgoing.init.value)
+
+                // Sender delivery and recipient credit are separate observations.
+                // Bind the original serialized message in both transactions; a
+                // plain no-code recipient can skip compute and still credit value.
+                val outgoingHash = java.util.Base64.getEncoder().encodeToString(outgoingCell.hash().toByteArray())
+                val receiveDeadline = SystemClock.elapsedRealtime() + 90_000
+                var recipientReceipt: org.json.JSONObject? = null
+                while (SystemClock.elapsedRealtime() < receiveDeadline && recipientReceipt == null) {
+                    val rows = observer.rpc.callArray("getTransactions", org.json.JSONObject()
+                        .put("address", recipient).put("limit", 20))
+                    recipientReceipt = (0 until rows.length()).map { rows.getJSONObject(it) }
+                        .singleOrNull { it.opt("in_msg_hash") == outgoingHash }
+                    if (recipientReceipt == null) SystemClock.sleep(500)
+                }
+                assertNotNull("Recipient has no transaction for the exact sender output", recipientReceipt)
+                val recipientRow = requireNotNull(recipientReceipt)
+                val recipientCell = recipientRow.getString("data").cellFromBase64()
+                assertEquals(recipientRow.getJSONObject("transaction_id").getString("hash"),
+                    java.util.Base64.getEncoder().encodeToString(recipientCell.hash().toByteArray()))
+                val recipientTx = Transaction.loadTlb(recipientCell)
+                assertArrayEquals(ByteArray(32) { 0x49.toByte() }, recipientTx.accountAddr.toByteArray())
+                val recipientAux = recipientTx.r1.value
+                val recipientIncomingRef = requireNotNull(recipientAux.inMsg.value)
+                assertEquals("Recipient received a different serialized message",
+                    outgoingCell.hash(), recipientIncomingRef.toCell(Message.tlbCodec(AnyTlbConstructor)).hash())
+                val recipientIncoming = recipientIncomingRef.value
+                val receivedInfo = recipientIncoming.info as IntMsgInfo
+                assertEquals(wallet.contract.address, receivedInfo.src)
+                assertEquals(org.ton.block.AddrStd.parse(recipient), receivedInfo.dest)
+                assertEquals(grossAmount, receivedInfo.value.coins.amount.value)
+                assertFalse("Recipient incoming message is bounced", receivedInfo.bounced)
+                assertTrue(receivedInfo.value.other.dict.none())
+                assertEquals(null, recipientIncoming.init.value)
+                assertEquals(0, recipientTx.outMsgCnt)
+                assertTrue("Plain recipient emitted another message", recipientAux.outMsgs.none())
+                assertEquals(0, recipientRow.getJSONArray("out_msgs").length())
+                val incomingRow = recipientRow.getJSONObject("in_msg")
+                assertEquals(outgoingHash, incomingRow.get("hash"))
+                assertEquals("internal", incomingRow.get("kind"))
+                assertEquals(wallet.contract.address, org.ton.block.AddrStd.parse(incomingRow.getString("source")))
+                assertEquals(org.ton.block.AddrStd.parse(recipient), org.ton.block.AddrStd.parse(incomingRow.getString("destination")))
+                assertEquals("1000000", incomingRow.get("value"))
+                assertEquals(false, incomingRow.get("bounced"))
+
+                // Account balance is net of this recipient transaction's storage
+                // fee. Require an exact BOC fee, matching the strict raw field;
+                // never accept a tolerance or an unexplained positive shortfall.
+                val feeText = requireNotNull(recipientRow.opt("fee") as? String)
+                assertTrue("Recipient fee is not a canonical nonnegative integer",
+                    feeText.matches(Regex("0|[1-9][0-9]*")))
+                val recipientFee = recipientTx.totalFees.coins.amount.value
+                assertEquals(feeText.toBigInteger(), recipientFee)
+                assertTrue(recipientTx.totalFees.other.dict.none())
+                assertTrue(recipientFee >= java.math.BigInteger.ZERO && recipientFee < grossAmount)
+                val expectedNet = grossAmount - recipientFee
+                val balanceDeadline = SystemClock.elapsedRealtime() + 30_000
+                var recipientDelta = observer.getAccountState(recipient).balance - beforeBalance
+                while (recipientDelta != expectedNet && SystemClock.elapsedRealtime() < balanceDeadline) {
+                    SystemClock.sleep(500)
+                    recipientDelta = observer.getAccountState(recipient).balance - beforeBalance
+                }
+                assertEquals("Recipient net credit must equal exact gross delivery minus verified fee",
+                    expectedNet, recipientDelta)
+            }
+            api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+            launch()
+            if (waitText("Enter passcode", 3_000)) enterPin("1234")
+            val persisted = runBlocking { requireNotNull(repository.getWalletById(wallet.id)) }
+            assertEquals(wallet.accountId, persisted.accountId)
+            assertEquals(wallet.publicKey, persisted.publicKey)
+            assertEquals(WalletVersion.V5R1, persisted.version); assertEquals(null, persisted.networkGlobalId)
+            assertEquals(2, observer.getSeqno(persisted.accountId, false, persisted.contract))
+            assertTrue(waitText("TOS", 30_000)); clickText("History")
+            assertTrue("Legacy signed comment did not round-trip through history", waitTextContaining(finalComment, 30_000))
+            assertNoFatalCrash()
+        } finally {
+            api.resetCustomTosRpcEndpoint()
+            runBlocking { repository.logout(); passcode.reset() }
+        }
+    }
+
+    @Test
+    fun realOldDatabasesMigrateWithoutChangingLegacyWalletOrKey() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = GlobalContext.get().get<AccountRepository>()
+        val oldWallet = runBlocking {
+            GlobalContext.get().get<PasscodeManager>().save("1234")
+            repository.importWallet(listOf("migration-legacy-v5"), Wallet.NewLabel(listOf("Legacy migration"), "⭐", 0),
+                LEGACY_MNEMONIC.split(" "), listOf(WalletVersion.V5R1), false, listOf(true)).single()
+        }
+        val oldKey = runBlocking { repository.getPrivateKey(oldWallet.id)!! }
+        try {
+            for (oldVersion in 1..4) {
+                val directory = File(context.cacheDir, "v$oldVersion-migration-${System.nanoTime()}").apply { mkdirs() }
+                val databaseFile = File(directory, "account")
+                SQLiteDatabase.openOrCreateDatabase(databaseFile, null).use { db ->
+                    val columns = mutableListOf("id TEXT PRIMARY KEY", "public_key BLOB", "type INTEGER", "version TEXT", "label BLOB")
+                    if (oldVersion >= 2) columns += listOf("ledger_device_id TEXT", "ledger_account_index INTEGER")
+                    if (oldVersion >= 3) columns += listOf("keystone_xfp TEXT", "keystone_path TEXT")
+                    if (oldVersion >= 4) columns += "initialized INTEGER"
+                    db.execSQL("CREATE TABLE wallet (${columns.joinToString(",")})")
+                    db.insertOrThrow("wallet", null, ContentValues().apply {
+                        put("id", oldWallet.id); put("public_key", oldWallet.publicKey.key.toByteArray())
+                        put("type", oldWallet.type.id); put("version", 5); put("label", oldWallet.label.toByteArray())
+                        if (oldVersion >= 4) put("initialized", 1)
+                    })
+                    db.version = oldVersion
+                }
+                val isolated = object : ContextWrapper(context) {
+                    override fun getDatabasePath(name: String): File = File(directory, name)
+                    override fun openOrCreateDatabase(name: String, mode: Int, factory: SQLiteDatabase.CursorFactory?): SQLiteDatabase =
+                        SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name), factory)
+                    override fun openOrCreateDatabase(name: String, mode: Int, factory: SQLiteDatabase.CursorFactory?, handler: DatabaseErrorHandler?): SQLiteDatabase =
+                        SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).path, factory, handler)
+                }
+                // The internal production helper is instantiated without widening its public API.
+                val helperClass = Class.forName("network.tos.wallet.data.account.source.DatabaseSource")
+                val helper = helperClass.getConstructor(Context::class.java).newInstance(isolated) as SQLiteOpenHelper
+                try {
+                    val db = helper.writableDatabase // Real SQLiteOpenHelper dispatches onUpgrade(oldVersion, 5).
+                    assertEquals(5, db.version)
+                    db.rawQuery("SELECT version,network_global_id FROM wallet", null).use { cursor ->
+                        assertTrue(cursor.moveToFirst()); assertEquals(5, cursor.getInt(0)); assertTrue(cursor.isNull(1))
+                    }
+                    val migrated = runBlocking {
+                        suspendCoroutine<List<WalletEntity>> { continuation ->
+                            val result = helperClass.getMethod("getAccounts", Continuation::class.java).invoke(helper, continuation)
+                            if (result !== COROUTINE_SUSPENDED) {
+                                @Suppress("UNCHECKED_CAST")
+                                continuation.resume(result as List<WalletEntity>)
+                            }
+                        }.single()
+                    }
+                    assertEquals(oldWallet.id, migrated.id)
+                    assertEquals(WalletVersion.V5R1, migrated.version)
+                    assertEquals(null, migrated.networkGlobalId)
+                    assertEquals("0:8915a85ac195336246b8bb31537969ecfa840d7e86b454d54e027f1ef012675c", migrated.accountId)
+                    assertEquals(oldWallet.publicKey, migrated.publicKey)
+                    assertArrayEquals(oldWallet.contract.getCode().hash().toByteArray(), migrated.contract.getCode().hash().toByteArray())
+                    clearCachedPrivateKey(migrated, removeDerivationMarker = true)
+                    assertArrayEquals(oldKey.key.toByteArray(), runBlocking { repository.getPrivateKey(migrated.id)!!.key.toByteArray() })
+                } finally {
+                    helper.close(); directory.deleteRecursively()
+                }
+            }
+        } finally {
+            runBlocking { repository.logout(); GlobalContext.get().get<PasscodeManager>().reset() }
+        }
+    }
+
+    @Test
+    fun ambiguousPhraseRestoresExplicitTosFormatAndPersistedKey() {
+        restoreAmbiguousPhrase("Restore TOS Wallet", WalletVersion.TOSV5R1,
+            "7c2c64e1dca71c1add3777ebaeb611ad56229995d435ad7bf6ba29909d816ceb",
+            "0:f1bf21eacb1b2725e4792d4eeae23dfd5402e8b060f67d2a72719aec49e5d727")
+    }
+
+    @Test
+    fun ambiguousPhraseRestoresExplicitLegacyFormatAndPersistedKey() {
+        restoreAmbiguousPhrase("Restore Legacy Wallet", WalletVersion.V5R1,
+            "cfe05748559fea1f676ba2e6ef9d2e2bf5767a59fe66584c0fc5fea1cb772166",
+            "0:b3b84ebb0b272a2ef7b9977fb625266651802eabb3a94237275feeec0b9c3842")
+    }
+
+    private fun restoreAmbiguousPhrase(choice: String, version: WalletVersion, publicKey: String, address: String) {
+        launchImport()
+        setPhrase(AMBIGUOUS_MNEMONIC)
+        clickText("Continue")
+        assertTrue(waitText("Choose wallet format", 30_000))
+        assertTrue(hasText("Restore TOS Wallet", ignoreCase = true))
+        assertTrue(hasText("Restore Legacy Wallet", ignoreCase = true))
+        // AlertDialog applies all-caps to its button labels on current Android.
+        val button = if (choice == "Restore TOS Wallet") "button1" else "button3"
+        device.wait(Until.findObject(By.res("android", button)), 10_000)!!.click()
+        assertTrue(waitText("Create passcode", 30_000))
+        enterPin("1234")
+        assertTrue(waitText("Re-enter passcode"))
+        enterPin("1234")
+        assertTrue(waitText("Customize your Wallet", 30_000))
+        clickResource("label_button")
+        assertTrue(waitText("TOS", 60_000))
+        val repository = GlobalContext.get().get<AccountRepository>()
+        runBlocking {
+            val wallet = repository.getWallets().single()
+            assertEquals(version, wallet.version)
+            assertEquals(address, wallet.accountId)
+            assertEquals(publicKey, wallet.publicKey.hex())
+            clearCachedPrivateKey(wallet)
+            assertEquals(publicKey, repository.getPrivateKey(wallet.id)!!.publicKey().hex())
+            assertEquals(if (version == WalletVersion.TOSV5R1) 3 else null, wallet.networkGlobalId)
+            repository.logout()
+            GlobalContext.get().get<PasscodeManager>().reset()
+        }
+    }
+
+    private fun clearCachedPrivateKey(wallet: WalletEntity, removeDerivationMarker: Boolean = false) {
+        val prefs = Security.pref(instrumentation.targetContext, "_network_tos_vault_master_key_", "vault", requireUnlockedDevice = true)
+        val editor = prefs.edit().remove("private_key_${wallet.publicKey.hex()}")
+        if (removeDerivationMarker) editor.remove("native_tos_${wallet.publicKey.hex()}")
+        assertTrue(editor.commit())
+    }
 
     @Test
     fun cleanLaunchUsesTosBrandAndOnlyV1EntryPoints() {
@@ -174,7 +534,7 @@ class V1ProductUiTest {
                 ids = listOf("v1-acceptance-wallet"),
                 label = Wallet.NewLabel(listOf("V1 Test Wallet"), "⭐", 0xfff5b800.toInt()),
                 mnemonic = FIXTURE_MNEMONIC.split(" "),
-                versions = listOf(WalletVersion.V5R1),
+                versions = listOf(WalletVersion.TOSV5R1),
                 testnet = false,
                 initialized = listOf(true),
             ).single().also {
@@ -186,6 +546,7 @@ class V1ProductUiTest {
         if (waitText("Enter passcode", 3_000)) enterPin("1234")
         assertFalse(waitText("Create new wallet", 2_000))
         assertTrue("Native TOS home did not render", waitText("TOS", 30_000) || hasTextContaining("TOS"))
+        assertEquals(3, wallet.networkGlobalId)
         assertEquals(FIXTURE_RAW_ADDRESS, wallet.accountId)
         assertEquals(FIXTURE_ADDRESS, wallet.address)
         assertNoReachableDeferredCopy()
@@ -204,7 +565,7 @@ class V1ProductUiTest {
         assertFalse(waitText("Create new wallet", 2_000))
         assertTrue(waitText("TOS", 30_000))
         assertTrue("UI did not render exact local-node balance $expectedBalance", waitTextContaining(expectedBalance, 30_000))
-        assertTrue(waitTextContaining("UQCJ", 10_000))
+        assertTrue(waitTextContaining(FIXTURE_ADDRESS.take(4), 10_000))
         assertNoReachableDeferredCopy()
         assertNoFatalCrash()
     }
@@ -240,7 +601,7 @@ class V1ProductUiTest {
         repeat(5) {
             val refresh = device.wait(Until.findObject(By.res(APP_ID, "refresh")), 10_000)
             assertNotNull(refresh)
-            refresh.swipe(androidx.test.uiautomator.Direction.DOWN, 0.5f)
+            pullToRefresh(refresh)
             SystemClock.sleep(500)
         }
         repeat(3) {
@@ -312,7 +673,7 @@ class V1ProductUiTest {
         assertTrue("Local transfer did not change the node balance", after > before)
         val refresh = device.wait(Until.findObject(By.res(APP_ID, "refresh")), 10_000)
         assertNotNull(refresh)
-        refresh.swipe(androidx.test.uiautomator.Direction.DOWN, 0.8f)
+        pullToRefresh(refresh)
         assertTrue(
             "Pull-to-refresh did not render the new local-node balance",
             waitTextContaining(CurrencyFormatter.format(value = after).toString(), 30_000),
@@ -347,7 +708,29 @@ class V1ProductUiTest {
         assertTrue(waitText(FIXTURE_ADDRESS))
         val qrPayload = "tos://transfer/$FIXTURE_ADDRESS"
         assertEquals(qrPayload, QRScreen(currentWallet()).getQrContent(FIXTURE_ADDRESS, TokenEntity.TON))
-        assertEquals(qrPayload, decodeQr(QR.Builder(qrPayload).setSize(512).build()))
+        val qrBitmap = QR.Builder(qrPayload).setSize(512).build()
+        assertEquals(qrPayload, decodeQr(qrBitmap))
+        val scanBitmap = qrWithQuietZone(qrBitmap)
+        File(instrumentation.targetContext.cacheDir, "native-receive-qr.png").outputStream().use {
+            assertTrue(scanBitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        val scanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient(
+            com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                .build(),
+        )
+        try {
+            val decoded = com.google.android.gms.tasks.Tasks.await(
+                scanner.process(com.google.mlkit.vision.common.InputImage.fromBitmap(scanBitmap, 0)),
+                30, java.util.concurrent.TimeUnit.SECONDS,
+            )
+            assertEquals("Production QR scanner did not decode the native URI", qrPayload, decoded.single().rawValue)
+        } finally {
+            scanner.close()
+        }
+        val blank = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        Canvas(blank).drawColor(Color.WHITE)
+        assertTrue("Blank image decoded as a QR code", runCatching { decodeQr(blank) }.isFailure)
         assertEquals(FIXTURE_ADDRESS, QRScreen.shareIntent(FIXTURE_ADDRESS).getStringExtra(Intent.EXTRA_TEXT))
 
         clickText("Copy")
@@ -474,7 +857,8 @@ class V1ProductUiTest {
     fun nativeTransferSignsBroadcastsAndRoundTripsUnicodeComment() {
         val api = GlobalContext.get().get<API>()
         val wallet = currentWallet()
-        val beforeSeqno = api.getAccountSeqno(wallet.accountId, wallet.testnet)
+        val observer = api.tos.snapshot(wallet.testnet)
+        val beforeSeqno = observer.getSeqno(wallet.accountId, wallet.testnet)
 
         launch()
         clickText("Send")
@@ -492,7 +876,7 @@ class V1ProductUiTest {
         assertTrue("Confirmation did not open", waitResource("review_title", 30_000))
         assertTrue("Confirmation lost exact amount", waitTextContaining("0.01 TOS", 10_000))
         assertTrue("Confirmation lost exact Unicode comment", waitTextContaining(UNICODE_COMMENT, 10_000))
-        assertTrue("Confirmation lost exact normalized recipient", waitText(RECIPIENT_ADDRESS, 10_000))
+        assertTrue("Confirmation lost exact normalized recipient", waitText(NORMALIZED_RECIPIENT_ADDRESS, 10_000))
         val fee = device.wait(Until.findObject(By.res(APP_ID, "review_fee")), 30_000)
         assertNotNull("Confirmation fee is missing", fee)
         assertTrue("Confirmation fee was not resolved", waitEnabled("confirm_button", 60_000))
@@ -501,15 +885,21 @@ class V1ProductUiTest {
         val feeText = descendantText(fee)
         assertTrue("Confirmation fee is empty or unknown: $feeText", feeText.any(Char::isDigit) && !feeText.contains("unknown", true))
 
-        clickResource("confirm_button")
-        assertTrue("Signing did not request passcode", waitText("Enter passcode", 15_000))
-        enterPin("1234")
-
         val deadline = SystemClock.elapsedRealtime() + 90_000
         var afterSeqno = beforeSeqno
-        while (SystemClock.elapsedRealtime() < deadline && afterSeqno <= beforeSeqno) {
-            SystemClock.sleep(1_000)
-            afterSeqno = api.getAccountSeqno(wallet.accountId, wallet.testnet)
+        // A settings edit while confirmation is open must not replace the node
+        // used for sequence/fee with another endpoint during signing/broadcast.
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:1")
+        try {
+            clickResource("confirm_button")
+            assertTrue("Signing did not request passcode", waitText("Enter passcode", 15_000))
+            enterPin("1234")
+            while (SystemClock.elapsedRealtime() < deadline && afterSeqno <= beforeSeqno) {
+                SystemClock.sleep(1_000)
+                afterSeqno = observer.getSeqno(wallet.accountId, wallet.testnet)
+            }
+        } finally {
+            api.resetCustomTosRpcEndpoint()
         }
         assertEquals("Exactly one native transaction must be broadcast", beforeSeqno + 1, afterSeqno)
 
@@ -597,6 +987,83 @@ class V1ProductUiTest {
             .withCustomSymbol(instrumentation.targetContext)
         assertTrue("Details lost the exact node fee: $expectedFee", waitTextContaining(expectedFee.toString(), 10_000))
         assertNoReachableDeferredCopy()
+        assertNoFatalCrash()
+    }
+
+    @Test
+    fun competingDeviceAtSameSequenceCannotProduceFalseSuccessOrReplay() {
+        val api = GlobalContext.get().get<API>()
+        val repository = GlobalContext.get().get<AccountRepository>()
+        val wallet = currentWallet()
+        val originalNode = api.tos.snapshot(wallet.testnet)
+        val initialSeqno = originalNode.getSeqno(wallet.accountId, wallet.testnet)
+        val privateKey = runBlocking { requireNotNull(repository.getPrivateKey(wallet.id)) }
+        fun payment(comment: String, seqno: Int = initialSeqno): org.ton.cell.Cell {
+            val transfer = org.ton.contract.wallet.WalletTransferBuilder().apply {
+                destination = org.ton.block.AddrStd.parse("0:${"22".repeat(32)}")
+                coins = org.ton.block.Coins.ofNano(2L)
+                sendMode = 3
+                messageData = org.ton.contract.wallet.MessageData.Raw(
+                    requireNotNull(network.tos.blockchain.ton.extensions.asCellRef(comment)), null)
+            }.build()
+            val unsigned = wallet.contract.createTransferUnsignedBody(
+                System.currentTimeMillis() / 1000 + 600, seqno, false, null, transfer)
+            val signed = wallet.contract.signedBody(org.ton.bitstring.BitString(privateKey.sign(unsigned.hash().toByteArray())), unsigned)
+            return wallet.contract.createTransferMessageCell(wallet.contract.address, seqno, signed)
+        }
+        val thisDevice = payment("PUBLIC TEST this-device-$initialSeqno")
+        val otherDevice = payment("PUBLIC TEST competing-device-$initialSeqno")
+        assertFalse(thisDevice.hash() == otherDevice.hash())
+        fun scenario(replacement: String?) {
+            val connection = URL("http://10.0.2.2:18746/scenario").openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"; connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            val payload = org.json.JSONObject().apply { replacement?.let { put("replacement_boc", it) } }
+            connection.outputStream.use { it.write(payload.toString().toByteArray()) }
+            assertEquals(200, connection.responseCode)
+            connection.inputStream.close(); connection.disconnect()
+        }
+        scenario(otherDevice.base64())
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:18746")
+        try {
+            val state = runBlocking {
+                GlobalContext.get().get<network.tos.wallet.app.manager.tx.TransactionManager>().send(
+                    wallet, thisDevice, false, "PUBLIC TEST", 0.0, api.tos.snapshot(wallet.testnet))
+            }
+            assertEquals(network.tos.wallet.api.SendBlockchainState.UNKNOWN_ERROR, state)
+            assertEquals(initialSeqno + 1, originalNode.getSeqno(wallet.accountId, wallet.testnet))
+            assertEquals(network.tos.wallet.api.tos.TosSendReconciliation.AMBIGUOUS,
+                originalNode.reconcileSend(wallet.accountId, thisDevice.base64(), initialSeqno))
+            assertEquals(network.tos.wallet.api.tos.TosSendReconciliation.CONFIRMED,
+                originalNode.reconcileSend(wallet.accountId, otherDevice.base64(), initialSeqno))
+            val stats = URL("http://10.0.2.2:18746/stats").readText()
+            assertTrue("Competing nonce triggered an automatic replay: $stats",
+                stats.contains("\"send_calls\": 1") && stats.contains("\"dropped\": 1"))
+        } finally { api.resetCustomTosRpcEndpoint(); scenario(null) }
+
+        // Another device can win while this device is waiting for its passcode,
+        // before TransactionManager has even read the current account sequence.
+        val signedSeqno = initialSeqno + 1
+        val stale = payment("PUBLIC TEST signed-before-passcode-$signedSeqno", signedSeqno)
+        val accepted = payment("PUBLIC TEST accepted-during-passcode-$signedSeqno", signedSeqno)
+        originalNode.sendBocForNetwork(accepted.base64(), requireNotNull(wallet.networkGlobalId), wallet.testnet)
+        val deadline = SystemClock.elapsedRealtime() + 30_000
+        while (SystemClock.elapsedRealtime() < deadline &&
+            originalNode.getSeqno(wallet.accountId, wallet.testnet) <= signedSeqno) SystemClock.sleep(500)
+        assertEquals(signedSeqno + 1, originalNode.getSeqno(wallet.accountId, wallet.testnet))
+        scenario(null)
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:18746")
+        try {
+            val state = runBlocking {
+                GlobalContext.get().get<network.tos.wallet.app.manager.tx.TransactionManager>().send(
+                    wallet, stale, false, "PUBLIC TEST", 0.0, api.tos.snapshot(wallet.testnet))
+            }
+            assertEquals(network.tos.wallet.api.SendBlockchainState.UNKNOWN_ERROR, state)
+            val stats = URL("http://10.0.2.2:18746/stats").readText()
+            assertTrue("A preexisting nonce advance broadcast the stale BOC: $stats",
+                stats.contains("\"send_calls\": 0") && stats.contains("\"dropped\": 0"))
+            assertEquals(signedSeqno + 1, originalNode.getSeqno(wallet.accountId, wallet.testnet))
+        } finally { api.resetCustomTosRpcEndpoint(); scenario(null) }
         assertNoFatalCrash()
     }
 
@@ -695,6 +1162,7 @@ class V1ProductUiTest {
 
     @Test
     fun recoveryPhraseRequiresCorrectPasscode() {
+        val fixtureWords = FIXTURE_MNEMONIC.split(" ")
         launch()
         clickResource("settings")
         assertTrue(waitText("Settings"))
@@ -708,15 +1176,15 @@ class V1ProductUiTest {
         assertTrue(waitText("Attention", 10_000))
         clickResource("continue_button")
         assertTrue(waitText("Enter passcode", 10_000))
-        assertFalse(hasText("mansion"))
+        assertFalse(hasText(fixtureWords.first()))
 
         enterPin("9999")
         SystemClock.sleep(1_500)
         assertTrue("Wrong passcode dismissed the authentication gate", hasText("Enter passcode"))
-        assertFalse("Wrong passcode exposed the recovery phrase", hasText("mansion"))
+        assertFalse("Wrong passcode exposed the recovery phrase", hasText(fixtureWords.first()))
         enterPin("1234")
         assertTrue(waitText("Your recovery phrase", 15_000))
-        for (word in listOf("mansion", "chef", "voice")) {
+        for (word in listOf(fixtureWords.first(), fixtureWords[1], fixtureWords.last())) {
             assertTrue("Authenticated phrase is missing word: $word", waitTextContaining(word, 5_000))
         }
         assertSecureWalletWindow()
@@ -772,8 +1240,28 @@ class V1ProductUiTest {
 
     @Test
     fun retainedWalletControlsExposeAccessibleNames() {
+        fun clickSettled(selector: androidx.test.uiautomator.BySelector) {
+            val deadline = SystemClock.elapsedRealtime() + 10_000
+            while (SystemClock.elapsedRealtime() < deadline) {
+                val target = device.findObject(selector)
+                if (target != null) {
+                    try {
+                        target.click()
+                        return
+                    } catch (_: androidx.test.uiautomator.StaleObjectException) {
+                        // A rebuilt view can replace a node between lookup and click.
+                    }
+                }
+                SystemClock.sleep(100)
+            }
+            org.junit.Assert.fail("No settled clickable node for $selector")
+        }
+
         fun check(screen: String) {
             device.waitForIdle()
+            assertTrue("No controls became available on $screen", device.wait(
+                Until.hasObject(By.clickable(true).pkg(APP_ID)), 10_000,
+            ))
             val controls = device.findObjects(By.clickable(true).pkg(APP_ID))
             val namedBounds = device.findObjects(By.pkg(APP_ID)).mapNotNull { node ->
                 runCatching {
@@ -797,17 +1285,25 @@ class V1ProductUiTest {
             assertTrue("Unnamed clickable controls on $screen: ${unnamed.joinToString()}", unnamed.isEmpty())
         }
 
-        launch(); check("wallet")
-        clickText("Send"); assertTrue(waitText("Address or name")); check("send")
-        launch(); clickText("Receive"); assertTrue(waitText("Receive TOS")); check("receive")
-        launch(); clickText("History"); assertTrue(waitText("Today", 30_000)); check("history")
-        launch(); clickResource("settings"); assertTrue(waitText("Settings")); check("settings")
+        launch(); assertTrue(waitResource("settings", 30_000)); check("wallet")
+        clickSettled(By.text("Send")); assertTrue(waitText("Address or name")); check("send")
+        launch(); clickSettled(By.text("Receive")); assertTrue(waitText("Receive TOS")); check("receive")
+        launch(); clickSettled(By.text("History")); assertTrue(waitText("Today", 30_000)); check("history")
+        launch(); clickSettled(By.res(APP_ID, "settings")); assertTrue(waitText("Settings")); check("settings")
         for (entry in listOf("Backup", "Security", "Currency", "RPC Node", "Language", "Appearance", "Legal")) {
             launch()
             assertTrue("Wallet did not settle before opening $entry", waitResource("settings", 30_000))
-            clickResource("settings")
+            clickSettled(By.res(APP_ID, "settings"))
             assertTrue("Settings did not open before $entry", waitText("Settings", 30_000))
-            clickText(entry)
+            clickSettled(By.text(entry))
+            if (entry == "RPC Node") {
+                assertTrue("RPC node editor did not open", device.wait(
+                    Until.hasObject(By.clazz("android.widget.EditText").pkg(APP_ID)), 10_000,
+                ))
+                assertTrue("RPC node Save button is missing", device.wait(
+                    Until.hasObject(By.res("android", "button1").pkg(APP_ID)), 10_000,
+                ))
+            }
             SystemClock.sleep(500)
             check(entry)
         }
@@ -880,12 +1376,12 @@ class V1ProductUiTest {
         val passcodeManager = GlobalContext.get().get<PasscodeManager>()
         val wallet = runBlocking {
             if (!passcodeManager.hasPinCode()) passcodeManager.save("1234")
-            val mnemonic = Mnemonic.generate()
+            val mnemonic = TosV1Mnemonic.generate()
             accountRepository.importWallet(
                 ids = listOf("v1-zero-wallet"),
                 label = Wallet.NewLabel(listOf("Zero Wallet"), "✨", 0xfff5b800.toInt()),
                 mnemonic = mnemonic,
-                versions = listOf(WalletVersion.V5R1),
+                versions = listOf(WalletVersion.TOSV5R1),
                 testnet = false,
                 initialized = listOf(false),
             ).single().also { accountRepository.setSelectedWallet(it.id) }
@@ -908,6 +1404,123 @@ class V1ProductUiTest {
         }
         launch()
         assertTrue(waitText("Create new wallet", 15_000))
+    }
+
+    @Test fun pqWalletUiCreatesDeploysSignsAndDeletesBothProfilesOnLocalTos() {
+        val api = GlobalContext.get().get<API>()
+        val accounts = GlobalContext.get().get<AccountRepository>()
+        val pins = GlobalContext.get().get<PasscodeManager>()
+        api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+        val fee = runBlocking {
+            pins.save("1234")
+            accounts.importWallet(listOf("pq-ui-fee-wallet"), Wallet.NewLabel(listOf("PQ UI Fee Wallet"), "⭐", 0xfff5b800.toInt()),
+                FIXTURE_MNEMONIC.split(" "), listOf(WalletVersion.TOSV5R1), false, listOf(true)).single().also { accounts.setSelectedWallet(it.id) }
+        }
+        val control = java.net.URL("http://10.0.2.2:18745/transfer").openConnection() as java.net.HttpURLConnection
+        control.requestMethod="POST";control.doOutput=true;control.readTimeout=180_000
+        control.setRequestProperty("Content-Type", "application/json")
+        control.outputStream.use { it.write(org.json.JSONObject().put("address", fee.accountId).put("amount", 150).toString().toByteArray()) }
+        assertTrue(org.json.JSONObject(control.inputStream.bufferedReader().use { it.readText() }).optBoolean("ok", true));control.disconnect()
+        val source=api.tos.snapshot(false)
+        val pq=network.tos.wallet.data.account.pq.PqWalletRepository(instrumentation.targetContext) { true }
+        val original=pq.list().map { it.id }.toSet()
+        fun action(description: String) {
+            var obj=device.findObject(By.desc(description));var tries=0
+            while(obj==null && tries++<8) {
+                device.swipe(device.displayWidth/2,device.displayHeight*4/5,device.displayWidth/2,device.displayHeight/3,20)
+                obj=device.findObject(By.desc(description))
+            }
+            assertNotNull("Missing PQ action $description",obj);obj!!.click()
+        }
+        fun form(vararg values: String) {
+            values.forEachIndexed { i,v -> val f=device.wait(Until.findObject(By.desc("pq.input.$i")),15_000);assertNotNull(f);f!!.text=v }
+            val ok=device.wait(Until.findObject(By.res("android", "button1")),10_000);assertNotNull(ok);ok!!.click()
+        }
+        fun positive() { val ok=device.wait(Until.findObject(By.res("android", "button1")),10_000);assertNotNull(ok);ok!!.click() }
+        fun authenticate() { assertTrue(waitText("Enter passcode",20_000));enterPin("1234") }
+        fun raw(a: org.ton.block.AddrStd)="${a.workchainId}:${a.address.toByteArray().joinToString("") { "%02x".format(it) }}"
+        fun active(address: String): network.tos.wallet.api.tos.TosAccountState {
+            repeat(60) { val s=source.getAccountState(address);if(s.isActive)return s;Thread.sleep(1000) }
+            throw AssertionError("PQ deployment did not confirm")
+        }
+        try {
+            launch();if(waitText("Enter passcode",3000))enterPin("1234")
+            assertTrue(waitText("TOS",30_000));clickResource("settings");assertTrue(waitText("Settings",15_000))
+            clickText("PQ Wallets");assertTrue(waitText("Create PQ wallet",15_000))
+            for((i,title) in listOf("ML-DSA-44","Falcon-512 padded").withIndex()) {
+                val name="PQ UI QA ${i+1}";action("pq.create");clickText(title);form(name);authenticate()
+                var r=pq.list().firstOrNull { it.name==name };val deadline=System.currentTimeMillis()+60_000
+                while(r==null && System.currentTimeMillis()<deadline) { Thread.sleep(500);r=pq.list().firstOrNull { it.name==name } }
+                assertNotNull("PQ creation failed",r);val record=r!!;val wallet=record.descriptor()
+                val feeSnapshot=network.tos.wallet.api.tos.TosPqFeeSnapshot.read(source,
+                    fee.contract as network.tos.blockchain.ton.contract.TosWalletV5R1Contract,19,false)
+                assertTrue("Fee wallet has insufficient balance",feeSnapshot.balance>java.math.BigInteger.valueOf(25_000_000_000L))
+                val relay = network.tos.blockchain.ton.contract.TosPqRelay(wallet)
+                val estimateUnsigned = relay.feeSigningMessage(relay.deployment(5_000_000_000L,20_000_000_000L),record.network,feeSnapshot.seqno,feeSnapshot.chainTime,feeSnapshot.chainTime+600)
+                val estimateBody = org.ton.cell.buildCell { storeSlice(estimateUnsigned.beginParse());storeBytes(ByteArray(64)) }
+                val payer = fee.contract as network.tos.blockchain.ton.contract.TosWalletV5R1Contract
+                java.io.File(instrumentation.targetContext.filesDir, "pq-deployment-estimate.json").writeText(org.json.JSONObject()
+                    .put("address",raw(payer.address)).put("body",estimateBody.base64()).put("init_code",payer.getCode().base64()).put("init_data",payer.getStateCell().base64()).toString())
+                try { source.estimateFee(raw(payer.address),estimateBody.base64(),if(feeSnapshot.seqno==0)payer.getCode().base64() else null,
+                    if(feeSnapshot.seqno==0)payer.getStateCell().base64() else null) }
+                catch(error: network.tos.network.OkHttpError) { throw AssertionError("PUBLIC deployment fee estimate: ${error.statusCode}: ${error.body}") }
+                action("pq.wallet.${record.id}");action("pq.deploy");form("5","20")
+                assertTrue("Deployment confirmation missing",device.wait(Until.hasObject(By.textContains("Fee wallet pays")),10_000))
+                positive();assertTrue(waitText("Review network fees",20_000));positive();authenticate()
+                active(raw(wallet.moduleAddress));val deployed=active(raw(wallet.address))
+                assertEquals(0uL,wallet.authCounters(deployed.codeBoc!!.cellFromBase64(),deployed.dataBoc!!.cellFromBase64()).second)
+                val recipient="0:"+(if(i==0)"6a" else "6b").repeat(32);val before=source.getAccountState(recipient).balance
+                action("pq.send");form(recipient,"0.01","PUBLIC PQ UI 🌌 ${i+1}","2")
+                assertTrue(device.wait(Until.hasObject(By.text("Confirm PQ transfer")),10_000));positive();authenticate();assertTrue(waitText("Review network fees",20_000));positive();authenticate()
+                var moved=java.math.BigInteger.ZERO;val paidDeadline=System.currentTimeMillis()+60_000
+                while(moved.signum()==0 && System.currentTimeMillis()<paidDeadline) { Thread.sleep(1000);moved=source.getAccountState(recipient).balance-before }
+                val gross = java.math.BigInteger.valueOf(10_000_000)
+                val outgoingRef = source.getTransactions(raw(wallet.address)).filter { it.executionSuccessful }
+                    .flatMap { tx -> Transaction.loadTlb(requireNotNull(tx.dataBoc).cellFromBase64()).r1.value.outMsgs.map { (_, ref) -> ref } }
+                    .single { ref -> (ref.value.info as? IntMsgInfo)?.let { info ->
+                        info.dest == org.ton.block.AddrStd.parse(recipient) && info.value.coins.amount.value == gross && !info.bounced
+                    } == true }
+                val outgoingCell = outgoingRef.toCell(Message.tlbCodec(AnyTlbConstructor))
+                val outgoingHash = java.util.Base64.getEncoder().encodeToString(outgoingCell.hash().toByteArray())
+                val recipientRows = source.rpc.callArray("getTransactions",org.json.JSONObject().put("address",recipient).put("limit",64))
+                val recipientRow = (0 until recipientRows.length()).map { recipientRows.getJSONObject(it) }.single { it.opt("in_msg_hash") == outgoingHash }
+                val recipientTx = Transaction.loadTlb(recipientRow.getString("data").cellFromBase64())
+                val incomingRef = requireNotNull(recipientTx.r1.value.inMsg.value)
+                assertEquals(outgoingCell.hash(),incomingRef.toCell(Message.tlbCodec(AnyTlbConstructor)).hash())
+                assertTrue(recipientTx.r1.value.outMsgs.none())
+                val recipientFee = recipientTx.totalFees.coins.amount.value
+                assertEquals(recipientRow.getString("fee").toBigInteger(),recipientFee)
+                assertTrue(recipientTx.totalFees.other.dict.none())
+                assertTrue(recipientFee >= java.math.BigInteger.ZERO && recipientFee < gross)
+                assertEquals("Exact incoming credit must subtract only its BOC-bound fee",gross-recipientFee,moved)
+                val state=source.getAccountState(raw(wallet.address))
+                assertEquals(1uL,wallet.authCounters(state.codeBoc!!.cellFromBase64(),state.dataBoc!!.cellFromBase64()).second)
+                assertTrue(source.getTransactions(raw(wallet.address)).any { it.executionSuccessful })
+                action("pq.history");assertTrue(device.wait(Until.hasObject(By.textContains("Balance:")),15_000))
+                assertTrue("Exact recipient receipt was not reconciled",device.wait(Until.hasObject(By.textContains("Submission: DELIVERED")),15_000))
+                action("pq.delete");positive();authenticate()
+                val deleted=System.currentTimeMillis()+30_000
+                while(pq.list().any { it.id==record.id } && System.currentTimeMillis()<deleted)Thread.sleep(500)
+                assertFalse(pq.list().any { it.id==record.id });assertTrue(waitText("Create PQ wallet",15_000))
+            }
+            assertNoFatalCrash()
+        } catch (failure: Throwable) {
+            device.dumpWindowHierarchy(java.io.File(instrumentation.targetContext.filesDir, "pq-ui-failure.xml"))
+            throw failure
+        } finally {
+            runBlocking { for(r in pq.list().filter { it.id !in original })pq.delete(r.id);accounts.logout();pins.reset() }
+        }
+    }
+
+    private fun pullToRefresh(refresh: androidx.test.uiautomator.UiObject2) {
+        val bounds = refresh.visibleBounds
+        // The full-screen refresh container extends behind the overlay header.
+        // Start in the exposed content, as a user would, on every screen size.
+        val headerBottom = device.findObject(By.res(APP_ID, "header"))?.visibleBounds?.bottom ?: bounds.top
+        val start = maxOf(bounds.top + bounds.height() / 4, headerBottom + 16)
+        val end = bounds.bottom - bounds.height() / 8
+        assertTrue("No exposed refresh gesture area", end > start)
+        assertTrue(device.swipe(bounds.centerX(), start, bounds.centerX(), end, 45))
     }
 
     private fun launchImport() {
@@ -973,7 +1586,7 @@ class V1ProductUiTest {
         target.click()
     }
 
-    private fun decodeQr(bitmap: Bitmap): String {
+    private fun qrWithQuietZone(bitmap: Bitmap): Bitmap {
         val readable = if (bitmap.config == Bitmap.Config.HARDWARE) {
             bitmap.copy(Bitmap.Config.ARGB_8888, false)
         } else {
@@ -989,10 +1602,19 @@ class V1ProductUiTest {
             drawColor(Color.WHITE)
             drawBitmap(readable, quietZone.toFloat(), quietZone.toFloat(), null)
         }
+        return padded
+    }
+
+    private fun decodeQr(bitmap: Bitmap): String {
+        val padded = qrWithQuietZone(bitmap)
         val pixels = IntArray(padded.width * padded.height)
         padded.getPixels(pixels, 0, padded.width, 0, 0, padded.width, padded.height)
         val source = RGBLuminanceSource(padded.width, padded.height, pixels)
-        return MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source))).text
+        // This helper verifies a generated axis-aligned symbol. Camera detection
+        // is exercised separately through the production MLKit scanner above.
+        return MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source)), mapOf(
+            com.google.zxing.DecodeHintType.PURE_BARCODE to true,
+        )).text
     }
 
     private fun waitText(text: String, timeout: Long = 10_000): Boolean =
@@ -1061,15 +1683,17 @@ class V1ProductUiTest {
     }
 
     companion object {
+        private const val FIXTURE_MNEMONIC = "twice half glass steak version only friend bone addict during joke offer fog punch panel true regular letter topple often afraid hint ready exhibit"
         private const val APP_ID = "network.tos.wallet"
         private const val ROOT_ACTIVITY = "network.tos.wallet.app.ui.screen.root.RootActivity"
-        private const val FIXTURE_ADDRESS = "UQCJFahawZUzYka4uzFTeWns-oQNfoa0VNVOAn8e8BJnXPZe"
-        private const val FIXTURE_RAW_ADDRESS = "0:8915a85ac195336246b8bb31537969ecfa840d7e86b454d54e027f1ef012675c"
+        private const val FIXTURE_ADDRESS = "UQBtGJyHNQkw8Fq5PlZeUi4sUtyp1N71RgYGxssqkBNVWlJ3"
+        private const val FIXTURE_RAW_ADDRESS = "0:6d189c87350930f05ab93e565e522e2c52dca9d4def5460606c6cb2a9013555a"
         private const val SECOND_LOCAL_RPC = "http://10.0.2.2:18546"
-        private const val RECIPIENT_ADDRESS = "Ef8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAU"
-        private const val NORMALIZED_RECIPIENT_ADDRESS = "Uf8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG3R"
+        private const val RECIPIENT_ADDRESS = "EQAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIp3C"
+        private const val NORMALIZED_RECIPIENT_ADDRESS = "UQAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIsAH"
         private const val UNICODE_COMMENT = "TOS V1 测试 🌌"
         private const val RETRY_COMMENT = "TOS retry-once"
-        private const val FIXTURE_MNEMONIC = "mansion chef affair ancient announce police snap machine vanish liberty peace tennis effort recall law limit mosquito tornado toward advance vibrant bachelor auction voice"
+        private const val LEGACY_MNEMONIC = "mansion chef affair ancient announce police snap machine vanish liberty peace tennis effort recall law limit mosquito tornado toward advance vibrant bachelor auction voice"
+        private const val AMBIGUOUS_MNEMONIC = "coffee glad rail dry pink piano allow announce system shrug term return vague crater silly state quick glow wrestle wink tail derive device recall"
     }
 }

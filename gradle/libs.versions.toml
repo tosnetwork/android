@@ -15,7 +15,7 @@ compose-multiplatform = "1.10.0-alpha02"
 compose-paging = "3.3.6"
 
 # CameraX
-cameraX = "1.4.2"
+cameraX = "1.6.2"
 # Coil
 coil = "3.3.0"
 # Room
@@ -174,7 +174,6 @@ firebase-performance = { id = "com.google.firebase.firebase-perf", version = "2.
 
 room = { id = "androidx.room", version.ref = "room" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-
 
 
 

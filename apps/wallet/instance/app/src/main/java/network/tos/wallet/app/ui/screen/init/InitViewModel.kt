@@ -13,7 +13,7 @@ import network.tos.blockchain.ton.EntropyHelper
 import network.tos.blockchain.ton.TonMnemonic
 import network.tos.blockchain.ton.TonNetwork
 import network.tos.blockchain.ton.contract.BaseWalletContract
-import network.tos.blockchain.ton.contract.WalletV5R1Contract
+import network.tos.blockchain.ton.contract.TosWalletV5R1Contract
 import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.blockchain.ton.extensions.EmptyPrivateKeyEd25519
 import network.tos.blockchain.ton.extensions.toAccountId
@@ -269,40 +269,45 @@ class InitViewModel(
         }
     }
 
-    suspend fun setMnemonic(words: List<String>): Boolean {
+    suspend fun setMnemonic(words: List<String>, profileOverride: TosV1Mnemonic.Profile? = null): Boolean {
         val normalized = TosV1Mnemonic.normalize(words)
-        if (TosV1Mnemonic.isValid(normalized) && resolveWallets(normalized)) {
+        val profile = profileOverride ?: TosV1Mnemonic.recoveryProfile(normalized) ?: return false
+        if (resolveWallets(normalized, profile)) {
+            savedState.mnemonicProfile = profile
             savedState.mnemonic = normalized
             return true
         }
         return false
     }
 
-    private suspend fun resolveWallets(mnemonic: List<String>): Boolean =
+    private suspend fun resolveWallets(mnemonic: List<String>, profile: TosV1Mnemonic.Profile): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                val privateKey = MnemonicHelper.privateKey(mnemonic)
+                val privateKey = TosV1Mnemonic.recoveryPrivateKey(mnemonic, profile)
                 val publicKey = privateKey.publicKey()
                 setPublicKey(publicKey)
-                resolveWallets(InitModelState.PublicKey(publicKey = publicKey))
+                resolveWallets(InitModelState.PublicKey(publicKey = publicKey), nativeTos = profile == TosV1Mnemonic.Profile.TOS)
                 true
             } catch (e: Throwable) {
                 false
             }
         }
 
-    private suspend fun resolveWallets(publicKey: InitModelState.PublicKey) =
+    private suspend fun resolveWallets(publicKey: InitModelState.PublicKey, nativeTos: Boolean = true) =
         withContext(Dispatchers.IO) {
             val accounts = if (publicKey.new) {
                 mutableListOf()
             } else {
                 api.resolvePublicKey(publicKey.publicKey, testnet).filter {
-                    it.walletVersion != WalletVersion.UNKNOWN
+                    it.walletVersion != WalletVersion.UNKNOWN &&
+                        (if (nativeTos) it.walletVersion == WalletVersion.TOSV5R1 else it.walletVersion != WalletVersion.TOSV5R1)
                 }.sortedByDescending { it.walletVersion.index }.toMutableList()
             }
 
-            if (accounts.count { it.walletVersion == WalletVersion.V5R1 } == 0) {
-                val contract = WalletV5R1Contract(publicKey.publicKey, tonNetwork)
+            val targetVersion = if (nativeTos) WalletVersion.TOSV5R1 else WalletVersion.V5R1
+            if (accounts.count { it.walletVersion == targetVersion } == 0) {
+                val contract = if (nativeTos) TosWalletV5R1Contract(publicKey.publicKey, api.tos.getNetworkInfo(testnet).requireNativeV5().globalId)
+                    else BaseWalletContract.create(publicKey.publicKey, "v5r1", tonNetwork.value)
                 val query = contract.address.toAccountId()
                 if (publicKey.new) {
                     accounts.add(
@@ -323,7 +328,7 @@ class InitViewModel(
                             query, apiAccount.copy(
                                 interfaces = listOf("wallet_v5r1")
                             ), testnet, false
-                        )
+                        ).copy(walletVersion = targetVersion)
                     }
                     accounts.add(0, account)
                 }
@@ -566,8 +571,8 @@ class InitViewModel(
         }
     }
 
-    suspend fun getRecoveryWatchWallet(mnemonic: List<String>) = getRecoveryWatchWallet(
-        MnemonicHelper.privateKey(mnemonic).publicKey()
+    suspend fun getRecoveryWatchWallet(mnemonic: List<String>, profile: TosV1Mnemonic.Profile? = null) = getRecoveryWatchWallet(
+        TosV1Mnemonic.recoveryPrivateKey(mnemonic, profile ?: savedState.mnemonicProfile).publicKey()
     )
 
     suspend fun getRecoveryWatchWallet(publicKey: PublicKeyEd25519): WalletEntity? = withContext(Dispatchers.IO) {
@@ -702,9 +707,10 @@ class InitViewModel(
 
     private suspend fun generateNewWallet() = withContext(Dispatchers.IO) {
         AndroidSecureRandom.seed(entropyHelper.getSeed(512))
-        val mnemonic = Mnemonic.generate(random = AndroidSecureRandom)
+        val mnemonic = TosV1Mnemonic.generate(random = AndroidSecureRandom)
         savedState.mnemonic = mnemonic
-        val publicKey = MnemonicHelper.privateKey(mnemonic).publicKey()
+        savedState.mnemonicProfile = TosV1Mnemonic.Profile.TOS
+        val publicKey = TosV1Mnemonic.recoveryPrivateKey(mnemonic).publicKey()
         setPublicKey(publicKey)
 
         val (emoji, color) = generateLabel()
@@ -720,7 +726,7 @@ class InitViewModel(
         val mnemonic = savedState.mnemonic!!
         val walletId = AccountRepository.newWalletId()
         saveMnemonic(context, listOf(walletId), mnemonic)
-        val label = buildNewLabel(SimpleAccount(version = WalletVersion.V5R1))
+        val label = buildNewLabel(SimpleAccount(version = WalletVersion.TOSV5R1))
 
         val wallet = accountRepository.addNewWallet(walletId, label, mnemonic)
 
@@ -739,9 +745,7 @@ class InitViewModel(
             }
 
             val mnemonic = savedState.mnemonic ?: throw IllegalStateException("Mnemonic is not set")
-            if (!TosV1Mnemonic.isValid(mnemonic)) {
-                throw IllegalStateException("Invalid mnemonic")
-            }
+            TosV1Mnemonic.recoveryPrivateKey(mnemonic, savedState.mnemonicProfile)
 
             val ids = accounts.map { AccountRepository.newWalletId() }
             saveMnemonic(context, ids, mnemonic)

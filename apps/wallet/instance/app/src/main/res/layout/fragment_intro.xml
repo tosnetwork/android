@@ -52,6 +52,15 @@
             android:textAppearance="@style/TextAppearance.Label1"
             android:text="@string/start_import_wallet"/>
 
+        <Button
+            style="@style/Widget.App.Button.Secondary"
+            android:id="@+id/rpc_node"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/offsetMedium"
+            android:textAppearance="@style/TextAppearance.Label1"
+            android:text="@string/rpc_node"/>
+
         <TextView
             android:id="@+id/terms"
             android:layout_width="match_parent"

@@ -265,6 +265,8 @@ class SettingsViewModel(
             secondCellPosition = ListCell.Position.MIDDLE
         }
 
+        uiItems.add(Item.PqWallets(secondCellPosition))
+        secondCellPosition = ListCell.Position.MIDDLE
         uiItems.add(Item.RpcNode(api.tosRpcEndpoint(wallet.testnet), secondCellPosition))
         secondCellPosition = ListCell.Position.MIDDLE
 

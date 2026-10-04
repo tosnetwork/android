@@ -12,6 +12,7 @@ import network.tos.signer.deeplink.entities.SignRequestEntity
 import network.tos.signer.password.Password
 import network.tos.signer.screen.root.action.RootAction
 import network.tos.signer.vault.SignerVault
+import network.tos.signer.screen.sign.SignerRequestPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -78,6 +79,8 @@ class RootViewModel(
     private fun signRequest(signRequest: SignRequestEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             val id = keyRepository.findIdByPublicKey(signRequest.publicKey) ?: return@launch notFoundKey()
+            if (runCatching { SignerRequestPolicy.requireSupported(signRequest.body, signRequest.v,
+                signRequest.network, signRequest.seqno, vault.isNativeTosKey(id)) }.isFailure) return@launch
 
             sign(
                 id = id,
@@ -96,7 +99,7 @@ class RootViewModel(
         v: String,
         returnResult: ReturnResultEntity,
         seqno: Int,
-        network: TonNetwork,
+        network: Int,
     ) {
         _action.tryEmit(RootAction.RequestBodySign(id, body, v, returnResult, seqno, network))
     }

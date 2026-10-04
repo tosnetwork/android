@@ -11,6 +11,14 @@ TOS Wallet is derived from the open-source Tonkeeper Android wallet. See
 [the inherited protocol boundary](docs/inherited-protocol-boundary.md) for the
 legacy protocol and migration identifiers that are intentionally retained.
 
+Native wallets use the current TOS V5R1 code and TOS recovery phrase salts.
+Legacy recovery preserves the original wallet address and key. PQ validator
+consensus is supported independently of Ed25519 wallet authentication. Settings
+now also exposes separate ML-DSA-44 and experimental Falcon-512 padded wallets;
+see [PQ signing and local validation](docs/mobile-pq-signing-20261004.md) and
+[the modernization report](docs/android-pq-modernization-20261004.md) for the
+protocol profile and validation scope.
+
 ## License
 
 See the [LICENSE](LICENSE) file.

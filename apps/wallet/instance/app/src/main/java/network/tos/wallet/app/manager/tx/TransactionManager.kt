@@ -2,6 +2,8 @@ package network.tos.wallet.app.manager.tx
 
 import android.util.Log
 import network.tos.blockchain.ton.extensions.base64
+import network.tos.blockchain.ton.extensions.cellFromBase64
+import network.tos.blockchain.ton.contract.TosWalletV5R1Contract
 import network.tos.extensions.MutableEffectFlow
 import network.tos.wallet.app.App
 import network.tos.wallet.app.worker.WidgetUpdaterWorker
@@ -157,9 +159,20 @@ class TransactionManager(
         source: String,
         normalizedHash: BitString,
         confirmationTime: Double,
+        boundNode: network.tos.wallet.api.tos.TosSource? = null,
     ): SendBlockchainState {
-        val initialSeqno = if (withBattery) null else api.getAccountSeqno(wallet.accountId, wallet.testnet)
-        return send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, 0)
+        val node = boundNode ?: api.tos.snapshot(wallet.testnet)
+        wallet.networkGlobalId?.let { node.requireNetwork(it, wallet.testnet) }
+        val initialSeqno = if (withBattery) null else {
+            val contract = wallet.contract
+            when {
+                contract is TosWalletV5R1Contract -> contract.signedTransferSeqno(boc.cellFromBase64())
+                network.tos.blockchain.ton.contract.LegacyWalletCompatibility.isSupported(contract) ->
+                    network.tos.blockchain.ton.contract.LegacyWalletCompatibility.signedTransferSeqno(contract, boc.cellFromBase64())
+                else -> node.getSeqno(wallet.accountId, wallet.testnet, contract)
+            }
+        }
+        return send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, 0, node)
     }
 
     private suspend fun send(
@@ -170,12 +183,32 @@ class TransactionManager(
         confirmationTime: Double,
         normalizedHash: BitString,
         initialSeqno: Int?,
-        attempt: Int
+        attempt: Int,
+        node: network.tos.wallet.api.tos.TosSource,
     ): SendBlockchainState {
+        fun reconcile(): SendBlockchainState? {
+            if (initialSeqno == null) return null
+            val receipt = runCatching { node.reconcileSend(wallet.accountId, boc, initialSeqno, wallet.testnet, wallet.contract) }
+                .getOrDefault(network.tos.wallet.api.tos.TosSendReconciliation.AMBIGUOUS)
+            return when (receipt) {
+                network.tos.wallet.api.tos.TosSendReconciliation.CONFIRMED -> {
+                    _sendingTransactionFlow.tryEmit(SendingTransaction(wallet.copy(), boc))
+                    SendBlockchainState.SUCCESS
+                }
+                network.tos.wallet.api.tos.TosSendReconciliation.AMBIGUOUS -> SendBlockchainState.UNKNOWN_ERROR
+                network.tos.wallet.api.tos.TosSendReconciliation.RETRYABLE -> null
+            }
+        }
+        // Native and ordinary legacy requests are checked before first broadcast: another
+        // device may consume the signed sequence while the user enters a passcode.
+        if (attempt > 0 || wallet.contract is TosWalletV5R1Contract ||
+            network.tos.blockchain.ton.contract.LegacyWalletCompatibility.isSupported(wallet.contract)) {
+            reconcile()?.let { return it }
+        }
         val state = if (withBattery) {
             sendWithBattery(wallet, boc, source, confirmationTime)
         } else {
-            api.sendToBlockchain(boc, wallet.testnet, source, confirmationTime)
+            api.sendToBlockchain(boc, wallet.testnet, source, confirmationTime, wallet.networkGlobalId, node)
         }
         if (state == SendBlockchainState.SUCCESS) {
             // addPendingHash(wallet.accountId, wallet.testnet, normalizedHash.toHex())
@@ -183,18 +216,15 @@ class TransactionManager(
             return state
         }
 
-        // A transport error can occur after the node accepted the BOC. Reconcile
-        // against the wallet seqno before replaying the same signed transaction.
-        if (initialSeqno != null && api.getAccountSeqno(wallet.accountId, wallet.testnet) > initialSeqno) {
-            _sendingTransactionFlow.tryEmit(SendingTransaction(wallet.copy(), boc))
-            return SendBlockchainState.SUCCESS
-        }
+        // A transport error can occur after acceptance. A nonce advance from a
+        // different device does not prove delivery and must stop automatic replay.
+        reconcile()?.let { return it }
 
         return if (attempt > 3) {
             state
         } else {
             delay(10.seconds)
-            send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, attempt + 1)
+            send(wallet, boc, withBattery, source, confirmationTime, normalizedHash, initialSeqno, attempt + 1, node)
         }
     }
 
@@ -204,12 +234,14 @@ class TransactionManager(
         withBattery: Boolean,
         source: String,
         confirmationTime: Double,
+        boundNode: network.tos.wallet.api.tos.TosSource? = null,
     ) = send(
         wallet = wallet,
         boc = boc.base64(),
         withBattery = withBattery,
         source = source,
         normalizedHash = wallet.contract.normalizedHashFromSignedBody(boc) ?: boc.hash(),
-        confirmationTime = confirmationTime
+        confirmationTime = confirmationTime,
+        boundNode = boundNode,
     )
 }

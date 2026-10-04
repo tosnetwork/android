@@ -15,8 +15,9 @@ android {
         applicationId = "network.tos.signer"
         minSdk = 26
         targetSdk = Build.compileSdkVersion
-        versionCode = 23
-        versionName = "0.2.3"
+        versionCode = 24
+        versionName = "0.3.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     lint {
@@ -26,6 +27,8 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("scripts/fixtures"))
+    sourceSets.getByName("test").resources.srcDir(rootProject.file("scripts/fixtures"))
 
     buildTypes {
         release {
@@ -53,6 +56,11 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidX.test)
+    androidTestImplementation(libs.androidX.test.core)
+    androidTestImplementation(libs.androidX.test.espresso)
+    androidTestImplementation(libs.androidX.test.uiautomator)
     implementation(libs.androidX.core)
     implementation(libs.androidX.appCompat)
     implementation(libs.androidX.activity)

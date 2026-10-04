@@ -1,0 +1,311 @@
+{
+  "notice": "PUBLIC TEST DATA; captured actual local-chain canonical legacy deployments and exact 1000000-nano recipient delivery; no real assets",
+  "node_source_commit": "0ee44a3e3983376c6206f5ac859ae2fe803eafde",
+  "vectors": [
+    {
+      "version": "v3R1",
+      "address": "0:c287cbe56d9f1bfb2244a377aaf253175e883471da6e28bab08b7a5c4d9c82e8",
+      "public_key": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "code_hash": "b61041a58a7980b946e8fb9e198e3c904d24799ffa36574ea4251c41a566f581",
+      "external_message_boc": "te6ccgECBgEAAT0AAkWIAYUPl8rbPjf2RIlG71Xkpi69EGjjtNxRdWEW9LibOQXQHgMBAZqWVTUmj13oujspj/lpxba2ajsUuXg5pHq13cUfzA5Q2Pcv3OHj9V6G+KKlOP1k9kEuvC4J3Vh1A0Zrp77Zlh0MKamjF2rB1rcAAAAAAwIAZkIAIqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKYehIAAAAAAAAAAAAAAAAAAAIBNAUEAFAAAAAAKamjFwOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4AMD/ACDdIIIBTJe6lzDtRNDXCx/gpPJggwjXGCDTH9Mf0x/4IxO78mPtRNDTH9Mf0//RUTK68qFRRLryogT5AVQQVfkQ8qP4AJMg10qW0wfUAvsA6NEBpMjLH8sfy//J7VQ=",
+      "account_state": {
+        "@type": "raw.fullAccountState",
+        "balance": "998949409",
+        "code": "te6ccgEBAQEAYgAAwP8AIN0gggFMl7qXMO1E0NcLH+Ck8mCDCNcYINMf0x/TH/gjE7vyY+1E0NMf0x/T/9FRMrryoVFEuvKiBPkBVBBV+RDyo/gAkyDXSpbTB9QC+wDo0QGkyMsfyx/L/8ntVA==",
+        "data": "te6ccgEBAQEAKgAAUAAAAAEpqaMXA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10210000001",
+          "hash": "MJXLpORvv7acvvaGSzfkXMpleADvgJO6nf7zFVJwHug="
+        },
+        "block_id": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7569,
+          "root_hash": "OSb8EvGWA/i84edYc0yN//CWa5h7Rh7rCSJlG2asIQo=",
+          "file_hash": "u9chRQdsyZqTfY+Gfytx1lpDZoMcfsfYUUM3dpBITcE="
+        },
+        "sync_utime": 1791087713,
+        "extra_currencies": [],
+        "state": "active",
+        "frozen_hash": ""
+      },
+      "wallet_information": {
+        "@type": "ext.accounts.walletInformation",
+        "wallet": false,
+        "balance": "998949409",
+        "account_state": "active",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10210000001",
+          "hash": "MJXLpORvv7acvvaGSzfkXMpleADvgJO6nf7zFVJwHug="
+        },
+        "observed_masterchain_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7569,
+          "root_hash": "OSb8EvGWA/i84edYc0yN//CWa5h7Rh7rCSJlG2asIQo=",
+          "file_hash": "u9chRQdsyZqTfY+Gfytx1lpDZoMcfsfYUUM3dpBITcE="
+        },
+        "observed_shard_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": 0,
+          "shard": "-9223372036854775808",
+          "seqno": 10209,
+          "root_hash": "k89FjAPnq2UVzQ2c8vZaTnyJfU9erkA5abttbWAyWW4=",
+          "file_hash": "nLQTfX/uCt2AJ/MW/cEHtIlZ251wmYwYj9BiGXVp1ko="
+        },
+        "wallet_type": null,
+        "seqno": null,
+        "wallet_id": null
+      },
+      "source_result_sha256": "b9801faa84ff807043c6ed4a66ecfbef444851e4e64375c309afd20c23856fd5"
+    },
+    {
+      "version": "v3R2",
+      "address": "0:e4fbbdcecd98affdf7d701b65510664e7236c8c0103ee82cc7bbd538eb15239a",
+      "public_key": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "code_hash": "84dafa449f98a6987789ba232358072bc0f76dc4524002a5d0918b9a75d2d599",
+      "external_message_boc": "te6ccgECBgEAAUwAAkWIAcn3e52bMV/7764DbKogzJzkbZGAIH3QWY93qnHWKkc0HgMBAZqjzhHUPI8jdsa1nvxFGtP4QQAuTT81zt1jbCROHzXFyDwN3YkxKGJJftBegK4sv7/C/YD1zfjXzhraHZRA4WwJKamjF2rB1roAAAAAAwIAZkIAIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMYehIAAAAAAAAAAAAAAAAAAAIBNAUEAFAAAAAAKamjFwOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4AN7/ACDdIIIBTJe6IYIBM5y6sZ9xsO1E0NMf0x8x1wv/4wTgpPJggwjXGCDTH9Mf0x/4IxO78mPtRNDTH9Mf0//RUTK68qFRRLryogT5AVQQVfkQ8qP4AJMg10qW0wfUAvsA6NEBpMjLH8sfy//J7VQ=",
+      "account_state": {
+        "@type": "raw.fullAccountState",
+        "balance": "998947439",
+        "code": "te6ccgEBAQEAcQAA3v8AIN0gggFMl7ohggEznLqxn3Gw7UTQ0x/THzHXC//jBOCk8mCDCNcYINMf0x/TH/gjE7vyY+1E0NMf0x/T/9FRMrryoVFEuvKiBPkBVBBV+RDyo/gAkyDXSpbTB9QC+wDo0QGkyMsfyx/L/8ntVA==",
+        "data": "te6ccgEBAQEAKgAAUAAAAAEpqaMXA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10218000001",
+          "hash": "nLeML5xgRZUpdU9mNQN5ESafQy0/wxoNtXoAIoiwcWc="
+        },
+        "block_id": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7577,
+          "root_hash": "JmlAxmiB8dBIMypnLzrpiHNmeujjDSbU+hSNcHXXWAQ=",
+          "file_hash": "CMS+lmTM9wYhO5AP5J4HwjkcRe9U1ScyyVUmTPnQNg4="
+        },
+        "sync_utime": 1791087716,
+        "extra_currencies": [],
+        "state": "active",
+        "frozen_hash": ""
+      },
+      "wallet_information": {
+        "@type": "ext.accounts.walletInformation",
+        "wallet": false,
+        "balance": "998947439",
+        "account_state": "active",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10218000001",
+          "hash": "nLeML5xgRZUpdU9mNQN5ESafQy0/wxoNtXoAIoiwcWc="
+        },
+        "observed_masterchain_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7577,
+          "root_hash": "JmlAxmiB8dBIMypnLzrpiHNmeujjDSbU+hSNcHXXWAQ=",
+          "file_hash": "CMS+lmTM9wYhO5AP5J4HwjkcRe9U1ScyyVUmTPnQNg4="
+        },
+        "observed_shard_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": 0,
+          "shard": "-9223372036854775808",
+          "seqno": 10217,
+          "root_hash": "20DGpmthO9Gzbea5Xp+lgHdac1SY4hS9RXlAY0dbqm0=",
+          "file_hash": "ce/qGEg4rdzAEqmZpUHb39JKTIloZOsYHHK3Def8sFk="
+        },
+        "wallet_type": null,
+        "seqno": null,
+        "wallet_id": null
+      },
+      "source_result_sha256": "a944009cc6b06ee74c2da519fe14fcc47d333075a3edb789e8b236beda0fa2ed"
+    },
+    {
+      "version": "v4R1",
+      "address": "0:9d07db83dc7bdb6ee13ccdefd62ffd19535c9b11e886985792e0236f70d44e4c",
+      "public_key": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "code_hash": "64dd54805522c5be8a9db59cea0105ccf0d08786ca79beb8cb79e880a8d7322d",
+      "external_message_boc": "te6ccgECGgEAA9IAAkWIAToPtwe497bdwnmb36xf+jKmuTYj0Q0wryXARt7hqJyYHgMBAZwZeEkWxaAkbJzDJv+lT9qMsFUOpZwQh9GDirmvGVFMZnVulC/k037nX1m53YyHE8R4zawgIHxTbVVspc40sYwJKamjF2rB1r0AAAAAAAMCAGZCACOjo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6Ojo6OjmHoSAAAAAAAAAAAAAAAAAAACATQFBABRAAAAACmpoxcDoQe/884Qvh1w3RjnS8CZZ+TWMJulDV8d3IZkElUxuEABFP8A9KQT9LzyyAsGAgEgDAcE+PKDCNcYINMf0x/THwL4I7vyY+1E0NMf0x/T//QE0VFDuvKhUVG68qIF+QFUEGT5EPKj+AAkpMjLH1JAyx9SMMv/UhD0AMntVPgPAdMHIcAAn2xRkyDXSpbTB9QC+wDoMOAhwAHjACHAAuMAAcADkTDjDQOkyMsfEssfy/8LCgkIAAr0AMntVABygQEI1xgwUgKBAQj0WfKn+CWCEGRzdHJwdIAYyMsFywJQBc8WghAF9eEA+gIUy2oTyx8Syz/Jc/sAAGyBAQjXGMhUICWBAQj0UfKnghBub3RlcHSAGMjLBcsCUATPFoIQBfXhAPoCE8tqEssfyXH7AAIAbtIH+gDU1CL5AAXIygcVy//J0Hd0gBjIywXLAiLPFlAF+gIUy2sSzMzJcfsAyEAUgQEI9FHypwICAUgWDQIBIA8OAFm9JCtvaiaECAoGuQ+gIYRw1AgIR6STfSmRDOaQPp/5g3gSgBt4EBSJhxWfMYQCASAREAARuMl+1E0NcLH4AgFYFRICASAUEwAZrx32omhAEGuQ64WPwAAZrc52omhAIGuQ64X/wAA9sp37UTQgQFA1yH0BDACyMoHy//J0AGBAQj0Cm+hMYAPu0AHQ0wMBcbCRW+Ah10nBIJFb4AHTHyGCEHBsdWe9IoIQYmxuY72wIoIQZHN0cr2wkl8D4AL6QDAg+kQByMoHy//J0O1E0IEBQNch9AQwXIEBCPQKb6Exs5JfBeAE0z/IJYIQcGx1Z7qRMeMNJIIQYmxuY7rjAAQZGBcAkoIQZHN0crqONQSBAQj0WTDtRNCBAUDXIMgBzxb0AMntVIIQZHN0coMesXCAGFAEywVYzxYi+gISy2rLH8s/lBA0XwTiyYBA+wAAUvgnbyKCEGJsbmODHrFwgBhQBcsFJ88WJPoCFMtqE8sfUjDLPwH6AvQAAFAB+gD0BDCCEHBsdWeDHrFwgBhQBcsFJ88WUAP6AvQAEstpyx9SEMs/",
+      "account_state": {
+        "@type": "raw.fullAccountState",
+        "balance": "998897879",
+        "code": "te6ccgECFQEAAvUAART/APSkE/S88sgLAQIBIAIDAgFIBAUE+PKDCNcYINMf0x/THwL4I7vyY+1E0NMf0x/T//QE0VFDuvKhUVG68qIF+QFUEGT5EPKj+AAkpMjLH1JAyx9SMMv/UhD0AMntVPgPAdMHIcAAn2xRkyDXSpbTB9QC+wDoMOAhwAHjACHAAuMAAcADkTDjDQOkyMsfEssfy/8REhMUA+7QAdDTAwFxsJFb4CHXScEgkVvgAdMfIYIQcGx1Z70ighBibG5jvbAighBkc3RyvbCSXwPgAvpAMCD6RAHIygfL/8nQ7UTQgQFA1yH0BDBcgQEI9ApvoTGzkl8F4ATTP8glghBwbHVnupEx4w0kghBibG5juuMABAYHCAIBIAkKAFAB+gD0BDCCEHBsdWeDHrFwgBhQBcsFJ88WUAP6AvQAEstpyx9SEMs/AFL4J28ighBibG5jgx6xcIAYUAXLBSfPFiT6AhTLahPLH1Iwyz8B+gL0AACSghBkc3Ryuo41BIEBCPRZMO1E0IEBQNcgyAHPFvQAye1UghBkc3Rygx6xcIAYUATLBVjPFiL6AhLLassfyz+UEDRfBOLJgED7AAIBIAsMAFm9JCtvaiaECAoGuQ+gIYRw1AgIR6STfSmRDOaQPp/5g3gSgBt4EBSJhxWfMYQCAVgNDgARuMl+1E0NcLH4AD2ynftRNCBAUDXIfQEMALIygfL/8nQAYEBCPQKb6ExgAgEgDxAAGa3OdqJoQCBrkOuF/8AAGa8d9qJoQBBrkOuFj8AAbtIH+gDU1CL5AAXIygcVy//J0Hd0gBjIywXLAiLPFlAF+gIUy2sSzMzJcfsAyEAUgQEI9FHypwIAbIEBCNcYyFQgJYEBCPRR8qeCEG5vdGVwdIAYyMsFywJQBM8WghAF9eEA+gITy2oSyx/JcfsAAgBygQEI1xgwUgKBAQj0WfKn+CWCEGRzdHJwdIAYyMsFywJQBc8WghAF9eEA+gIUy2oTyx8Syz/Jc/sAAAr0AMntVA==",
+        "data": "te6ccgEBAQEAKwAAUQAAAAEpqaMXA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbhA",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10226000001",
+          "hash": "PsruNEk0WgMYtEDaLxaCQhca9fdO/luyknmpaV//j8U="
+        },
+        "block_id": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7585,
+          "root_hash": "pXIAscKq88TgMmyIRqQ7+9LT0mfCVGSL319wyxUFBvc=",
+          "file_hash": "fUw7l2cO4DaA6BBSyx/8aGrPlXaEvkxz2qBZJYKSGjk="
+        },
+        "sync_utime": 1791087720,
+        "extra_currencies": [],
+        "state": "active",
+        "frozen_hash": ""
+      },
+      "wallet_information": {
+        "@type": "ext.accounts.walletInformation",
+        "wallet": false,
+        "balance": "998897879",
+        "account_state": "active",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10226000001",
+          "hash": "PsruNEk0WgMYtEDaLxaCQhca9fdO/luyknmpaV//j8U="
+        },
+        "observed_masterchain_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7585,
+          "root_hash": "pXIAscKq88TgMmyIRqQ7+9LT0mfCVGSL319wyxUFBvc=",
+          "file_hash": "fUw7l2cO4DaA6BBSyx/8aGrPlXaEvkxz2qBZJYKSGjk="
+        },
+        "observed_shard_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": 0,
+          "shard": "-9223372036854775808",
+          "seqno": 10225,
+          "root_hash": "cbqXsQebH81oWc/VQ2hGdB7NqdYWFOa2AtsJQ2YhCUE=",
+          "file_hash": "Lb4MMQGi3fn3LAOW/u7SXCXopKp/qUMhutHRwIcfdY8="
+        },
+        "wallet_type": null,
+        "seqno": null,
+        "wallet_id": null
+      },
+      "source_result_sha256": "aeac5c949be68d931a1ee3f9516f4bc2608f275245a26197c2d1a7aac9226bae"
+    },
+    {
+      "version": "v4R2",
+      "address": "0:d371439c26fc2d331e11e956dbfae602b4910b0b3000bdd0f8dfd7dcd98d1436",
+      "public_key": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "code_hash": "feb5ff6820e2ff0d9483e7e0d62c817d846789fb4ae580c878866d959dabd5c0",
+      "external_message_boc": "te6ccgECGQEAA7EAAkWIAabihzhN+FpmPCPSrbf1zAVpIhYWYAF7ofG/r7mzGihsHgMBAZzT5j9lZiGexNYo5nbQN39X7rGsaNDUklthf6V0k8ujACdwr6wmrBbZu6tkDkd6ydMTKKUndUpQwPXVPV9qBgUHKamjF2rB1sEAAAAAAAMCAGZCACQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkGHoSAAAAAAAAAAAAAAAAAAACATQFBABRAAAAACmpoxcDoQe/884Qvh1w3RjnS8CZZ+TWMJulDV8d3IZkElUxuEABFP8A9KQT9LzyyAsGAgEgDAcE+PKDCNcYINMf0x/THwL4I7vyZO1E0NMf0x/T//QE0VFDuvKhUVG68qIF+QFUEGT5EPKj+AAkpMjLH1JAyx9SMMv/UhD0AMntVPgPAdMHIcAAn2xRkyDXSpbTB9QC+wDoMOAhwAHjACHAAuMAAcADkTDjDQOkyMsfEssfy/8LCgkIAAr0AMntVABsgQEI1xj6ANM/MFIkgQEI9Fnyp4IQZHN0cnB0gBjIywXLAlAFzxZQA/oCE8tqyx8Syz/Jc/sAAHCBAQjXGPoA0z/IVCBHgQEI9FHyp4IQbm90ZXB0gBjIywXLAlAGzxZQBPoCFMtqEssfyz/Jc/sAAgBu0gf6ANTUIvkABcjKBxXL/8nQd3SAGMjLBcsCIs8WUAX6AhTLaxLMzMlz+wDIQBSBAQj0UfKnAgIBSBYNAgEgDw4AWb0kK29qJoQICga5D6AhhHDUCAhHpJN9KZEM5pA+n/mDeBKAG3gQFImHFZ8xhAIBIBEQABG4yX7UTQ1wsfgCAVgVEgIBIBQTABmvHfaiaEAQa5DrhY/AABmtznaiaEAga5Drhf/AAD2ynftRNCBAUDXIfQEMALIygfL/8nQAYEBCPQKb6ExgAubQAdDTAyFxsJJfBOAi10nBIJJfBOAC0x8hghBwbHVnvSKCEGRzdHK9sJJfBeAD+kAwIPpEAcjKB8v/ydDtRNCBAUDXIfQEMFyBAQj0Cm+hMbOSXwfgBdM/yCWCEHBsdWe6kjgw4w0DghBkc3RyupJfBuMNGBcAilAEgQEI9Fkw7UTQgQFA1yDIAc8W9ADJ7VQBcrCOI4IQZHN0coMesXCAGFAFywVQA88WI/oCE8tqyx/LP8mAQPsAkl8D4gB4AfoA9AQw+CdvIjBQCqEhvvLgUIIQcGx1Z4MesXCAGFAEywUmzxZY+gIZ9ADLaRfLH1Jgyz8gyYBA+wAG",
+      "account_state": {
+        "@type": "raw.fullAccountState",
+        "balance": "998900289",
+        "code": "te6ccgECFAEAAtQAART/APSkE/S88sgLAQIBIAIDAgFIBAUE+PKDCNcYINMf0x/THwL4I7vyZO1E0NMf0x/T//QE0VFDuvKhUVG68qIF+QFUEGT5EPKj+AAkpMjLH1JAyx9SMMv/UhD0AMntVPgPAdMHIcAAn2xRkyDXSpbTB9QC+wDoMOAhwAHjACHAAuMAAcADkTDjDQOkyMsfEssfy/8QERITAubQAdDTAyFxsJJfBOAi10nBIJJfBOAC0x8hghBwbHVnvSKCEGRzdHK9sJJfBeAD+kAwIPpEAcjKB8v/ydDtRNCBAUDXIfQEMFyBAQj0Cm+hMbOSXwfgBdM/yCWCEHBsdWe6kjgw4w0DghBkc3RyupJfBuMNBgcCASAICQB4AfoA9AQw+CdvIjBQCqEhvvLgUIIQcGx1Z4MesXCAGFAEywUmzxZY+gIZ9ADLaRfLH1Jgyz8gyYBA+wAGAIpQBIEBCPRZMO1E0IEBQNcgyAHPFvQAye1UAXKwjiOCEGRzdHKDHrFwgBhQBcsFUAPPFiP6AhPLassfyz/JgED7AJJfA+ICASAKCwBZvSQrb2omhAgKBrkPoCGEcNQICEekk30pkQzmkD6f+YN4EoAbeBAUiYcVnzGEAgFYDA0AEbjJftRNDXCx+AA9sp37UTQgQFA1yH0BDACyMoHy//J0AGBAQj0Cm+hMYAIBIA4PABmtznaiaEAga5Drhf/AABmvHfaiaEAQa5DrhY/AAG7SB/oA1NQi+QAFyMoHFcv/ydB3dIAYyMsFywIizxZQBfoCFMtrEszMyXP7AMhAFIEBCPRR8qcCAHCBAQjXGPoA0z/IVCBHgQEI9FHyp4IQbm90ZXB0gBjIywXLAlAGzxZQBPoCFMtqEssfyz/Jc/sAAgBsgQEI1xj6ANM/MFIkgQEI9Fnyp4IQZHN0cnB0gBjIywXLAlAFzxZQA/oCE8tqyx8Syz/Jc/sAAAr0AMntVA==",
+        "data": "te6ccgEBAQEAKwAAUQAAAAEpqaMXA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbhA",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10235000001",
+          "hash": "HX04UxzToiL4SPhhw5saOCc+/cB7t+Xjldmi7MKi5lA="
+        },
+        "block_id": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7595,
+          "root_hash": "zzmAUBe1JJfNUSehdI/i0JfZtcVCXBLsSTBNqeKFeRA=",
+          "file_hash": "O3brGKOicFaXyuWakELqRdHfPCQ1ciRMNcGnW1NuxrU="
+        },
+        "sync_utime": 1791087724,
+        "extra_currencies": [],
+        "state": "active",
+        "frozen_hash": ""
+      },
+      "wallet_information": {
+        "@type": "ext.accounts.walletInformation",
+        "wallet": false,
+        "balance": "998900289",
+        "account_state": "active",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "10235000001",
+          "hash": "HX04UxzToiL4SPhhw5saOCc+/cB7t+Xjldmi7MKi5lA="
+        },
+        "observed_masterchain_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 7595,
+          "root_hash": "zzmAUBe1JJfNUSehdI/i0JfZtcVCXBLsSTBNqeKFeRA=",
+          "file_hash": "O3brGKOicFaXyuWakELqRdHfPCQ1ciRMNcGnW1NuxrU="
+        },
+        "observed_shard_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": 0,
+          "shard": "-9223372036854775808",
+          "seqno": 10235,
+          "root_hash": "d5r8kOWCgrQMip4qUeEeV+OYke3Vm1R3sqn/yszJUl4=",
+          "file_hash": "VgCO6UoVWm1yGWUGsJpHnkaEWhUyn2HYR6SzAkMyEDs="
+        },
+        "wallet_type": null,
+        "seqno": null,
+        "wallet_id": null
+      },
+      "source_result_sha256": "9877090912b55f81891d2c7fe70cf299eb63062ab2147884b80ac432fbf633cc"
+    },
+    {
+      "version": "v5R1",
+      "address": "0:f2801419aaa1b3704a0d50b5888dccb5511ed6e3191b99d144a04ea9ea390c52",
+      "public_key": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "code_hash": "20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f",
+      "external_message_boc": "te6ccgECGwEAA2wAAkWIAeUAKDNVQ2bglBqhaxEbmWqiPa3GMjczoolAnVPUchikHgUBAaFzaWduf///Ef////8AAAAArMhTvifGpzTB9sTEtUQaYSDXGSxtrwKOjf9VtHWOCxFmDcaeI27oVy2UiJ9UstY4sXaynh2hS+XnNEdDgO49AeACAgoOw8htAwQDAGZCACIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiGHoSAAAAAAAAAAAAAAAAAAAAAAIBNAcGAFGAAAAAP///iIHQg9/55whfDrhujHOl4Eyz8msYTdKGr47uQzIJKpjcIAEU/wD0pBP0vPLICwgCASALCQEC8goBHiDXCx+CEHNpZ2668uCKfxYCAUgVDAIBIA4NABm+Xw9qJoQICg65D6AsAgEgEg8CAUgREAARsmL7UTQ1woAgABezJftRNBx1yHXCx+ACAW4UEwAZrx32omhAEOuQ64WPwAAZrc52omhAIOuQ64X/wALc0CDXScEgkVuPYyDXCx8gghBleHRuvSGCEHNpbnS9sJJfA+CCEGV4dG66jrSAINchAdB01yH6QDD6RPgo+kQwWL2RW+DtRNCBAUHXIfQFgwf0Dm+hMZEw4YBA1yFwf9s84DEg10mBAoC5kTDgcOIXFgHmjvDtou37IYMI1yICgwjXIyCAINch0x/TH9Mf7UTQ0gDTHyDTH9P/1woACvkBQMz5EJoolF8K2zHh8sCH3wKzUAew8tCEUSW68uCFUDa68uCG+CO78tCIIpL4AN4BpH/IygDLHwHPFsntVCCS+A/ecNs82BcD9u2i7fsC9AQhbpJsIY5MAiHXOTBwlCHHALOOLQHXKCB2HkNsINdJwAjy4JMg10rAAvLgkyDXHQbHEsIAUjCw8tCJ10zXOTABpOhsEoQHu/Lgk9dKwADy4JPtVeLSAAHAAJFb4OvXLAgUIJFwlgHXLAgcEuJSELHjDyDXShoZGAAQk1vbMeHXTNAAcjDXLAgkji0h8uCS0gDtRNDSAFETuvLQj1RQMJExnAGBAUDXIdcKAPLgjuLIygBYzxbJ7VST8sCN4gCWAfpAAfpE+Cj6RDBYuvLgke1E0IEBQdcY9AUEnX/IygBABIMH9FPy4IuOFAODB/Rb8uCMItcKACFuAbOw8tCQ4shQA88WEvQAye1U",
+      "account_state": {
+        "@type": "raw.fullAccountState",
+        "balance": "998890149",
+        "code": "te6ccgECFAEAAoEAART/APSkE/S88sgLAQIBIAIDAgFIBAUBAvIOAtzQINdJwSCRW49jINcLHyCCEGV4dG69IYIQc2ludL2wkl8D4IIQZXh0brqOtIAg1yEB0HTXIfpAMPpE+Cj6RDBYvZFb4O1E0IEBQdch9AWDB/QOb6ExkTDhgEDXIXB/2zzgMSDXSYECgLmRMOBw4hAPAgEgBgcCASAICQAZvl8PaiaECAoOuQ+gLAIBbgoLAgFIDA0AGa3OdqJoQCDrkOuF/8AAGa8d9qJoQBDrkOuFj8AAF7Ml+1E0HHXIdcLH4AARsmL7UTQ1woAgAR4g1wsfghBzaWduuvLgin8PAeaO8O2i7fshgwjXIgKDCNcjIIAg1yHTH9Mf0x/tRNDSANMfINMf0//XCgAK+QFAzPkQmiiUXwrbMeHywIffArNQB7Dy0IRRJbry4IVQNrry4Ib4I7vy0IgikvgA3gGkf8jKAMsfAc8Wye1UIJL4D95w2zzYEAP27aLt+wL0BCFukmwhjkwCIdc5MHCUIccAs44tAdcoIHYeQ2wg10nACPLgkyDXSsAC8uCTINcdBscSwgBSMLDy0InXTNc5MAGk6GwShAe78uCT10rAAPLgk+1V4tIAAcAAkVvg69csCBQgkXCWAdcsCBwS4lIQseMPINdKERITAJYB+kAB+kT4KPpEMFi68uCR7UTQgQFB1xj0BQSdf8jKAEAEgwf0U/Lgi44UA4MH9Fvy4Iwi1woAIW4Bs7Dy0JDiyFADzxYS9ADJ7VQAcjDXLAgkji0h8uCS0gDtRNDSAFETuvLQj1RQMJExnAGBAUDXIdcKAPLgjuLIygBYzxbJ7VST8sCN4gAQk1vbMeHXTNA=",
+        "data": "te6ccgEBAQEAKwAAUYAAAAC///+IgdCD3/nnCF8OuG6Mc6XgTLPyaxhN0oavju5DMgkqmNwg",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "9057000001",
+          "hash": "Sx4CyXS3JLR7q2ihfZKcEsc81s0SYwzwdGjeMYJ/nN0="
+        },
+        "block_id": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 6427,
+          "root_hash": "gCHi6DPT6VEmwMKpukjpMw2ToJ1zPrWhqC9rj9sasWM=",
+          "file_hash": "hrukrhKw+m3bMuAbP+dmr9EFh1w4qlUMuPJAj7vgbEo="
+        },
+        "sync_utime": 1791087251,
+        "extra_currencies": [],
+        "state": "active",
+        "frozen_hash": ""
+      },
+      "wallet_information": {
+        "@type": "ext.accounts.walletInformation",
+        "wallet": false,
+        "balance": "998890149",
+        "account_state": "active",
+        "last_transaction_id": {
+          "@type": "internal.transactionId",
+          "lt": "9057000001",
+          "hash": "Sx4CyXS3JLR7q2ihfZKcEsc81s0SYwzwdGjeMYJ/nN0="
+        },
+        "observed_masterchain_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": -1,
+          "shard": "-9223372036854775808",
+          "seqno": 6427,
+          "root_hash": "gCHi6DPT6VEmwMKpukjpMw2ToJ1zPrWhqC9rj9sasWM=",
+          "file_hash": "hrukrhKw+m3bMuAbP+dmr9EFh1w4qlUMuPJAj7vgbEo="
+        },
+        "observed_shard_block": {
+          "@type": "tos.blockIdExt",
+          "workchain": 0,
+          "shard": "-9223372036854775808",
+          "seqno": 9056,
+          "root_hash": "BpWCxLZaAPp/Q2YtrkR2igw+LfgCjtmaWBEzDWDuJ4w=",
+          "file_hash": "2aJ2ZnDx140xlDaXQlXd4u8zCUS0zhRPsazUyZUcE70="
+        },
+        "wallet_type": null,
+        "seqno": null,
+        "wallet_id": null
+      },
+      "source_result_sha256": "c5f014fd1c08ef688bdfbac8d9e253d4ab63de26cc575166ede84fcff139c6e3"
+    }
+  ]
+}

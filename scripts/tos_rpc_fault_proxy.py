@@ -7,7 +7,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 UPSTREAM = "http://127.0.0.1:18545"
-state = {"send_calls": 0, "dropped": 0}
+state = {"send_calls": 0, "dropped": 0, "replacement_boc": None}
 lock = threading.Lock()
 
 
@@ -17,7 +17,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/stats":
-            body = json.dumps(state).encode()
+            with lock:
+                body = json.dumps({k: v for k, v in state.items() if k != "replacement_boc"}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -28,7 +29,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-        method = json.loads(body).get("method")
+        payload = json.loads(body)
+        if self.path == "/scenario":
+            with lock:
+                state.update(send_calls=0, dropped=0, replacement_boc=payload.get("replacement_boc"))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"ok":true}')
+            return
+        method = payload.get("method")
+        if method == "sendBocReturnHash":
+            with lock:
+                replacement = state["replacement_boc"]
+                state["replacement_boc"] = None
+            if replacement:
+                # Local test only: model another device winning the same nonce
+                # while this device loses its send response.
+                payload["params"]["boc"] = replacement
+                body = json.dumps(payload).encode()
         request = urllib.request.Request(
             UPSTREAM + self.path,
             data=body,
