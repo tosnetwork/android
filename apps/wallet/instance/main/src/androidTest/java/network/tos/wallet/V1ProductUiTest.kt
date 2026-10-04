@@ -28,11 +28,13 @@ import network.tos.blockchain.ton.extensions.base64
 import network.tos.blockchain.ton.extensions.cellFromBase64
 import org.ton.block.ExtInMsgInfo
 import org.ton.block.IntMsgInfo
+import org.ton.block.Message
 import org.ton.block.StateInit
 import org.ton.block.Transaction
 import org.ton.cell.buildCell
 import org.ton.tlb.loadTlb
 import org.ton.tlb.storeTlb
+import org.ton.tlb.constructor.AnyTlbConstructor
 import network.tos.extensions.toByteArray
 import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.icu.CurrencyFormatter
@@ -199,10 +201,80 @@ class V1ProductUiTest {
                     val senderInit = init.x ?: requireNotNull(init.y).value
                     assertEquals(wallet.contract.stateInitRef.hash(), buildCell { storeTlb(StateInit, senderInit) }.hash())
                 } else assertEquals(null, incoming.init.value)
-                val outgoing = aux.outMsgs.map { (_, ref) -> ref.value }.single()
-                assertEquals(org.ton.block.AddrStd.parse(recipient), (outgoing.info as IntMsgInfo).dest)
+                val outgoingRef = aux.outMsgs.map { (_, ref) -> ref }.single()
+                val outgoingCell = outgoingRef.toCell(Message.tlbCodec(AnyTlbConstructor))
+                val outgoing = outgoingRef.value
+                val outgoingInfo = outgoing.info as IntMsgInfo
+                val grossAmount = java.math.BigInteger.valueOf(1_000_000L)
+                assertEquals(wallet.contract.address, outgoingInfo.src)
+                assertEquals(org.ton.block.AddrStd.parse(recipient), outgoingInfo.dest)
+                assertEquals(grossAmount, outgoingInfo.value.coins.amount.value)
+                assertFalse("Legacy sender output is bounced", outgoingInfo.bounced)
+                assertTrue(outgoingInfo.value.other.dict.none())
                 assertEquals("Sender initialization leaked into the actual recipient output", null, outgoing.init.value)
-                assertEquals(java.math.BigInteger.valueOf(1_000_000L), observer.getAccountState(recipient).balance - beforeBalance)
+
+                // Sender delivery and recipient credit are separate observations.
+                // Bind the original serialized message in both transactions; a
+                // plain no-code recipient can skip compute and still credit value.
+                val outgoingHash = java.util.Base64.getEncoder().encodeToString(outgoingCell.hash().toByteArray())
+                val receiveDeadline = SystemClock.elapsedRealtime() + 90_000
+                var recipientReceipt: org.json.JSONObject? = null
+                while (SystemClock.elapsedRealtime() < receiveDeadline && recipientReceipt == null) {
+                    val rows = observer.rpc.callArray("getTransactions", org.json.JSONObject()
+                        .put("address", recipient).put("limit", 20))
+                    recipientReceipt = (0 until rows.length()).map { rows.getJSONObject(it) }
+                        .singleOrNull { it.opt("in_msg_hash") == outgoingHash }
+                    if (recipientReceipt == null) SystemClock.sleep(500)
+                }
+                assertNotNull("Recipient has no transaction for the exact sender output", recipientReceipt)
+                val recipientRow = requireNotNull(recipientReceipt)
+                val recipientCell = recipientRow.getString("data").cellFromBase64()
+                assertEquals(recipientRow.getJSONObject("transaction_id").getString("hash"),
+                    java.util.Base64.getEncoder().encodeToString(recipientCell.hash().toByteArray()))
+                val recipientTx = Transaction.loadTlb(recipientCell)
+                assertArrayEquals(ByteArray(32) { 0x49.toByte() }, recipientTx.accountAddr.toByteArray())
+                val recipientAux = recipientTx.r1.value
+                val recipientIncomingRef = requireNotNull(recipientAux.inMsg.value)
+                assertEquals("Recipient received a different serialized message",
+                    outgoingCell.hash(), recipientIncomingRef.toCell(Message.tlbCodec(AnyTlbConstructor)).hash())
+                val recipientIncoming = recipientIncomingRef.value
+                val receivedInfo = recipientIncoming.info as IntMsgInfo
+                assertEquals(wallet.contract.address, receivedInfo.src)
+                assertEquals(org.ton.block.AddrStd.parse(recipient), receivedInfo.dest)
+                assertEquals(grossAmount, receivedInfo.value.coins.amount.value)
+                assertFalse("Recipient incoming message is bounced", receivedInfo.bounced)
+                assertTrue(receivedInfo.value.other.dict.none())
+                assertEquals(null, recipientIncoming.init.value)
+                assertEquals(0, recipientTx.outMsgCnt)
+                assertTrue("Plain recipient emitted another message", recipientAux.outMsgs.none())
+                assertEquals(0, recipientRow.getJSONArray("out_msgs").length())
+                val incomingRow = recipientRow.getJSONObject("in_msg")
+                assertEquals(outgoingHash, incomingRow.get("hash"))
+                assertEquals("internal", incomingRow.get("kind"))
+                assertEquals(wallet.contract.address, org.ton.block.AddrStd.parse(incomingRow.getString("source")))
+                assertEquals(org.ton.block.AddrStd.parse(recipient), org.ton.block.AddrStd.parse(incomingRow.getString("destination")))
+                assertEquals("1000000", incomingRow.get("value"))
+                assertEquals(false, incomingRow.get("bounced"))
+
+                // Account balance is net of this recipient transaction's storage
+                // fee. Require an exact BOC fee, matching the strict raw field;
+                // never accept a tolerance or an unexplained positive shortfall.
+                val feeText = requireNotNull(recipientRow.opt("fee") as? String)
+                assertTrue("Recipient fee is not a canonical nonnegative integer",
+                    feeText.matches(Regex("0|[1-9][0-9]*")))
+                val recipientFee = recipientTx.totalFees.coins.amount.value
+                assertEquals(feeText.toBigInteger(), recipientFee)
+                assertTrue(recipientTx.totalFees.other.dict.none())
+                assertTrue(recipientFee >= java.math.BigInteger.ZERO && recipientFee < grossAmount)
+                val expectedNet = grossAmount - recipientFee
+                val balanceDeadline = SystemClock.elapsedRealtime() + 30_000
+                var recipientDelta = observer.getAccountState(recipient).balance - beforeBalance
+                while (recipientDelta != expectedNet && SystemClock.elapsedRealtime() < balanceDeadline) {
+                    SystemClock.sleep(500)
+                    recipientDelta = observer.getAccountState(recipient).balance - beforeBalance
+                }
+                assertEquals("Recipient net credit must equal exact gross delivery minus verified fee",
+                    expectedNet, recipientDelta)
             }
             api.setCustomTosRpcEndpoint("http://10.0.2.2:18545")
             launch()
