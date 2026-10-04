@@ -208,3 +208,12 @@ adb shell am instrument -w -r -e class network.tos.wallet.PqWalletCryptoTest,net
 uses the owned chain via emulator host routing to RPC18545/control18745. It drives
 real UI/PIN steps and checks paid deployment, actual PQ transfer, recipient balance,
 nonce, history, exact receipt reconciliation and local deletion for both profiles.
+
+## Unified development protocol baseline
+
+The `codex/unify-protocol-v16` branch uses protocol version 16 for both
+ML-DSA-44 and Falcon-512 padded. Both profiles reject versions below 16.
+Node support must come from the matching unified TOS branch; the version
+number alone cannot distinguish older development binaries. Recreate
+development chains with its genesis configuration before using this baseline.
+Earlier VM19 measurements above remain historical evidence of the prior head.

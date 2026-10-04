@@ -2,7 +2,7 @@ package network.tos.security.pq
 
 /** Exact TOS AUTH profiles; native expanded secrets are wiped after every call. */
 enum class PqAlgorithm(val id: Int, val publicKeySize: Int, val signatureSize: Int, val minimumVm: Int) {
-    MLDSA44(1, 1312, 2420, 16), FALCON512_PADDED(2, 897, 666, 19)
+    MLDSA44(1, 1312, 2420, 16), FALCON512_PADDED(2, 897, 666, 16)
 }
 internal object PqNative {
     init { System.loadLibrary("tos_mobile_pq") }

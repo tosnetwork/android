@@ -11,6 +11,7 @@ class TosPqWalletTest {
         for (algorithm in listOf(1,2)) {
             val key = ByteArray(if(algorithm==1)1312 else 897) { 1 }
             val wallet = TosPqWallet(algorithm,key,3)
+            assertEquals(16, wallet.minimumVm)
             val original = wallet.address;key.fill(2);wallet.publicKey.fill(3)
             assertEquals(original,wallet.address);assertEquals(1,wallet.publicKey[0].toInt())
             val relay = TosPqRelay(wallet)
