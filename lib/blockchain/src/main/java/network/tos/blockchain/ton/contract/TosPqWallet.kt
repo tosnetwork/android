@@ -11,7 +11,7 @@ import java.nio.ByteBuffer
 
 /** Exact immutable AUTH roots; a separate funded wallet transports each submission. */
 class TosPqWallet(val algorithm: Int, publicKey: ByteArray, val network: Int, val workchain: Int = 0) {
-    val minimumVm = when (algorithm) { 1 -> 16; 2 -> 19; else -> error("Unsupported PQ profile") }
+    val minimumVm = when (algorithm) { 1 -> 16; 2 -> 16; else -> error("Unsupported PQ profile") }
     private val keyBytes = publicKey.copyOf()
     val publicKey: ByteArray get() = keyBytes.copyOf()
     init { require(workchain in -128..127); require(publicKey.size == if (algorithm == 1) 1312 else 897) }
