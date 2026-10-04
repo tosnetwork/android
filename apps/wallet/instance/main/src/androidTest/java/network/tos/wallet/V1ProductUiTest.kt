@@ -601,7 +601,7 @@ class V1ProductUiTest {
         repeat(5) {
             val refresh = device.wait(Until.findObject(By.res(APP_ID, "refresh")), 10_000)
             assertNotNull(refresh)
-            refresh.swipe(androidx.test.uiautomator.Direction.DOWN, 0.5f)
+            pullToRefresh(refresh)
             SystemClock.sleep(500)
         }
         repeat(3) {
@@ -673,7 +673,7 @@ class V1ProductUiTest {
         assertTrue("Local transfer did not change the node balance", after > before)
         val refresh = device.wait(Until.findObject(By.res(APP_ID, "refresh")), 10_000)
         assertNotNull(refresh)
-        refresh.swipe(androidx.test.uiautomator.Direction.DOWN, 0.8f)
+        pullToRefresh(refresh)
         assertTrue(
             "Pull-to-refresh did not render the new local-node balance",
             waitTextContaining(CurrencyFormatter.format(value = after).toString(), 30_000),
@@ -1492,6 +1492,17 @@ class V1ProductUiTest {
         } finally {
             runBlocking { for(r in pq.list().filter { it.id !in original })pq.delete(r.id);accounts.logout();pins.reset() }
         }
+    }
+
+    private fun pullToRefresh(refresh: androidx.test.uiautomator.UiObject2) {
+        val bounds = refresh.visibleBounds
+        // The full-screen refresh container extends behind the overlay header.
+        // Start in the exposed content, as a user would, on every screen size.
+        val headerBottom = device.findObject(By.res(APP_ID, "header"))?.visibleBounds?.bottom ?: bounds.top
+        val start = maxOf(bounds.top + bounds.height() / 4, headerBottom + 16)
+        val end = bounds.bottom - bounds.height() / 8
+        assertTrue("No exposed refresh gesture area", end > start)
+        assertTrue(device.swipe(bounds.centerX(), start, bounds.centerX(), end, 45))
     }
 
     private fun launchImport() {
