@@ -208,4 +208,18 @@ object EscrowProjection {
         return state.status == EscrowStatus.Funded && quotedAtomic > 0uL &&
             state.funded == quotedAtomic
     }
+
+    /**
+     * The funding gate for one finalized observation: true only when the
+     * observed escrow is exactly funded at the quoted amount. A missing escrow,
+     * any other status (including a pending release or refund, which still
+     * record the funded amount), and a state the projection refuses all count as
+     * not funded, so a bad observation can only delay funding, never confirm it.
+     */
+    fun countsAsFunding(escrow: EscrowRuntimeState?, quotedAtomic: ULong): Boolean =
+        try {
+            isExactlyFunded(escrow, quotedAtomic)
+        } catch (_: IllegalArgumentException) {
+            false
+        }
 }

@@ -168,6 +168,19 @@ class EscrowProjectionTest {
     }
 
     @Test
+    fun `funding gate counts only the funded status`() {
+        for (case in cases) {
+            val expected = case["expect_error"] == null && case.bool("exactly_funded_at_quote")
+            assertEquals(case.str("name"), expected, EscrowProjection.countsAsFunding(runtime(case), quoted))
+        }
+        assertTrue(EscrowProjection.countsAsFunding(ContractEscrowStates.state("funded"), quoted))
+        for (name in listOf("pending_acceptance", "awaiting_funding", "release_pending", "refund_pending")) {
+            assertFalse(name, EscrowProjection.countsAsFunding(ContractEscrowStates.state(name), quoted))
+        }
+        assertFalse(EscrowProjection.countsAsFunding(null, quoted))
+    }
+
+    @Test
     fun `missing escrow is not fundable`() {
         val funding = EscrowProjection.funding(null)
         assertFalse(funding.found)
