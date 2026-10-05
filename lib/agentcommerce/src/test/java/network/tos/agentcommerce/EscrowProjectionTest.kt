@@ -1,95 +1,241 @@
 package network.tos.agentcommerce
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * These tests decode the SAME shared vector file the Go EscrowSettlementReader is
- * verified against, so the Kotlin projection is proven identical to the canonical
- * implementation and to the iOS client.
+ * These tests decode the shared escrow v2 projection vectors, which the iOS
+ * client decodes identically. The five status cases carry the fields of the data
+ * cells the escrow v2 contract itself wrote in the TOS sandbox; the refusal
+ * cases edit one field of such a case (see the file's provenance).
  */
 class EscrowProjectionTest {
 
-    private fun loadVector(): String {
+    private companion object {
+        val SETTLEMENT_VECTOR_KEYS = setOf(
+            "release_pending", "refund_pending", "requested_release_atomic", "requested_refund_atomic",
+        )
+    }
+
+    private val root: JsonObject by lazy {
         val stream = javaClass.classLoader!!
-            .getResourceAsStream("mobile_buyer_escrow_projection_v1.json")
+            .getResourceAsStream("mobile_buyer_escrow_projection_v2.json")
             ?: error("shared vector resource is missing")
-        return stream.bufferedReader().use { it.readText() }
+        Json.parseToJsonElement(stream.bufferedReader().use { it.readText() }).jsonObject
+    }
+
+    private val cases: List<JsonObject> by lazy { root["cases"]!!.jsonArray.map { it.jsonObject } }
+
+    private val quoted: ULong by lazy { parseAtomicAmount(root.str("quoted_atomic")) }
+
+    private fun JsonObject.str(key: String) = this[key]!!.jsonPrimitive.content
+
+    private fun JsonObject.bool(key: String) = this[key]!!.jsonPrimitive.boolean
+
+    private fun case(name: String) = cases.firstOrNull { it.str("name") == name }
+        ?: error("missing case $name")
+
+    private fun runtime(case: JsonObject): EscrowRuntimeState? {
+        if (!case.bool("present")) return null
+        val e = case["escrow"]!!.jsonObject
+        return EscrowRuntimeState(
+            status = e["status"]!!.jsonPrimitive.int,
+            quoteCommitment = e.str("quote_commitment"),
+            fundedAtomicAmount = e.str("funded_atomic_amount"),
+            settledAtomicAmount = e.str("settled_atomic_amount"),
+            receiptCommitment = e.str("receipt_commitment"),
+            acceptedAtUnix = e["accepted_at_unix"]!!.jsonPrimitive.long.toULong(),
+            pendingQueryId = e["pending_query_id"]!!.jsonPrimitive.long.toULong(),
+        )
+    }
+
+    private fun errorKind(error: Throwable): String = when (error) {
+        is EscrowStateException.UnsupportedStatus -> "unsupported_status"
+        is EscrowStateException.InconsistentState -> "inconsistent_state"
+        is EscrowStateException.MalformedCommitment -> "malformed_commitment"
+        is AtomicAmountException -> "malformed_amount"
+        else -> "unexpected: $error"
+    }
+
+    @Test
+    fun `status values are the contract statuses`() {
+        assertEquals(
+            "tos.service.mobile-buyer-escrow-projection.v2",
+            root.str("schema"),
+        )
+        val statuses = root["escrow_status"]!!.jsonObject
+        val expected = mapOf(
+            "pending_acceptance" to EscrowStatus.PendingAcceptance,
+            "awaiting_funding" to EscrowStatus.AwaitingFunding,
+            "funded" to EscrowStatus.Funded,
+            "release_pending" to EscrowStatus.ReleasePending,
+            "refund_pending" to EscrowStatus.RefundPending,
+        )
+        assertEquals(expected.keys, statuses.keys)
+        assertEquals(expected.size, EscrowStatus.entries.size)
+        for ((name, status) in expected) {
+            assertEquals(name, statuses[name]!!.jsonPrimitive.int, status.raw)
+        }
+    }
+
+    @Test
+    fun `every contract status is covered`() {
+        val covered = cases.filter { it["expect_error"] == null && it.bool("present") }
+            .map { it["escrow"]!!.jsonObject["status"]!!.jsonPrimitive.int }
+            .toSet()
+        assertEquals(setOf(0, 1, 2, 3, 4), covered)
     }
 
     @Test
     fun `projection matches shared vectors`() {
-        val root = Json.parseToJsonElement(loadVector()).jsonObject
-        assertEquals(
-            "tos.service.mobile-buyer-escrow-projection.v1",
-            root["schema"]!!.jsonPrimitive.content,
-        )
-        val cases = root["cases"]!!.jsonArray
         assertTrue(cases.isNotEmpty())
+        for (case in cases) {
+            val name = case.str("name")
+            val state = runtime(case)
 
-        for (element in cases) {
-            val case = element.jsonObject
-            val name = case["name"]!!.jsonPrimitive.content
-            val present = case["present"]!!.jsonPrimitive.boolean
-            val runtime = if (present) {
-                val e = case["escrow"]!!.jsonObject
-                EscrowRuntimeState(
-                    status = e["status"]!!.jsonPrimitive.int,
-                    quoteCommitment = e["quote_commitment"]!!.jsonPrimitive.content,
-                    fundedAtomicAmount = e["funded_atomic_amount"]!!.jsonPrimitive.content,
-                    settledAtomicAmount = e["settled_atomic_amount"]!!.jsonPrimitive.content,
-                    receiptCommitment = e["receipt_commitment"]!!.jsonPrimitive.content,
+            val expectError = case["expect_error"]?.jsonPrimitive?.content
+            if (expectError != null) {
+                val calls = listOf<Pair<String, () -> Unit>>(
+                    "funding" to { EscrowProjection.funding(state) },
+                    "settlement" to { EscrowProjection.settlement(state) },
+                    "isExactlyFunded" to { EscrowProjection.isExactlyFunded(state, quoted) },
                 )
-            } else {
-                null
-            }
-
-            if (case["expect_decode_error"]?.jsonPrimitive?.boolean == true) {
-                assertThrows(name, AtomicAmountException::class.java) {
-                    EscrowProjection.funding(runtime)
+                for ((label, call) in calls) {
+                    try {
+                        call()
+                        fail("$name $label must refuse")
+                    } catch (error: IllegalArgumentException) {
+                        assertEquals("$name $label", expectError, errorKind(error))
+                    }
                 }
                 continue
             }
 
-            val funding = EscrowProjection.funding(runtime)
-            val settlement = EscrowProjection.settlement(runtime)
+            val funding = EscrowProjection.funding(state)
+            val settlement = EscrowProjection.settlement(state)
             val wantFunding = case["funding_view"]!!.jsonObject
             val wantSettlement = case["settlement_view"]!!.jsonObject
 
-            assertEquals(name, wantFunding["found"]!!.jsonPrimitive.boolean, funding.found)
-            assertEquals(name, wantFunding["awaiting_funding"]!!.jsonPrimitive.boolean, funding.awaitingFunding)
-            assertEquals(name, parseAtomicAmount(wantFunding["funded_atomic"]!!.jsonPrimitive.content), funding.fundedAtomic)
-            assertEquals(name, parseAtomicAmount(wantFunding["settled_atomic"]!!.jsonPrimitive.content), funding.settledAtomic)
-            assertEquals(name, wantFunding["receipt_commitment"]!!.jsonPrimitive.content, funding.receiptCommitment)
+            assertEquals(name, wantFunding.bool("found"), funding.found)
+            assertEquals(name, wantFunding.bool("pending_acceptance"), funding.pendingAcceptance)
+            assertEquals(name, wantFunding.bool("awaiting_funding"), funding.awaitingFunding)
+            assertEquals(name, parseAtomicAmount(wantFunding.str("funded_atomic")), funding.fundedAtomic)
+            assertEquals(name, parseAtomicAmount(wantFunding.str("settled_atomic")), funding.settledAtomic)
+            assertEquals(name, wantFunding.str("receipt_commitment"), funding.receiptCommitment)
 
-            assertEquals(name, wantSettlement["released"]!!.jsonPrimitive.boolean, settlement.released)
-            assertEquals(name, wantSettlement["refunded"]!!.jsonPrimitive.boolean, settlement.refunded)
+            assertEquals(name, SETTLEMENT_VECTOR_KEYS, wantSettlement.keys)
+            assertEquals(name, wantSettlement.bool("release_pending"), settlement.releasePending)
+            assertEquals(name, wantSettlement.bool("refund_pending"), settlement.refundPending)
             assertEquals(
                 name,
-                parseAtomicAmount(wantSettlement["provider_credit_atomic"]!!.jsonPrimitive.content),
-                settlement.providerCreditAtomic,
+                parseAtomicAmount(wantSettlement.str("requested_release_atomic")),
+                settlement.requestedReleaseAtomic,
+            )
+            assertEquals(
+                name,
+                parseAtomicAmount(wantSettlement.str("requested_refund_atomic")),
+                settlement.requestedRefundAtomic,
+            )
+
+            assertEquals(
+                name,
+                case.bool("exactly_funded_at_quote"),
+                EscrowProjection.isExactlyFunded(state, quoted),
             )
         }
     }
 
     @Test
-    fun `gateway success is never payment`() {
-        val funded = EscrowRuntimeState(
-            status = EscrowStatus.Funded.raw, quoteCommitment = "tvm-cell-sha256:aa",
-            fundedAtomicAmount = "25000000", settledAtomicAmount = "0", receiptCommitment = "",
-        )
-        assertFalse(EscrowProjection.settlement(funded).released)
+    fun `funded is never release pending`() {
+        val funded = runtime(case("funded"))!!
+        assertEquals(EscrowStatus.Funded.raw, funded.status)
+        val settlement = EscrowProjection.settlement(funded)
+        assertFalse(settlement.releasePending)
+        assertFalse(settlement.refundPending)
+        assertEquals(0uL, settlement.requestedReleaseAtomic)
+        assertEquals(0uL, settlement.requestedRefundAtomic)
+        assertFalse(EscrowProjection.funding(funded).awaitingFunding)
         assertTrue(EscrowProjection.isExactlyFunded(funded, 25_000_000uL))
         assertFalse(EscrowProjection.isExactlyFunded(funded, 24_999_999uL))
+    }
+
+    @Test
+    fun `settlement in progress is not dispatchable`() {
+        for (name in listOf("release_pending", "refund_pending")) {
+            val state = runtime(case(name))!!
+            assertEquals(name, "25000000", state.fundedAtomicAmount)
+            assertFalse(name, EscrowProjection.isExactlyFunded(state, 25_000_000uL))
+        }
+    }
+
+    @Test
+    fun `funding gate counts only the funded status`() {
+        for (case in cases) {
+            val expected = case["expect_error"] == null && case.bool("exactly_funded_at_quote")
+            assertEquals(case.str("name"), expected, EscrowProjection.countsAsFunding(runtime(case), quoted))
+        }
+        assertTrue(EscrowProjection.countsAsFunding(ContractEscrowStates.state("funded"), quoted))
+        for (name in listOf("pending_acceptance", "awaiting_funding", "release_pending", "refund_pending")) {
+            assertFalse(name, EscrowProjection.countsAsFunding(ContractEscrowStates.state(name), quoted))
+        }
+        assertFalse(EscrowProjection.countsAsFunding(null, quoted))
+    }
+
+    @Test
+    fun `settlement view reports requests, never delivery`() {
+        // A payout can be refused while the escrow stays pending, so no field
+        // may present a pending payout as delivered, paid or credited.
+        val fields = SettlementView::class.java.declaredFields
+            .filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+            .map { it.name }
+            .toSet()
+        assertEquals(
+            setOf("releasePending", "refundPending", "requestedReleaseAtomic", "requestedRefundAtomic"),
+            fields,
+        )
+        val forbidden = listOf("credit", "paid", "deliver", "released", "refunded", "received")
+        for (name in fields + SETTLEMENT_VECTOR_KEYS) {
+            for (word in forbidden) {
+                assertFalse("$name claims $word", name.lowercase().contains(word))
+            }
+        }
+    }
+
+    @Test
+    fun `requested amounts are reported only for their pending status`() {
+        for (case in cases.filter { it["expect_error"] == null && it.bool("present") }) {
+            val name = case.str("name")
+            val settlement = EscrowProjection.settlement(runtime(case))
+            assertEquals(name, name == "release_pending", settlement.requestedReleaseAtomic != 0uL)
+            assertEquals(name, name == "refund_pending", settlement.requestedRefundAtomic != 0uL)
+            assertEquals(name, name == "release_pending", settlement.releasePending)
+            assertEquals(name, name == "refund_pending", settlement.refundPending)
+        }
+        val refund = EscrowProjection.settlement(runtime(case("refund_pending")))
+        assertEquals(25_000_000uL, refund.requestedRefundAtomic)
+        val release = EscrowProjection.settlement(runtime(case("release_pending")))
+        assertEquals(25_000_000uL, release.requestedReleaseAtomic)
+    }
+
+    @Test
+    fun `missing escrow is not fundable`() {
+        val funding = EscrowProjection.funding(null)
+        assertFalse(funding.found)
+        assertFalse(funding.awaitingFunding)
+        assertFalse(funding.pendingAcceptance)
+        assertFalse(EscrowProjection.isExactlyFunded(null, 25_000_000uL))
     }
 
     @Test
