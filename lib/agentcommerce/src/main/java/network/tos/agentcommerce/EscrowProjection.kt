@@ -13,13 +13,19 @@ enum class EscrowStatus(val raw: Int) {
     /** Accepted by the buyer; the escrow takes exactly the quoted amount. */
     AwaitingFunding(1),
 
-    /** Holds the quoted amount. Funded is never paid to the provider. */
+    /** Holds the quoted amount. Nothing has been sent to the provider. */
     Funded(2),
 
-    /** A Receipt-bound release to the provider was sent for the full amount. */
+    /**
+     * A Receipt-bound release of the full amount to the provider was sent. The
+     * contract does not learn whether it was delivered.
+     */
     ReleasePending(3),
 
-    /** A refund of the full amount to the buyer was sent. */
+    /**
+     * A refund of the full amount to the buyer was sent. The contract does not
+     * learn whether it was delivered.
+     */
     RefundPending(4),
     ;
 
@@ -82,7 +88,11 @@ data class EscrowRuntimeState(
     val pendingQueryId: ULong,
 )
 
-/** The buyer's funding projection of finalized escrow state. */
+/**
+ * The buyer's funding projection of finalized escrow state. [settledAtomic] is
+ * the contract's settled field: the amount a pending release asked for, not an
+ * amount known to have been delivered.
+ */
 data class FundingView(
     val found: Boolean,
     val pendingAcceptance: Boolean,
@@ -93,14 +103,23 @@ data class FundingView(
 )
 
 /**
- * The buyer's settlement projection. [released] is the only signal that means
- * "paid to the provider", derived from finalized escrow status — never from a
- * Gateway response or an HTTP success.
+ * The buyer's settlement projection, derived from finalized escrow status —
+ * never from a Gateway response or an HTTP success.
+ *
+ * It reports payouts the escrow has requested, never payouts that arrived. The
+ * escrow sends a release or refund through its jetton wallet and is not told
+ * whether the recipient's wallet accepted it; a refused payout leaves the
+ * escrow release-pending or refund-pending with the funds stranded. Nothing
+ * here is evidence that the provider or the buyer was paid.
+ *
+ * [requestedReleaseAtomic] is non-zero only while [releasePending], and
+ * [requestedRefundAtomic] only while [refundPending].
  */
 data class SettlementView(
-    val released: Boolean,
-    val refunded: Boolean,
-    val providerCreditAtomic: ULong,
+    val releasePending: Boolean,
+    val refundPending: Boolean,
+    val requestedReleaseAtomic: ULong,
+    val requestedRefundAtomic: ULong,
 )
 
 /**
@@ -181,17 +200,25 @@ object EscrowProjection {
         )
     }
 
-    /** Release and refund are mutually exclusive; only a release credits the provider. */
+    /**
+     * A pending release and a pending refund are mutually exclusive. Each
+     * reports the amount the escrow asked to pay out, not an amount delivered.
+     */
     fun settlement(escrow: EscrowRuntimeState?): SettlementView {
         if (escrow == null) {
-            return SettlementView(released = false, refunded = false, providerCreditAtomic = 0uL)
+            return SettlementView(
+                releasePending = false, refundPending = false,
+                requestedReleaseAtomic = 0uL, requestedRefundAtomic = 0uL,
+            )
         }
         val state = validate(escrow)
-        val released = state.status == EscrowStatus.ReleasePending
+        val releasePending = state.status == EscrowStatus.ReleasePending
+        val refundPending = state.status == EscrowStatus.RefundPending
         return SettlementView(
-            released = released,
-            refunded = state.status == EscrowStatus.RefundPending,
-            providerCreditAtomic = if (released) state.settled else 0uL,
+            releasePending = releasePending,
+            refundPending = refundPending,
+            requestedReleaseAtomic = if (releasePending) state.settled else 0uL,
+            requestedRefundAtomic = if (refundPending) state.funded else 0uL,
         )
     }
 

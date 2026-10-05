@@ -23,6 +23,12 @@ import org.junit.Test
  */
 class EscrowProjectionTest {
 
+    private companion object {
+        val SETTLEMENT_VECTOR_KEYS = setOf(
+            "release_pending", "refund_pending", "requested_release_atomic", "requested_refund_atomic",
+        )
+    }
+
     private val root: JsonObject by lazy {
         val stream = javaClass.classLoader!!
             .getResourceAsStream("mobile_buyer_escrow_projection_v2.json")
@@ -129,12 +135,18 @@ class EscrowProjectionTest {
             assertEquals(name, parseAtomicAmount(wantFunding.str("settled_atomic")), funding.settledAtomic)
             assertEquals(name, wantFunding.str("receipt_commitment"), funding.receiptCommitment)
 
-            assertEquals(name, wantSettlement.bool("released"), settlement.released)
-            assertEquals(name, wantSettlement.bool("refunded"), settlement.refunded)
+            assertEquals(name, SETTLEMENT_VECTOR_KEYS, wantSettlement.keys)
+            assertEquals(name, wantSettlement.bool("release_pending"), settlement.releasePending)
+            assertEquals(name, wantSettlement.bool("refund_pending"), settlement.refundPending)
             assertEquals(
                 name,
-                parseAtomicAmount(wantSettlement.str("provider_credit_atomic")),
-                settlement.providerCreditAtomic,
+                parseAtomicAmount(wantSettlement.str("requested_release_atomic")),
+                settlement.requestedReleaseAtomic,
+            )
+            assertEquals(
+                name,
+                parseAtomicAmount(wantSettlement.str("requested_refund_atomic")),
+                settlement.requestedRefundAtomic,
             )
 
             assertEquals(
@@ -146,13 +158,14 @@ class EscrowProjectionTest {
     }
 
     @Test
-    fun `funded is never released`() {
+    fun `funded is never release pending`() {
         val funded = runtime(case("funded"))!!
         assertEquals(EscrowStatus.Funded.raw, funded.status)
         val settlement = EscrowProjection.settlement(funded)
-        assertFalse(settlement.released)
-        assertFalse(settlement.refunded)
-        assertEquals(0uL, settlement.providerCreditAtomic)
+        assertFalse(settlement.releasePending)
+        assertFalse(settlement.refundPending)
+        assertEquals(0uL, settlement.requestedReleaseAtomic)
+        assertEquals(0uL, settlement.requestedRefundAtomic)
         assertFalse(EscrowProjection.funding(funded).awaitingFunding)
         assertTrue(EscrowProjection.isExactlyFunded(funded, 25_000_000uL))
         assertFalse(EscrowProjection.isExactlyFunded(funded, 24_999_999uL))
@@ -178,6 +191,42 @@ class EscrowProjectionTest {
             assertFalse(name, EscrowProjection.countsAsFunding(ContractEscrowStates.state(name), quoted))
         }
         assertFalse(EscrowProjection.countsAsFunding(null, quoted))
+    }
+
+    @Test
+    fun `settlement view reports requests, never delivery`() {
+        // A payout can be refused while the escrow stays pending, so no field
+        // may present a pending payout as delivered, paid or credited.
+        val fields = SettlementView::class.java.declaredFields
+            .filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+            .map { it.name }
+            .toSet()
+        assertEquals(
+            setOf("releasePending", "refundPending", "requestedReleaseAtomic", "requestedRefundAtomic"),
+            fields,
+        )
+        val forbidden = listOf("credit", "paid", "deliver", "released", "refunded", "received")
+        for (name in fields + SETTLEMENT_VECTOR_KEYS) {
+            for (word in forbidden) {
+                assertFalse("$name claims $word", name.lowercase().contains(word))
+            }
+        }
+    }
+
+    @Test
+    fun `requested amounts are reported only for their pending status`() {
+        for (case in cases.filter { it["expect_error"] == null && it.bool("present") }) {
+            val name = case.str("name")
+            val settlement = EscrowProjection.settlement(runtime(case))
+            assertEquals(name, name == "release_pending", settlement.requestedReleaseAtomic != 0uL)
+            assertEquals(name, name == "refund_pending", settlement.requestedRefundAtomic != 0uL)
+            assertEquals(name, name == "release_pending", settlement.releasePending)
+            assertEquals(name, name == "refund_pending", settlement.refundPending)
+        }
+        val refund = EscrowProjection.settlement(runtime(case("refund_pending")))
+        assertEquals(25_000_000uL, refund.requestedRefundAtomic)
+        val release = EscrowProjection.settlement(runtime(case("release_pending")))
+        assertEquals(25_000_000uL, release.requestedReleaseAtomic)
     }
 
     @Test
