@@ -1,0 +1,17 @@
+{
+  "repository": "tosnetwork/tos",
+  "starting_head": "48140699f20c837c53ecf76b4f3543e900ac7a2d",
+  "source_sha256": {
+    "tosctl/src/lms-fee-state/Cargo.toml": "c90ecf9fc874e465d408f39e84c42924e5c44f43876b09dfbe83b5c28f469f02",
+    "tosctl/src/lms-fee-state/build.rs": "7d725d7ad3bfb117475d59862c0bf21e3217871aec08530598225c8feb9e52db",
+    "tosctl/src/lms-fee-state/src/lib.rs": "f449fcba7470930f21dd1b40529955fe5ca3018dfa8e9276cc49a6002b853911",
+    "tosctl/src/lms-fee-state/src/ffi.rs": "498cb35e6d25129f84c835be0367749e8772f81d789df5e695edbeb812caafc8",
+    "tosctl/src/lms-fee-state/README.md": "edc52ab6ef907ae1d6ef06a98e0c69d6109b2aebf9ff8327ecd01f81223c0cbe",
+    "tosctl/src/node-control/contracts/src/lms_fee_schedule.rs": "ce4b222b7d5d54da5b0819a06f62be9960c60259cc71fcd60b86426bb6437874",
+    "tosctl/src/node-control/contracts/src/lms_fee_journal.rs": "b25ff920d41b59a2efc82b66d12068441c06a14f851f4413d99076de4b0c6528",
+    "tosctl/src/node-control/contracts/src/lms_fee_cache.rs": "ebe51432db6318705f31224b5c7367688fb97bb036ceedf8975c479ec558b208",
+    "rust-toolchain.toml": "279d77167cec5426fa80f457cd066dc74a360fbe4e2816f4f3fa01487a918fdc"
+  },
+  "status": "implementation source snapshot, not release approval",
+  "manifest_transform": "workspace-local dependencies pinned to the source Cargo.lock"
+}
