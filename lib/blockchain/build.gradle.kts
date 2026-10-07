@@ -21,6 +21,7 @@ android {
 dependencies {
 
     testImplementation(libs.junit)
+    implementation(libs.kotlinX.serialization.json)
 
     api(libs.ton.tvm)
     api(libs.ton.crypto)
