@@ -64,11 +64,12 @@ class V5R2LiveGenesisProofTest {
         fun prove(role:String): V5R2VerifiedRead {
             val id=UUID.randomUUID();directories.add(File(context.noBackupFilesDir,"v5r2-proof-checkpoints/$id"))
             val session=V5R2ProofSession(context,id,read("anchor.json"))
-            val replies=listOf("chain-0000.tl","account.tl").map{read("$role/material/$it")}
+            val names=if(role=="policy") listOf("masterchain-info.tl","chain-0000.tl","config.tl","account.tl") else listOf("chain-0000.tl","account.tl")
+            val replies=names.map{read("$role/material/$it")}
             var calls=0
             val transport=V5R2ProofTransport { _,capacity -> replies[calls++].also{require(it.size<=capacity)} }
             val proven=session.enrollBound(read("$role/request.json"),now,transport)
-            assertEquals("Unexpected proof acquisition sequence",2,calls)
+            assertEquals("Unexpected proof acquisition sequence",names.size,calls)
             return proven
         }
         try {
@@ -79,6 +80,19 @@ class V5R2LiveGenesisProofTest {
             assertEquals("1000000000000000",installed.walletAccount.balance.toString())
             assertEquals("1000000000000",installed.moduleAccount.balance.toString())
             installed.requireFeeProof(now,300)
+            val policyProof=prove("policy")
+            installed.requirePrimaryExecution(policyProof,now,300)
+            installed.requirePrimaryCustody(primary,policyProof,now,300)
+            val request=installed.primaryExecuteRequest(policyProof,org.ton.cell.buildCell { },now+60,now,300)
+            assertEquals(V5R2AuthRole.PRIMARY,request.role)
+            assertEquals(32,request.digest.size)
+            val badKey=primary.copyOf().also { it[0]=(it[0].toInt() xor 1).toByte() }
+            val keyError=runCatching { installed.requirePrimaryCustody(badKey,policyProof,now,300) }.exceptionOrNull()
+            assertEquals("Wrong current PRIMARY key accepted", "Primary custody key differs from module enrollment",keyError?.message)
+            val expired=runCatching { installed.primaryExecuteRequest(policyProof,org.ton.cell.buildCell { },now,now,300) }.exceptionOrNull()
+            assertEquals("Expired PRIMARY request accepted", "Primary deadline expired by local clock",expired?.message)
+
+
             val wrongNetwork=network.copyOf().also { it[0]=(it[0].toInt() xor 1).toByte() }
             val wrongBirth=TosV5R2Genesis(codes,pins,global,wrongNetwork,walletId,primary,rescue,
                 if(policy==1) V5R2Policy.READY else V5R2Policy.REQUIRED,tree,fee,epoch0)
