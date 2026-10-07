@@ -33,6 +33,15 @@ object V5R2ProofNative {
                                                   request: ByteArray, localNow: Long, kinds: IntArray,
                                                   material: Array<ByteArray>): ByteArray
 
+    internal fun acquireLivePersisted(directory: String, initialize: Boolean, anchor: ByteArray, request: ByteArray,
+                                      localNow: Long, transport: V5R2ProofTransport): ByteArray {
+        require(directory.isNotEmpty() && directory.toByteArray(Charsets.UTF_8).size <= 4096)
+        require(localNow > 0 && anchor.size in 1..1_048_576 && request.size in 1..1_048_576)
+        return nativeAcquireLivePersisted(directory, initialize, anchor, request, localNow, transport).also { check(it.isNotEmpty()) }
+    }
+    private external fun nativeAcquireLivePersisted(directory: String, initialize: Boolean, anchor: ByteArray,
+                                                   request: ByteArray, localNow: Long, transport: V5R2ProofTransport): ByteArray
+
     private external fun nativeVerify(anchor: ByteArray, request: ByteArray, priorState: ByteArray,
                                       localNow: Long, kinds: IntArray, material: Array<ByteArray>): Array<ByteArray>
 }

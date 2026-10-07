@@ -41,4 +41,35 @@ class V5R2ProofSessionDeviceTest {
             File(context.filesDir, "v5r2-proof-checkpoints/$id").deleteRecursively()
         }
     }
+    @Test fun callbackTransportAcquiresVerifiesAndPreservesStateOnFailure() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val assets = instrumentation.context.assets
+        fun bytes(name: String) = assets.open("v5r2-proof/$name").use { it.readBytes() }
+        val id = UUID.randomUUID()
+        val directory = File(context.noBackupFilesDir, "v5r2-proof-checkpoints/$id")
+        val session = V5R2ProofSession(context, id, bytes("anchor.json"))
+        val request = bytes("live-request.json")
+        val replies = listOf("live/masterchain-info.tl", "historical/chain-0000.tl", "live/config.tl").map(::bytes)
+        var calls = 0
+        val transport = V5R2ProofTransport { query, maximum ->
+            assertTrue(query.isNotEmpty())
+            check(calls < replies.size)
+            replies[calls++].also { assertTrue(it.size <= maximum) }
+        }
+        try {
+            val result = session.enroll(request, 1791200932, transport)
+            assertEquals("verified", JSONObject(result.toString(Charsets.UTF_8)).getString("status"))
+            assertEquals(3, calls)
+            val state = File(directory, "checkpoint.json")
+            assertTrue(state.isFile)
+            val before = state.readBytes()
+            try {
+                session.read(request, 1791200932, V5R2ProofTransport { _, _ -> throw IllegalStateException("Public test transport failure") })
+                fail("Transport exception swallowed")
+            } catch (error: IllegalStateException) { assertEquals("Public test transport failure", error.message) }
+            assertArrayEquals(before, state.readBytes())
+        } finally { directory.deleteRecursively() }
+    }
+
 }
