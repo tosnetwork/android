@@ -55,7 +55,7 @@ data class TosV5SigningRequest(val globalId: Int, val seqno: Int, val validUntil
         }
 
         /** Only message semantics completely represented by the native confirmation UI. */
-        private fun decodeTransfer(cell: Cell): TosV5Transfer {
+        internal fun decodeTransfer(cell: Cell): TosV5Transfer {
             require(cell.type == CellType.ORDINARY) { "Exotic messages are unavailable" }
             val message = cell.parse { loadTlb(MessageRelaxed.tlbCodec(AnyTlbConstructor)) }
             require(buildCell { storeTlb(MessageRelaxed.tlbCodec(AnyTlbConstructor), message) }.hash() == cell.hash()) {

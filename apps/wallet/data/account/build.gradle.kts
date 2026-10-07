@@ -9,6 +9,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.okhttp)
     implementation(libs.kotlinX.serialization.json)
     implementation(libs.kotlinX.coroutines.android)
     implementation(libs.koin.core)
