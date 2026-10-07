@@ -89,12 +89,33 @@ class V5R2WalletsScreen : BaseFragment(R.layout.fragment_pq_wallets), BaseFragme
             }.show()
     }
     private fun restore(record: V5R2WalletRepository.Record, role: V5R2Role) {
+        AlertDialog.Builder(requireContext()).setTitle("Recovery input profile")
+            .setItems(arrayOf("Native TOS mnemonic", "32-byte raw master")) { _, choice ->
+                restoreInput(record, role, choice == 0)
+            }.show()
+    }
+    private fun restoreInput(record: V5R2WalletRepository.Record, role: V5R2Role, native: Boolean) {
         val input = EditText(requireContext()).apply {
-            hint = "32-byte raw master (64 hex characters)"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = if (native) "Native TOS mnemonic (12 or 24 words)" else "32-byte raw master (64 hex characters)"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        val dialog = AlertDialog.Builder(requireContext()).setTitle("Restore ${role.name} access").setView(input)
-            .setNegativeButton("Cancel") { _, _ -> input.text.clear() }.setPositiveButton("Restore") { _, _ ->
+        val password = EditText(requireContext()).apply { hint = "Exact mnemonic password (empty if unused)"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        val body = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; addView(input); if (native) addView(password) }
+        val dialog = AlertDialog.Builder(requireContext()).setTitle("Restore ${role.name} access").setView(body)
+            .setNegativeButton("Cancel") { _, _ -> input.text.clear(); password.text.clear() }.setPositiveButton("Restore") { _, _ ->
                 val chars = CharArray(input.text.length) { input.text[it] }; input.text.clear()
+                val pass = CharArray(password.text.length) { password.text[it] }; password.text.clear()
+                if (native) {
+                    busy = true
+                    V5R2RecoveryInput.launchNativeConsumed(lifecycleScope, chars, pass, onFailure = { busy = false; unavailable() }) { consumed ->
+                        try {
+                            withContext(Dispatchers.IO) { repository.restoreInitialRole(record.id, record.address, role, consumed, V5R2SeedVault.MasterProfile.NATIVE_MNEMONIC) }
+                            refresh()
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (_: Exception) { unavailable() } finally { busy = false }
+                    }
+                    return@setPositiveButton
+                }
+                pass.fill('\u0000')
                 var master = ByteArray(0)
                 try {
                     master = V5R2RecoveryInput.rawMasterAndWipe(chars)
@@ -110,6 +131,6 @@ class V5R2WalletsScreen : BaseFragment(R.layout.fragment_pq_wallets), BaseFragme
                 } catch (_: Exception) { master.fill(0); unavailable() }
                 finally { chars.fill('\u0000') }
             }.create()
-        dialog.setOnCancelListener { input.text.clear() }; dialog.show()
+        dialog.setOnCancelListener { input.text.clear(); password.text.clear() }; dialog.show()
     }
 }

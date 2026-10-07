@@ -26,4 +26,26 @@ class V5R2RecoveryInputTest {
         V5R2RecoveryInput.launchConsumed(scope, master) { ran = true }.join()
         assertFalse(ran); assertArrayEquals(ByteArray(32), master)
     }
+    @Test fun nativeMnemonicMatchesFrozenMasterAndCancelledInputsAreCleared() = runBlocking {
+        val scope = CoroutineScope(Job() + Dispatchers.Default)
+        val words = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon amateur".uppercase().replace(" ", "\u2003\u0085\t").toCharArray()
+        val password = "".toCharArray()
+        var captured: ByteArray? = null
+        var error: Exception? = null
+        V5R2RecoveryInput.launchNativeConsumed(scope, words, password, { error = it }) { master ->
+            assertEquals("cc97dcca0bed763026ad0174ad4c38a057fca97863005b181e11f9f0a0c39bc6", master.joinToString("") { "%02x".format(it.toInt() and 255) })
+            captured = master
+        }.join()
+        assertNull(error); assertNotNull(captured); assertArrayEquals(ByteArray(32), captured)
+        assertTrue(words.all { it == '\u0000' }); assertTrue(password.all { it == '\u0000' })
+        val owner = Job().apply { cancel() }; val cancelled = CoroutineScope(owner + Dispatchers.Default)
+        val pendingWords = "PUBLIC invalid test".toCharArray(); val pendingPassword = "PUBLIC password".toCharArray()
+        V5R2RecoveryInput.launchNativeConsumed(cancelled, pendingWords, pendingPassword, { fail("cancelled error callback") }) { fail("cancelled action ran") }.join()
+        assertTrue(pendingWords.all { it == '\u0000' }); assertTrue(pendingPassword.all { it == '\u0000' })
+        val invalid = "not a native phrase".toCharArray(); val invalidPassword = "PUBLIC invalid password".toCharArray()
+        var refused = false
+        V5R2RecoveryInput.launchNativeConsumed(scope, invalid, invalidPassword, { refused = true }) { fail("invalid action ran") }.join()
+        assertTrue(refused); assertTrue(invalid.all { it == '\u0000' }); assertTrue(invalidPassword.all { it == '\u0000' })
+        scope.cancel()
+    }
 }
