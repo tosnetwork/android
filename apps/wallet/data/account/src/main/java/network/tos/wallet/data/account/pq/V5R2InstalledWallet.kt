@@ -23,7 +23,10 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
                                             private val vaultTime: Long, private val epoch0: Long,
                                             private val globalId: Int, private val walletAddress: AddrStd,
                                             private val moduleAddress: AddrStd, private val walletTime: Long,
-                                            private val installedRoute: TosV5R2InstalledRoute) {
+                                            private val installedRoute: TosV5R2InstalledRoute,
+                                            val walletAccount: TosV5R2AccountState.Snapshot,
+                                            val moduleAccount: TosV5R2AccountState.Snapshot,
+                                            val vaultAccount: TosV5R2AccountState.Snapshot) {
     /** Checks custody against the immutable module data authenticated during tuple binding. */
     fun requirePrimaryCustody(publicKey: ByteArray, policyProof: V5R2VerifiedRead, localNow: Long, maximumAge: Long) {
         requirePrimaryExecution(policyProof, localNow, maximumAge)
@@ -63,14 +66,17 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
                          vault: V5R2VerifiedRead, localNow: Long, maximumAge: Long): V5R2InstalledWallet {
             wallet.requireLive(localNow, maximumAge)
             wallet.requireSameCheckpoint(module); wallet.requireSameCheckpoint(vault)
-            fun data(proof: V5R2VerifiedRead, address: AddrStd, code: Cell): Cell {
+            fun account(proof: V5R2VerifiedRead, address: AddrStd, code: Cell): TosV5R2AccountState.Snapshot {
                 val text = "0:" + address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
                 val hash = code.hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
-                return TosV5R2AccountState.data(proof.accountState(text, hash), address, code)
+                return TosV5R2AccountState.snapshot(proof.accountState(text, hash), address, code)
             }
-            val walletData = data(wallet, birth.address, birth.walletInit.refs[0])
-            val moduleData = data(module, route.moduleAddress, route.moduleInit.refs[0])
-            val vaultData = data(vault, route.vaultAddress, route.vaultInit.refs[0])
+            val walletAccount = account(wallet, birth.address, birth.walletInit.refs[0])
+            val walletData = walletAccount.data
+            val moduleAccount = account(module, route.moduleAddress, route.moduleInit.refs[0])
+            val moduleData = moduleAccount.data
+            val vaultAccount = account(vault, route.vaultAddress, route.vaultInit.refs[0])
+            val vaultData = vaultAccount.data
             check(moduleData.hash() == route.moduleData.hash()) { "Installed module data mismatch" }
             val identity = moduleData.beginParse()
             identity.loadBits(8)
@@ -86,7 +92,7 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
                 TosV5R2AccountState.vaultCounter(vaultData, route.vaultData), wallet, network, policy,
                 vault.accountTime(vaultAddress, vaultCode), epoch0, globalId, birth.address, route.moduleAddress,
                 wallet.accountTime("0:" + birth.address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) },
-                    birth.walletInit.refs[0].hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }), route)
+                    birth.walletInit.refs[0].hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }), route, walletAccount, moduleAccount, vaultAccount)
         }
     }
 }
