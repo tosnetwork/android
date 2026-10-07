@@ -10,6 +10,7 @@ import javax.crypto.spec.GCMParameterSpec
 /** Role-specific encrypted seed custody. Authentication and chain authorization belong to the wallet service.
  * Separate rescue custody requires storing its record on the independent device. No fee state is stored here. */
 class V5R2SeedVault(private val prefs: SharedPreferences) {
+    enum class MasterProfile { NATIVE_MNEMONIC, RAW_MASTER_32 }
     class Context(network: ByteArray, val globalId: Int, val account: Long, val generation: Long) {
         private val tag = network.copyOf()
         init { require(tag.size == 32 && account in 0..0xffffffffL && generation in 0..0xffffffffL) }
@@ -23,6 +24,22 @@ class V5R2SeedVault(private val prefs: SharedPreferences) {
     private fun aad(name: String, context: Context): ByteArray =
         "TOS-V5R2-SEED-v1".toByteArray(Charsets.US_ASCII) +
             byteArrayOf(name.length.toByte()) + name.toByteArray(Charsets.US_ASCII) + context.encoding()
+
+    /** Initial key binding only. No signing handle or current-authority approval is returned.
+     * Native mnemonic validation must precede this call for that input profile. */
+    fun restoreDerivedAndWipe(id: String, role: V5R2Role, context: Context, wrappingKey: SecretKey,
+                              master: ByteArray, inputProfile: MasterProfile, declaredProfile: MasterProfile,
+                              expectedPublicKey: ByteArray): ByteArray {
+        var seed = ByteArray(0)
+        try {
+            require(inputProfile == declaredProfile && expectedPublicKey.size == role.publicKeySize)
+            val encoded = context.encoding()
+            seed = V5R2Kdf.deriveAndWipe(if (role == V5R2Role.PRIMARY) V5R2Kdf.Material.PRIMARY else V5R2Kdf.Material.RESCUE,
+                master, encoded.copyOfRange(0, 32), context.globalId, context.account, context.generation)
+            require(V5R2Crypto.publicKey(role, seed).contentEquals(expectedPublicKey)) { "Recovered key differs from enrollment" }
+            return importAndWipe(id, role, context, wrappingKey, seed)
+        } finally { master.fill(0); seed.fill(0) }
+    }
 
     /** Takes ownership of the caller's seed and clears it even if validation or persistence fails. */
     fun importAndWipe(id: String, role: V5R2Role, context: Context, wrappingKey: SecretKey,
