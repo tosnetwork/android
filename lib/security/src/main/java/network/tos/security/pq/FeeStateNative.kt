@@ -14,7 +14,7 @@ internal object FeeStateNative {
 class FeeStateException(val status: Int) : IllegalStateException("Fee state operation refused: $status")
 
 /** Local single-writer state only. Observations require verified chain proofs; preview does not authorize signing. */
-class V5R2FeeState private constructor(private var handle: Long, private val route: ByteArray) : AutoCloseable {
+class QuantumFeeState private constructor(private var handle: Long, private val route: ByteArray) : AutoCloseable {
     @Synchronized fun preview(time: Long, chainNext: Long): Long = value(FeeStateNative.preview(active(), time, chainNext))
     @Synchronized fun reserve(time: Long, chainNext: Long, leaf: Long, digest: ByteArray): Long {
         require(digest.size == 32)
@@ -49,11 +49,11 @@ class V5R2FeeState private constructor(private var handle: Long, private val rou
         route.contentEquals(encodeRoute(globalId, network, vault, tree, epoch))
     private fun active(): Long { check(handle != 0L) { "Fee state session closed" }; return handle }
     companion object {
-        fun open(directory: java.io.File, globalId: Int, network: ByteArray, vault: ByteArray, treeId: ByteArray, epoch0: Long, provenTime: Long): V5R2FeeState {
+        fun open(directory: java.io.File, globalId: Int, network: ByteArray, vault: ByteArray, treeId: ByteArray, epoch0: Long, provenTime: Long): QuantumFeeState {
             require(directory.isAbsolute && network.size == 32 && vault.size == 32 && treeId.size == 32)
             val n = network.copyOf(); val v = vault.copyOf(); val t = treeId.copyOf()
             val route = encodeRoute(globalId, n, v, t, epoch0)
-            return V5R2FeeState(value(FeeStateNative.open(directory.path.toByteArray(Charsets.UTF_8), globalId, n, v, t, epoch0, provenTime)), route)
+            return QuantumFeeState(value(FeeStateNative.open(directory.path.toByteArray(Charsets.UTF_8), globalId, n, v, t, epoch0, provenTime)), route)
         }
         private fun encodeRoute(globalId: Int, network: ByteArray, vault: ByteArray, tree: ByteArray, epoch: Long): ByteArray {
             require(network.size == 32 && vault.size == 32 && tree.size == 32 && epoch in 0..0xffffffffL)

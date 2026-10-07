@@ -2,8 +2,8 @@
 #include <array>
 #include <vector>
 #include "pq/include/tos_pq.h"
-#include "pq/include/tos_v5r2.h"
-#include "pq/include/tos_v5r2_kdf.h"
+#include "pq/include/tos_quantum.h"
+#include "pq/include/tos_quantum_kdf.h"
 #include "pq/include/tos_fee_state.h"
 static std::vector<uint8_t> bytes(JNIEnv *e,jbyteArray a,size_t max) {
  if(!a) return {}; jsize n=e->GetArrayLength(a);
@@ -33,25 +33,25 @@ Java_network_tos_security_pq_PqNative_verify(JNIEnv *e,jobject,jint a,jbyteArray
  return tos_pq_verify(a,pk.data(),pk.size(),m.data(),m.size(),s.data(),s.size())==1;
 }
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_network_tos_security_pq_V5R2Native_publicKey(JNIEnv *e,jobject,jint role,jbyteArray seed) {
- const size_t n=tos_v5r2_public_key_size(role); if(!n) return nullptr;
+Java_network_tos_security_pq_QuantumNative_publicKey(JNIEnv *e,jobject,jint role,jbyteArray seed) {
+ const size_t n=tos_quantum_public_key_size(role); if(!n) return nullptr;
  auto s=bytes(e,seed,48); std::array<uint8_t,1312> pk{};
- int rc=tos_v5r2_public_key(role,s.data(),s.size(),pk.data(),n);
+ int rc=tos_quantum_public_key(role,s.data(),s.size(),pk.data(),n);
  tos_pq_clear(s.data(),s.size()); return rc?nullptr:out(e,pk.data(),n);
 }
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_network_tos_security_pq_V5R2Native_sign(JNIEnv *e,jobject,jint role,jint purpose,jbyteArray seed,jbyteArray entropy,jbyteArray digest) {
- const size_t n=tos_v5r2_signature_size(role); if(!n) return nullptr;
+Java_network_tos_security_pq_QuantumNative_sign(JNIEnv *e,jobject,jint role,jint purpose,jbyteArray seed,jbyteArray entropy,jbyteArray digest) {
+ const size_t n=tos_quantum_signature_size(role); if(!n) return nullptr;
  auto s=bytes(e,seed,48),r=bytes(e,entropy,32),d=bytes(e,digest,32);
  std::array<uint8_t,7856> sig{};
- int rc=tos_v5r2_sign(role,purpose,s.data(),s.size(),r.data(),r.size(),d.data(),d.size(),sig.data(),n);
+ int rc=tos_quantum_sign(role,purpose,s.data(),s.size(),r.data(),r.size(),d.data(),d.size(),sig.data(),n);
  tos_pq_clear(s.data(),s.size()); tos_pq_clear(r.data(),r.size());
  auto result=rc?nullptr:out(e,sig.data(),n);tos_pq_clear(sig.data(),sig.size());return result;
 }
 extern "C" JNIEXPORT jboolean JNICALL
-Java_network_tos_security_pq_V5R2Native_verify(JNIEnv *e,jobject,jint role,jint purpose,jbyteArray key,jbyteArray digest,jbyteArray signature) {
+Java_network_tos_security_pq_QuantumNative_verify(JNIEnv *e,jobject,jint role,jint purpose,jbyteArray key,jbyteArray digest,jbyteArray signature) {
  auto pk=bytes(e,key,1312),d=bytes(e,digest,32),s=bytes(e,signature,7856);
- return tos_v5r2_verify(role,purpose,pk.data(),pk.size(),d.data(),d.size(),s.data(),s.size())==1;
+ return tos_quantum_verify(role,purpose,pk.data(),pk.size(),d.data(),d.size(),s.data(),s.size())==1;
 }
 static bool state_u32(jlong value) { return value>=0 && (uint64_t)value<=UINT32_MAX; }
 static jlongArray state_result(JNIEnv *e,int32_t status,uint64_t value) {
@@ -103,13 +103,13 @@ Java_network_tos_security_pq_FeeStateNative_cached(JNIEnv* e,jobject,jlong handl
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_network_tos_security_pq_V5R2KdfNative_derive(JNIEnv* e,jobject,jint material,jbyteArray master,jbyteArray network,jint globalId,jlong account,jlong generation,jbyteArray tree) {
+Java_network_tos_security_pq_QuantumKdfNative_derive(JNIEnv* e,jobject,jint material,jbyteArray master,jbyteArray network,jint globalId,jlong account,jlong generation,jbyteArray tree) {
  auto m=bytes(e,master,32),n=bytes(e,network,32),t=bytes(e,tree,32);
  std::array<uint8_t,48> result{};
  if(e->ExceptionCheck()||m.size()!=32||n.size()!=32||!state_u32(account)||!state_u32(generation)||
     (material==3 ? t.size()!=32 : tree!=nullptr)) {tos_pq_clear(m.data(),m.size());return nullptr;}
  size_t size=material==1?32:48;
- int rc=tos_v5r2_derive_and_wipe(material,m.data(),m.size(),n.data(),globalId,(uint32_t)account,(uint32_t)generation,material==3?t.data():nullptr,result.data(),size);
+ int rc=tos_quantum_derive_and_wipe(material,m.data(),m.size(),n.data(),globalId,(uint32_t)account,(uint32_t)generation,material==3?t.data():nullptr,result.data(),size);
  auto output=rc==0?out(e,result.data(),size):nullptr;
  tos_pq_clear(m.data(),m.size());tos_pq_clear(result.data(),result.size());return output;
 }

@@ -16,7 +16,7 @@ require(proofAbis.isNotEmpty() && proofAbis.all { it in setOf("arm64-v8a", "arme
 require(gradle.startParameter.taskNames.none { it.contains("Release", ignoreCase = true) } || proofAbis.size == 4) {
     "Release proof packaging requires all four ABIs"
 }
-val proofOutput = layout.buildDirectory.dir("generated/v5r2-proof-jni")
+val proofOutput = layout.buildDirectory.dir("generated/quantum-proof-jni")
 
 android {
     namespace = Build.namespacePrefix("security")
@@ -50,14 +50,14 @@ android {
 }
 
 val proofBuilds = proofAbis.map { abi ->
-    tasks.register<Exec>("buildV5R2Proof${abi.replace("-", "").replace("_", "")}") {
+    tasks.register<Exec>("buildQuantumProof${abi.replace("-", "").replace("_", "")}") {
         workingDir(rootProject.projectDir)
-        inputs.file(rootProject.file("scripts/build_v5r2_proof.py"))
-        inputs.file(rootProject.file("scripts/v5r2-proof-revision.txt"))
+        inputs.file(rootProject.file("scripts/build_quantum_proof.py"))
+        inputs.file(rootProject.file("scripts/quantum-proof-revision.txt"))
         outputs.file(proofOutput.map { it.file("$abi/libtosproofverify.so") })
         // CMake checks the pinned source graph and repairs missing/corrupt outputs.
         outputs.upToDateWhen { false }
-        commandLine("python3", rootProject.file("scripts/build_v5r2_proof.py").absolutePath,
+        commandLine("python3", rootProject.file("scripts/build_quantum_proof.py").absolutePath,
             "--ndk", File(android.sdkDirectory, "ndk/${Build.ndkVersion}").absolutePath,
             "--output", proofOutput.get().asFile.absolutePath, "--abi", abi)
     }
@@ -65,7 +65,7 @@ val proofBuilds = proofAbis.map { abi ->
 tasks.named("preBuild") { dependsOn(proofBuilds) }
 
 val feeStateBuilds = feeStateTargets.mapIndexed { index, target ->
-    tasks.register<Exec>("buildV5R2FeeState$index") {
+    tasks.register<Exec>("buildQuantumFeeState$index") {
         workingDir(file("src/main/rust/fee-state-bundle"))
         inputs.dir("src/main/rust/fee-state-bundle")
         outputs.file(feeStateOutput.map { it.file("$target/release/liblms_fee_state.a") })
