@@ -55,6 +55,19 @@ class V5R2VerifiedRead private constructor(json: ByteArray, request: ByteArray, 
         }
         return Base64.decode(account.getString("state_boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
     }
+    /** Read another account/config at this authenticated point, retaining live rollback/freshness checks. */
+    fun requestAtCheckpoint(account: String? = null, configIndices: IntArray = intArrayOf(), maximumAge: Long): ByteArray {
+        require(maximumAge in 1..604800 && configIndices.size <= 64 && configIndices.all { it >= 0 } &&
+                configIndices.toSet().size == configIndices.size && (account != null || configIndices.isNotEmpty()))
+        require(account == null || account.matches(Regex("0:[0-9a-f]{64}")))
+        val target = value.getJSONObject("target")
+        val exact = JSONObject()
+        for (field in listOf("workchain", "shard", "seqno", "root_hash", "file_hash")) exact.put(field, target.get(field))
+        val request = JSONObject().put("mode", "live").put("target", exact).put("max_age_seconds", maximumAge)
+        if (account != null) request.put("account", account)
+        if (configIndices.isNotEmpty()) request.put("config_params", org.json.JSONArray(configIndices.toList()))
+        return request.toString().toByteArray(Charsets.UTF_8)
+    }
     val masterchainTime: Long get() = value.getJSONObject("target").getLong("gen_utime")
     fun accountTime(expectedAddress: String, expectedCodeHash: String): Long {
         accountState(expectedAddress, expectedCodeHash)

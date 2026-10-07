@@ -71,6 +71,20 @@ class V5R2ProofSessionDeviceTest {
             try { result.configParam(34, "00".repeat(32)); fail("Wrong configuration hash accepted") }
             catch (_: IllegalStateException) { }
             assertEquals(3, calls)
+            val fixed = result.requestAtCheckpoint(configIndices = intArrayOf(34), maximumAge = 300)
+            val fixedJson = JSONObject(fixed.toString(Charsets.UTF_8))
+            assertTrue("Fixed checkpoint target missing", fixedJson.has("target"))
+            val target = fixedJson.getJSONObject("target")
+            assertEquals(setOf("workchain", "shard", "seqno", "root_hash", "file_hash"), target.keys().asSequence().toSet())
+            val fixedReplies = listOf("live/chain-0000.tl", "live/config.tl").map(::bytes)
+            var fixedCalls = 0
+            val atPoint = session.readBound(fixed, 1791200932, V5R2ProofTransport { _, maximum ->
+                check(fixedCalls < fixedReplies.size)
+                fixedReplies[fixedCalls++].also { assertTrue(it.size <= maximum) }
+            })
+            assertEquals(2, fixedCalls)
+            result.requireSameCheckpoint(atPoint)
+            atPoint.requireLive(1791200932, 300)
             val state = File(directory, "checkpoint.json")
             assertTrue(state.isFile)
             val before = state.readBytes()
