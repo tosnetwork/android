@@ -3,6 +3,7 @@
 #include <vector>
 #include "pq/include/tos_pq.h"
 #include "pq/include/tos_v5r2.h"
+#include "pq/include/tos_v5r2_kdf.h"
 #include "pq/include/tos_fee_state.h"
 static std::vector<uint8_t> bytes(JNIEnv *e,jbyteArray a,size_t max) {
  if(!a) return {}; jsize n=e->GetArrayLength(a);
@@ -99,4 +100,16 @@ Java_network_tos_security_pq_FeeStateNative_cached(JNIEnv* e,jobject,jlong handl
  if(e->ExceptionCheck()||!state_u32(leaf)||d.size()!=32||k.size()!=60)return nullptr;
  int32_t rc=tos_fee_state_cached_verified((uint64_t)handle,(uint32_t)leaf,d.data(),k.data(),fee_verify,nullptr,signature.data(),signature.size());
  return rc==0?out(e,signature.data(),signature.size()):nullptr;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_pq_V5R2KdfNative_derive(JNIEnv* e,jobject,jint material,jbyteArray master,jbyteArray network,jint globalId,jlong account,jlong generation,jbyteArray tree) {
+ auto m=bytes(e,master,32),n=bytes(e,network,32),t=bytes(e,tree,32);
+ std::array<uint8_t,48> result{};
+ if(e->ExceptionCheck()||m.size()!=32||n.size()!=32||!state_u32(account)||!state_u32(generation)||
+    (material==3 ? t.size()!=32 : tree!=nullptr)) {tos_pq_clear(m.data(),m.size());return nullptr;}
+ size_t size=material==1?32:48;
+ int rc=tos_v5r2_derive_and_wipe(material,m.data(),m.size(),n.data(),globalId,(uint32_t)account,(uint32_t)generation,material==3?t.data():nullptr,result.data(),size);
+ auto output=rc==0?out(e,result.data(),size):nullptr;
+ tos_pq_clear(m.data(),m.size());tos_pq_clear(result.data(),result.size());return output;
 }
