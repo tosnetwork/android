@@ -50,4 +50,43 @@ class TosV5R2AuthTest {
                 assertEquals("Wrong PQ signature length", runCatching { r.submission(ByteArray(size)) }.exceptionOrNull()?.message)
         }
     }
+    @Test fun allIndependentActionVectors() {
+        fun tag(n: Long) = buildCell { storeUInt(n, 8) }
+        run {
+            val r = request(V5R2AuthRole.PRIMARY, V5R2AuthAction.Execute(Cell.empty()))
+            assertArrayEquals(hex("117829e21b72b6e2041f15c92b4b1276ef05ccf5a90fe4f1fa65de76c16f2a19"), r.request.hash().toByteArray())
+            assertArrayEquals(hex("b42018426236198dd5be93d0300bcaf161d29c1b22727951e2891f5d6b019eec"), r.digest)
+            assertArrayEquals(hex("80f53e05a27dbb286952aa8a23c134a2daa0cea93f64285fdd931b5db92e89d2"), r.submission(ByteArray(r.role.signatureSize) { 0xa5.toByte() }).hash().toByteArray())
+        }
+        run {
+            val r = request(V5R2AuthRole.RESCUE, V5R2AuthAction.Execute(Cell.empty()))
+            assertArrayEquals(hex("4525eb377a604bd438d0e5d7233ea52de59c0c13eebea823c6926f784aad4eba"), r.request.hash().toByteArray())
+            assertArrayEquals(hex("de815703739699e50580272c84495b7964faf411d50dc03db79e48230e3e18a8"), r.digest)
+            assertArrayEquals(hex("60fb1d06134c90f95acc876ab25ea3fd391abc731e23527744bc7128d617e57f"), r.submission(ByteArray(r.role.signatureSize) { 0xa5.toByte() }).hash().toByteArray())
+        }
+        run {
+            val r = request(V5R2AuthRole.RESCUE, V5R2AuthAction.Configure())
+            assertArrayEquals(hex("8478f4270ceb1ce10c7332073178519962d17b634acacd9f3e58191d3b6a501e"), r.request.hash().toByteArray())
+            assertArrayEquals(hex("e2a61220523035e212549a1ee678ba9b61de25c582328e8a89eed97cfc2a3e0b"), r.digest)
+            assertArrayEquals(hex("e972db3559cc28c274d4bf1b7dbb249aa7c603adfb1bbed01d59300f10b459b9"), r.submission(ByteArray(r.role.signatureSize) { 0xa5.toByte() }).hash().toByteArray())
+        }
+        run {
+            val r = request(V5R2AuthRole.RESCUE, V5R2AuthAction.Configure(tag(1) to tag(2)))
+            assertArrayEquals(hex("4217b0148d1199ebb9ac1a4fdcf5bb63d3abd4f24d245ea89192a68d7257d47e"), r.request.hash().toByteArray())
+            assertArrayEquals(hex("6ae034de5cae60c1bda9ca1d72ecfdddf70f6fad20736d0ebef05c2c053adddf"), r.digest)
+            assertArrayEquals(hex("414d363db59bdbb6145cc138dbd9d2e7fc731bb08a7638effa68348d2937ea40"), r.submission(ByteArray(r.role.signatureSize) { 0xa5.toByte() }).hash().toByteArray())
+        }
+        run {
+            val r = request(V5R2AuthRole.RESCUE, V5R2AuthAction.LockPrimary)
+            assertArrayEquals(hex("19b4696476903df28fae6e810cd21bdf043c0b332f6bfa5ff9fcb3c101a8aa86"), r.request.hash().toByteArray())
+            assertArrayEquals(hex("e57eeede14e3f2e78753c017661c59de915c9e94b0d28da9ef5d58881fae4327"), r.digest)
+            assertArrayEquals(hex("86595892c9af65a91f2db90912c68004f9c36dee36beb5029ff73824938323a4"), r.submission(ByteArray(r.role.signatureSize) { 0xa5.toByte() }).hash().toByteArray())
+        }
+        run {
+            val r = request(V5R2AuthRole.RESCUE, V5R2AuthAction.Migrate(tag(1), tag(2), tag(3)))
+            assertArrayEquals(hex("f4d8f32b1bcb1f2ed8e2e6956cfd40870492df9a04584a27a3eb7577f7d9a6bc"), r.request.hash().toByteArray())
+            assertArrayEquals(hex("d060c9abb3a571cee1fe2121676d8cb394e61c7a59ced5ac01d7cd1aa2ae5e08"), r.digest)
+            assertArrayEquals(hex("91517376b5dda01ee0e144073eb1c4f46aa88762a04484a1058ecff6926f00ab"), r.submission(ByteArray(r.role.signatureSize) { 0xa5.toByte() }).hash().toByteArray())
+        }
+    }
 }
