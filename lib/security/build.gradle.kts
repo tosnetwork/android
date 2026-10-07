@@ -18,6 +18,7 @@ android {
 
     defaultConfig {
         minSdk = Build.minSdkVersion
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
         externalNativeBuild {
             cmake { arguments += "-DTOS_FEE_STATE_TARGET_DIR=${feeStateOutput.get().asFile.absolutePath}" }
@@ -55,6 +56,9 @@ tasks.configureEach {
 }
 
 dependencies {
+    androidTestImplementation(libs.androidX.test)
+    androidTestImplementation(libs.androidX.test.core)
+    androidTestImplementation("androidx.test:runner:1.7.0")
 
     implementation(libs.kotlinX.coroutines.android)
     implementation(libs.androidX.security)
