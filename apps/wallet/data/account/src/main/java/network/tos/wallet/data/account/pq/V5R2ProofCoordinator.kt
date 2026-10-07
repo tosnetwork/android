@@ -2,6 +2,9 @@ package network.tos.wallet.data.account.pq
 
 import network.tos.blockchain.ton.contract.TosV5R2Genesis
 import network.tos.blockchain.ton.contract.TosV5R2InstalledRoute
+import network.tos.security.pq.V5R2VerifiedRead
+import org.ton.cell.Cell
+import network.tos.blockchain.ton.contract.TosV5R2Auth
 import network.tos.security.pq.V5R2ProofSession
 import network.tos.security.pq.V5R2ProofTransport
 import org.json.JSONObject
@@ -20,7 +23,19 @@ internal class V5R2ProofCoordinator(
         check(!Thread.currentThread().isInterrupted) { "Proof observation cancelled" }
         return clock().also { require(it in 1..0xffffffffL) }
     }
-    fun observe(initialize: Boolean, primaryExecution: Boolean): V5R2InstalledWallet {
+    fun observe(initialize: Boolean, primaryExecution: Boolean): V5R2InstalledWallet = collect(initialize, primaryExecution).first
+    fun preparePrimaryExecute(initialize: Boolean, actions: Cell, validUntil: Long): TosV5R2Auth {
+        TosV5R2Auth.validateActions(actions)
+        require(validUntil > now()) { "Primary deadline expired before acquisition" }
+        val (installed, policy) = collect(initialize, true)
+        val request = installed.primaryExecuteRequest(checkNotNull(policy), actions, validUntil, now(), maximumAge)
+        val finalNow = now()
+        installed.requirePrimaryExecution(policy, finalNow, maximumAge)
+        installed.requireFeeProof(finalNow, maximumAge)
+        require(validUntil > finalNow) { "Primary deadline expired before returning request" }
+        return request
+    }
+    private fun collect(initialize: Boolean, primaryExecution: Boolean): Pair<V5R2InstalledWallet, V5R2VerifiedRead?> {
         val request = JSONObject().put("mode", "live").put("max_age_seconds", maximumAge)
             .put("account", address(birth.address)).toString().toByteArray(Charsets.UTF_8)
         val wallet = if (initialize) session.enrollBound(request, now(), transport)
@@ -29,11 +44,12 @@ internal class V5R2ProofCoordinator(
         val vault = session.readBound(wallet.requestAtCheckpoint(address(route.vaultAddress), maximumAge = maximumAge), now(), transport)
         val installed = if (successor == null) V5R2InstalledWallet.bindInitial(birth, wallet, module, vault, now(), maximumAge)
                         else V5R2InstalledWallet.bindSuccessor(birth, successor, wallet, module, vault, now(), maximumAge)
-        if (primaryExecution) {
-            val policy = session.readBound(wallet.requestAtCheckpoint(configIndices = intArrayOf(48), maximumAge = maximumAge), now(), transport)
-            installed.requirePrimaryExecution(policy, now(), maximumAge)
-        }
+        val policy = if (primaryExecution) {
+            val proven = session.readBound(wallet.requestAtCheckpoint(configIndices = intArrayOf(48), maximumAge = maximumAge), now(), transport)
+            installed.requirePrimaryExecution(proven, now(), maximumAge)
+            proven
+        } else null
         installed.requireFeeProof(now(), maximumAge)
-        return installed
+        return installed to policy
     }
 }

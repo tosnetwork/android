@@ -9,6 +9,7 @@ import network.tos.security.pq.*
 import org.json.JSONArray
 import org.json.JSONObject
 import org.ton.block.AddrStd
+import org.ton.cell.Cell
 import java.util.UUID
 
 /** Initial public registry and authenticated role import. No current-authority/readiness or broadcast API. */
@@ -108,9 +109,22 @@ class V5R2WalletRepository(private val context: Context, private val codes: V5R2
                                  transport: V5R2ProofTransport, maximumAge: Long = 30): V5R2InstalledWallet {
         return observe(id, independentlyKnownWallet, locallyProvisionedAnchor, initialize, primaryExecution, transport, maximumAge, successor)
     }
+    /** Generates unsigned AUTH only. Actions still need user review, solvency and current-key custody. */
+    suspend fun preparePrimaryExecute(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
+                                     initialize: Boolean, actions: Cell, validUntil: Long, transport: V5R2ProofTransport,
+                                     maximumAge: Long = 30, successor: TosV5R2Genesis? = null): TosV5R2Auth =
+        withProofCoordinator(id, independentlyKnownWallet, locallyProvisionedAnchor, transport, maximumAge, successor) {
+            it.preparePrimaryExecute(initialize, actions, validUntil)
+        }
     private suspend fun observe(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
                                 initialize: Boolean, primaryExecution: Boolean, transport: V5R2ProofTransport,
-                                maximumAge: Long, successor: TosV5R2Genesis?): V5R2InstalledWallet {
+                                maximumAge: Long, successor: TosV5R2Genesis?): V5R2InstalledWallet =
+        withProofCoordinator(id, independentlyKnownWallet, locallyProvisionedAnchor, transport, maximumAge, successor) {
+            it.observe(initialize, primaryExecution)
+        }
+    private suspend fun <T> withProofCoordinator(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
+                                               transport: V5R2ProofTransport, maximumAge: Long, successor: TosV5R2Genesis?,
+                                               action: (V5R2ProofCoordinator) -> T): T {
         require(maximumAge in 1..3599 && locallyProvisionedAnchor.size in 1..1_048_576)
         val anchor = locallyProvisionedAnchor.copyOf()
         unlock()
@@ -121,8 +135,8 @@ class V5R2WalletRepository(private val context: Context, private val codes: V5R2
         requireChain(manifest)
         return runInterruptible(Dispatchers.IO) {
             val session = V5R2ProofSession(context, UUID.fromString(record.id), anchor)
-            V5R2ProofCoordinator(session, initial.genesis, transport,
-                { System.currentTimeMillis() / 1000 }, maximumAge, successor).observe(initialize, primaryExecution)
+            action(V5R2ProofCoordinator(session, initial.genesis, transport,
+                { System.currentTimeMillis() / 1000 }, maximumAge, successor))
         }
     }
     companion object { private val lock = Any() }
