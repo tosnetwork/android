@@ -100,6 +100,17 @@ class V5R2WalletRepository(private val context: Context, private val codes: V5R2
     suspend fun observeInitial(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
                                initialize: Boolean, primaryExecution: Boolean, transport: V5R2ProofTransport,
                                maximumAge: Long = 30): V5R2InstalledWallet {
+        return observe(id, independentlyKnownWallet, locallyProvisionedAnchor, initialize, primaryExecution, transport, maximumAge, null)
+    }
+    /** Read a locally authenticated successor enrollment; this does not approve staging or migration. */
+    suspend fun observeSuccessor(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
+                                 successor: TosV5R2Genesis, initialize: Boolean, primaryExecution: Boolean,
+                                 transport: V5R2ProofTransport, maximumAge: Long = 30): V5R2InstalledWallet {
+        return observe(id, independentlyKnownWallet, locallyProvisionedAnchor, initialize, primaryExecution, transport, maximumAge, successor)
+    }
+    private suspend fun observe(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
+                                initialize: Boolean, primaryExecution: Boolean, transport: V5R2ProofTransport,
+                                maximumAge: Long, successor: TosV5R2Genesis?): V5R2InstalledWallet {
         require(maximumAge in 1..3599 && locallyProvisionedAnchor.size in 1..1_048_576)
         val anchor = locallyProvisionedAnchor.copyOf()
         unlock()
@@ -110,8 +121,8 @@ class V5R2WalletRepository(private val context: Context, private val codes: V5R2
         requireChain(manifest)
         return runInterruptible(Dispatchers.IO) {
             val session = V5R2ProofSession(context, UUID.fromString(record.id), anchor)
-            V5R2InitialProofCoordinator(session, initial.genesis, transport,
-                { System.currentTimeMillis() / 1000 }, maximumAge).observe(initialize, primaryExecution)
+            V5R2ProofCoordinator(session, initial.genesis, transport,
+                { System.currentTimeMillis() / 1000 }, maximumAge, successor).observe(initialize, primaryExecution)
         }
     }
     companion object { private val lock = Any() }

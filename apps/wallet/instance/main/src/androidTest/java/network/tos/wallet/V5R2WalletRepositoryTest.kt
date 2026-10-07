@@ -54,6 +54,13 @@ class V5R2WalletRepositoryTest {
    val missing = runCatching { repository.observeInitial(record.id, address, anchor, false, false, transport) }.exceptionOrNull()
    assertTrue("Missing checkpoint did not refuse natively", missing is SecurityException)
    assertEquals("Missing checkpoint queried endpoint", 0, proofCalls)
+   val incompatible = TosV5R2Genesis(codes, pins, -239, ByteArray(32), 42, primary, rescue,
+       V5R2Policy.REQUIRED, ByteArray(32) { 8 }, hex("000000010000000800000003" + "33".repeat(16) + "44".repeat(32)), 100)
+   val routeError = runCatching {
+    repository.observeSuccessor(record.id, address, anchor, incompatible, false, false, transport)
+   }.exceptionOrNull()
+   assertEquals("Incompatible successor reached proof acquisition", "Successor namespace mismatch", routeError?.message)
+   assertEquals(0, proofCalls)
    java.io.File(app.noBackupFilesDir, "v5r2-proof-checkpoints/" + record.id).deleteRecursively()
 
    unlocked = false
