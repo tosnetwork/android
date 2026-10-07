@@ -2,6 +2,8 @@ package network.tos.wallet.data.account.pq
 
 import android.content.Context
 import android.util.Base64
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.Dispatchers
 import network.tos.blockchain.ton.contract.*
 import network.tos.security.pq.*
 import org.json.JSONArray
@@ -10,7 +12,7 @@ import org.ton.block.AddrStd
 import java.util.UUID
 
 /** Initial public registry and authenticated role import. No current-authority/readiness or broadcast API. */
-class V5R2WalletRepository(context: Context, private val codes: V5R2Codes, pins: V5R2CodePins,
+class V5R2WalletRepository(private val context: Context, private val codes: V5R2Codes, pins: V5R2CodePins,
                           private val authenticate: suspend () -> Boolean, namespace: String = "tos-v5r2-wallets-v1", expectedNetwork: ByteArray? = null, private val expectedGlobalId: Int? = null) {
     private val expectedNetwork = expectedNetwork?.copyOf()
     init { require((expectedNetwork == null) == (expectedGlobalId == null)); require(expectedNetwork == null || expectedNetwork.size == 32) }
@@ -93,6 +95,24 @@ class V5R2WalletRepository(context: Context, private val codes: V5R2Codes, pins:
                 vault.restoreDerivedAndWipe(id, role, ctx, V5R2DeviceKey.get(true), master, inputProfile, declared, publicKey)
             }
         } finally { master.fill(0) }
+    }
+    /** Locally authenticated anchor provisioning is mandatory. initialize is explicit first enrollment only. */
+    suspend fun observeInitial(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
+                               initialize: Boolean, primaryExecution: Boolean, transport: V5R2ProofTransport,
+                               maximumAge: Long = 30): V5R2InstalledWallet {
+        require(maximumAge in 1..3599 && locallyProvisionedAnchor.size in 1..1_048_576)
+        val anchor = locallyProvisionedAnchor.copyOf()
+        unlock()
+        val record = list().single { it.id == id }
+        require(record.address == independentlyKnownWallet)
+        val manifest = record.publicManifest()
+        val initial = TosV5R2InitialRecovery.parseAndReconstruct(manifest, codes, trusted, independentlyKnownWallet)
+        requireChain(manifest)
+        return runInterruptible(Dispatchers.IO) {
+            val session = V5R2ProofSession(context, UUID.fromString(record.id), anchor)
+            V5R2InitialProofCoordinator(session, initial.genesis, transport,
+                { System.currentTimeMillis() / 1000 }, maximumAge).observe(initialize, primaryExecution)
+        }
     }
     companion object { private val lock = Any() }
 }
