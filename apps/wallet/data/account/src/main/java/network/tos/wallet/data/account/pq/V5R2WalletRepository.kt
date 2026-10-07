@@ -122,6 +122,24 @@ class V5R2WalletRepository(private val context: Context, private val codes: V5R2
         withProofCoordinator(id, independentlyKnownWallet, locallyProvisionedAnchor, transport, maximumAge, successor) {
             it.observe(initialize, primaryExecution)
         }
+    /** Initial custody is checked only after proving the currently installed module.
+     * Returns unsigned AUTH; fee reservation, solvency and action approval remain required before signing. */
+    suspend fun prepareInitialPrimaryWithCustody(id: String, independentlyKnownWallet: AddrStd,
+                                                locallyProvisionedAnchor: ByteArray, initialize: Boolean,
+                                                actions: Cell, validUntil: Long, transport: V5R2ProofTransport,
+                                                maximumAge: Long = 30): TosV5R2Auth =
+        withProofCoordinator(id, independentlyKnownWallet, locallyProvisionedAnchor, transport, maximumAge, null) { worker ->
+            val record = list().single { it.id == id }
+            require(record.address == independentlyKnownWallet)
+            val manifest = record.publicManifest()
+            val initial = TosV5R2InitialRecovery.parseAndReconstruct(manifest, codes, trusted, independentlyKnownWallet)
+            val root = JSONObject(manifest.toString(Charsets.UTF_8))
+            val custody = V5R2SeedVault.Context(decode(root.getString("network")), root.getInt("global_id"),
+                initial.derivation.account, initial.derivation.generation)
+            worker.preparePrimaryExecute(initialize, actions, validUntil) {
+                vault.publicKey(id, V5R2Role.PRIMARY, custody, V5R2DeviceKey.get(true))
+            }
+        }
     private suspend fun <T> withProofCoordinator(id: String, independentlyKnownWallet: AddrStd, locallyProvisionedAnchor: ByteArray,
                                                transport: V5R2ProofTransport, maximumAge: Long, successor: TosV5R2Genesis?,
                                                action: (V5R2ProofCoordinator) -> T): T {

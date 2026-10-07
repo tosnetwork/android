@@ -24,11 +24,13 @@ internal class V5R2ProofCoordinator(
         return clock().also { require(it in 1..0xffffffffL) }
     }
     fun observe(initialize: Boolean, primaryExecution: Boolean): V5R2InstalledWallet = collect(initialize, primaryExecution).first
-    fun preparePrimaryExecute(initialize: Boolean, actions: Cell, validUntil: Long): TosV5R2Auth {
+    fun preparePrimaryExecute(initialize: Boolean, actions: Cell, validUntil: Long,
+                              custodyPublicKey: (() -> ByteArray)? = null): TosV5R2Auth {
         TosV5R2Auth.validateActions(actions)
         require(validUntil > now()) { "Primary deadline expired before acquisition" }
         val (installed, policy) = collect(initialize, true)
         val request = installed.primaryExecuteRequest(checkNotNull(policy), actions, validUntil, now(), maximumAge)
+        custodyPublicKey?.let { installed.requirePrimaryCustody(it(), policy, now(), maximumAge) }
         val finalNow = now()
         installed.requirePrimaryExecution(policy, finalNow, maximumAge)
         installed.requireFeeProof(finalNow, maximumAge)

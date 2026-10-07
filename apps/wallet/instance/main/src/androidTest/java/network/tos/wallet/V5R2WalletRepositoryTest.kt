@@ -59,6 +59,10 @@ class V5R2WalletRepositoryTest {
     repository.preparePrimaryExecute(record.id, address, anchor, false, buildCell { }, System.currentTimeMillis() / 1000 + 60, transport)
    }.exceptionOrNull()
    assertEquals("AUTH preparation bypassed authentication", "R2 operation cancelled", deniedPreparation?.message)
+   val deniedCustody = runCatching {
+    repository.prepareInitialPrimaryWithCustody(record.id, address, anchor, false, buildCell { }, System.currentTimeMillis() / 1000 + 60, transport)
+   }.exceptionOrNull()
+   assertEquals("Custody preparation bypassed authentication", "R2 operation cancelled", deniedCustody?.message)
    assertEquals(0, proofCalls)
    unlocked = true
    val missing = runCatching { repository.observeInitial(record.id, address, anchor, false, false, transport) }.exceptionOrNull()
@@ -68,6 +72,10 @@ class V5R2WalletRepositoryTest {
     repository.preparePrimaryExecute(record.id, address, anchor, false, buildCell { }, System.currentTimeMillis() / 1000 + 60, transport)
    }.exceptionOrNull()
    assertTrue("AUTH preparation bypassed checkpoint proof", missingPreparation is SecurityException)
+   val missingCustody = runCatching {
+    repository.prepareInitialPrimaryWithCustody(record.id, address, anchor, false, buildCell { }, System.currentTimeMillis() / 1000 + 60, transport)
+   }.exceptionOrNull()
+   assertTrue("Custody accessed before authenticated checkpoint", missingCustody is SecurityException)
    assertEquals(0, proofCalls)
    val incompatible = TosV5R2Genesis(codes, pins, -239, ByteArray(32), 42, primary, rescue,
        V5R2Policy.REQUIRED, ByteArray(32) { 8 }, hex("000000010000000800000003" + "33".repeat(16) + "44".repeat(32)), 100)
