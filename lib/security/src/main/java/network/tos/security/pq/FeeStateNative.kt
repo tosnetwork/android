@@ -7,6 +7,7 @@ internal object FeeStateNative {
     external fun reserve(handle: Long, time: Long, chainNext: Long, leaf: Long, digest: ByteArray): LongArray
     external fun cache(handle: Long, token: Long, key: ByteArray, signature: ByteArray): Int
     external fun cached(handle: Long, leaf: Long, digest: ByteArray, key: ByteArray): ByteArray?
+    external fun signOnce(handle: Long, time: Long, next: Long, leaf: Long, digest: ByteArray, key: ByteArray, seed: ByteArray, path: ByteArray): ByteArray?
     external fun close(handle: Long): Int
 }
 
@@ -28,6 +29,15 @@ class V5R2FeeState private constructor(private var handle: Long) : AutoCloseable
     @Synchronized fun cachedVerified(leaf: Long, digest: ByteArray, key: ByteArray): ByteArray {
         require(digest.size == 32 && key.size == 60)
         return FeeStateNative.cached(active(), leaf, digest, key) ?: throw FeeStateException(-2)
+    }
+    /** Consumes seed. Authenticated enrollment/time/route and broadcast freshness remain caller requirements. */
+    @Synchronized fun signOnceAndWipe(time: Long, chainNext: Long, leaf: Long, digest: ByteArray,
+                                     publicKey: ByteArray, seed: ByteArray, path: ByteArray): ByteArray {
+        try {
+            require(digest.size == 32 && publicKey.size == 60 && seed.size == 48 && path.size == 640)
+            return FeeStateNative.signOnce(active(), time, chainNext, leaf, digest, publicKey, seed, path)
+                ?: throw FeeStateException(-2)
+        } finally { seed.fill(0) }
     }
     @Synchronized override fun close() {
         if (handle == 0L) return

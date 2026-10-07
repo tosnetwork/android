@@ -17,3 +17,15 @@ set_target_properties(tos_mobile_lms PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQ
 target_compile_definitions(tos_mobile_lms PRIVATE TOS_LMS_PORTABLE_SHA256=1)
 target_include_directories(tos_mobile_lms PRIVATE vendor/slhdsa)
 target_link_libraries(tos_mobile_lms PUBLIC tospq)
+
+add_library(tos_mobile_lms_primitives STATIC vendor/lms-reference/hss_derive.c
+ vendor/lms-reference/hss_zeroize.c vendor/lms-reference/lm_common.c
+ vendor/lms-reference/lm_ots_common.c vendor/lms-reference/lm_ots_sign.c
+ vendor/lms-reference/endian.c vendor/lms-reference/hash.c)
+set_target_properties(tos_mobile_lms_primitives PROPERTIES C_STANDARD 99 POSITION_INDEPENDENT_CODE YES)
+target_include_directories(tos_mobile_lms_primitives PRIVATE vendor/lms-reference vendor/slhdsa include)
+target_compile_definitions(tos_mobile_lms_primitives PRIVATE EXT_SHA256_H="tos_lms_sha256.h")
+target_link_libraries(tos_mobile_lms_primitives PUBLIC tospq)
+target_sources(tos_mobile_lms PRIVATE vendor/lms/wallet-lms-sign-c.cpp)
+target_include_directories(tos_mobile_lms PRIVATE vendor/lms-reference include)
+target_link_libraries(tos_mobile_lms PUBLIC tos_mobile_lms_primitives)

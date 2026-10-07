@@ -113,3 +113,18 @@ Java_network_tos_security_pq_V5R2KdfNative_derive(JNIEnv* e,jobject,jint materia
  auto output=rc==0?out(e,result.data(),size):nullptr;
  tos_pq_clear(m.data(),m.size());tos_pq_clear(result.data(),result.size());return output;
 }
+
+extern "C" int tos_wallet_lms_fee_sign_reserved(const unsigned char*,size_t,uint32_t,const unsigned char*,size_t,const unsigned char*,size_t,const unsigned char*,size_t,unsigned char*,size_t) noexcept;
+struct FeeSecret {const uint8_t* seed;const uint8_t* path;};
+static int32_t fee_sign(void* context,const uint8_t* key,uint32_t leaf,const uint8_t* digest,uint8_t* output,size_t size) {
+ auto secret=static_cast<FeeSecret*>(context);
+ return tos_wallet_lms_fee_sign_reserved(secret->seed,48,leaf,digest,32,secret->path,640,key,60,output,size);
+}
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_pq_FeeStateNative_signOnce(JNIEnv* e,jobject,jlong handle,jlong time,jlong next,jlong leaf,jbyteArray digest,jbyteArray key,jbyteArray seed,jbyteArray path) {
+ auto d=bytes(e,digest,32),k=bytes(e,key,60),s=bytes(e,seed,48),p=bytes(e,path,640);std::array<uint8_t,2832> output{};
+ if(e->ExceptionCheck()||!state_u32(time)||!state_u32(next)||!state_u32(leaf)||d.size()!=32||k.size()!=60||s.size()!=48||p.size()!=640) {tos_pq_clear(s.data(),s.size());return nullptr;}
+ FeeSecret secret{s.data(),p.data()};
+ int32_t rc=tos_fee_state_sign_once((uint64_t)handle,(uint32_t)time,(uint32_t)next,(uint32_t)leaf,d.data(),k.data(),fee_sign,fee_verify,&secret,output.data(),output.size());
+ tos_pq_clear(s.data(),s.size());auto result=rc==0?out(e,output.data(),output.size()):nullptr;tos_pq_clear(output.data(),output.size());return result;
+}
