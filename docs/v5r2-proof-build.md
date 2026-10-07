@@ -13,8 +13,8 @@ creates a source checkout and build directories under `.gradle`. A development
 instrumentation run can use `-PtosProofAbis=arm64-v8a`; release invocations require
 all four ABIs. The generated directory must not be committed.
 
-This package currently targets Android API 26. Compatibility with the wallet's
-API 24 minimum remains open, together with testing the other three ABIs, release
+This package targets Android API 24. Execution on an API 24 system remains
+open, together with testing the other three ABIs, release
 shrinking, iOS packaging, and physical-device acceptance. The raw API does not
 provide transport, independently provision anchors, serialize concurrent reads,
 persist anti-rollback state, or authorize wallet signing. Those operations must
