@@ -32,6 +32,11 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
         requirePrimaryExecution(policyProof, localNow, maximumAge)
         installedRoute.requirePrimaryKey(publicKey)
     }
+    /** Current installed rescue public-key binding; private possession and action eligibility are separate. */
+    fun requireRescueCustody(publicKey: ByteArray, localNow: Long, maximumAge: Long) {
+        walletProof.requireLive(localNow, maximumAge)
+        installedRoute.requireRescueKey(publicKey)
+    }
     /** Chain eligibility only; custody, fee-slot/solvency and signed action checks remain mandatory. */
     fun requirePrimaryExecution(policyProof: V5R2VerifiedRead, localNow: Long, maximumAge: Long) {
         walletProof.requireLive(localNow, maximumAge)

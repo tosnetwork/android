@@ -15,6 +15,15 @@ class TosV5R2InstalledRoute private constructor(
             "Primary custody key differs from module enrollment"
         }
     }
+    /** Public-key identity only; not proof of private possession or operation eligibility. */
+    fun requireRescueKey(publicKey: ByteArray) {
+        val identity = moduleData.beginParse()
+        identity.loadBits(8 + 32 + 256 + 8)
+        val enrolled = identity.loadBits(256).toByteArray()
+        require(publicKey.size == 32 && publicKey.contentEquals(enrolled)) {
+            "Rescue custody key differs from module enrollment"
+        }
+    }
     companion object {
         fun initial(birth: TosV5R2Genesis) = TosV5R2InstalledRoute(birth.moduleData, birth.moduleInit, birth.metadata,
             birth.vaultData, birth.vaultInit, birth.moduleAddress, birth.vaultAddress)

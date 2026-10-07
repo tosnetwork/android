@@ -80,6 +80,12 @@ class V5R2LiveGenesisProofTest {
             assertEquals("1000000000000000",installed.walletAccount.balance.toString())
             assertEquals("1000000000000",installed.moduleAccount.balance.toString())
             installed.requireFeeProof(now,300)
+            installed.requireRescueCustody(rescue,now,300)
+            val wrongRescue=rescue.copyOf().also { it[0]=(it[0].toInt() xor 1).toByte() }
+            assertEquals("Wrong current SLH key accepted", "Rescue custody key differs from module enrollment",
+                runCatching { installed.requireRescueCustody(wrongRescue,now,300) }.exceptionOrNull()?.message)
+            assertEquals("Expired SLH custody proof accepted", "Proof freshness refused",
+                runCatching { installed.requireRescueCustody(rescue,now+301,300) }.exceptionOrNull()?.message)
             val policyProof=prove("policy")
             installed.requirePrimaryExecution(policyProof,now,300)
             installed.requirePrimaryCustody(primary,policyProof,now,300)

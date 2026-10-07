@@ -38,4 +38,15 @@ class TosV5R2InstalledRouteTest {
         assertTrue("Birth key accepted after rotation", runCatching { current.requirePrimaryKey(ByteArray(1312)) }.isFailure)
         assertTrue("Wrong key size accepted", runCatching { current.requirePrimaryKey(ByteArray(32)) }.isFailure)
     }
+    @Test fun rescueCustodyMustFollowCurrentModule() {
+        val original = birth(); val next = birth(tree = 1)
+        TosV5R2InstalledRoute.initial(original).requireRescueKey(ByteArray(32))
+        val current = TosV5R2InstalledRoute.successor(original, next)
+        current.requireRescueKey(ByteArray(32) { 1 })
+        assertEquals("Rescue custody key differs from module enrollment",
+            runCatching { current.requireRescueKey(ByteArray(32)) }.exceptionOrNull()?.message)
+        assertEquals("Rescue custody key differs from module enrollment",
+            runCatching { current.requireRescueKey(ByteArray(1312) { 1 }) }.exceptionOrNull()?.message)
+    }
+
 }
