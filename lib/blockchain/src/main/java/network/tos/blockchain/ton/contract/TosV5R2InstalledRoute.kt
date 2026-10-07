@@ -9,6 +9,12 @@ class TosV5R2InstalledRoute private constructor(
     val vaultData: Cell, val vaultInit: Cell,
     val moduleAddress: AddrStd, val vaultAddress: AddrStd
 ) {
+    /** Local module identity check; callers must separately authenticate its installed data. */
+    fun requirePrimaryKey(publicKey: ByteArray) {
+        require(publicKey.size == 1312 && TosPqWallet.byteChain(publicKey).hash() == moduleData.refs.single().hash()) {
+            "Primary custody key differs from module enrollment"
+        }
+    }
     companion object {
         fun initial(birth: TosV5R2Genesis) = TosV5R2InstalledRoute(birth.moduleData, birth.moduleInit, birth.metadata,
             birth.vaultData, birth.vaultInit, birth.moduleAddress, birth.vaultAddress)

@@ -29,4 +29,13 @@ class TosV5R2InstalledRouteTest {
         for (next in listOf(birth(network = 0x43), birth(global = 2), birth(moduleCode = 9), birth(vaultCode = 9)))
             assertTrue("Incompatible successor accepted", runCatching { TosV5R2InstalledRoute.successor(birth(), next) }.isFailure)
     }
+    @Test fun custodyMustFollowCurrentModuleInsteadOfBirthKey() {
+        val original = birth(); val next = birth(tree = 1)
+        val initial = TosV5R2InstalledRoute.initial(original)
+        initial.requirePrimaryKey(ByteArray(1312))
+        val current = TosV5R2InstalledRoute.successor(original, next)
+        current.requirePrimaryKey(ByteArray(1312) { 1 })
+        assertTrue("Birth key accepted after rotation", runCatching { current.requirePrimaryKey(ByteArray(1312)) }.isFailure)
+        assertTrue("Wrong key size accepted", runCatching { current.requirePrimaryKey(ByteArray(32)) }.isFailure)
+    }
 }

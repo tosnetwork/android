@@ -22,7 +22,13 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
                                             private val network: ByteArray, private val policy: Int,
                                             private val vaultTime: Long, private val epoch0: Long,
                                             private val globalId: Int, private val walletAddress: AddrStd,
-                                            private val moduleAddress: AddrStd, private val walletTime: Long) {
+                                            private val moduleAddress: AddrStd, private val walletTime: Long,
+                                            private val installedRoute: TosV5R2InstalledRoute) {
+    /** Checks custody against the immutable module data authenticated during tuple binding. */
+    fun requirePrimaryCustody(publicKey: ByteArray, policyProof: V5R2VerifiedRead, localNow: Long, maximumAge: Long) {
+        requirePrimaryExecution(policyProof, localNow, maximumAge)
+        installedRoute.requirePrimaryKey(publicKey)
+    }
     /** Chain eligibility only; custody, fee-slot/solvency and signed action checks remain mandatory. */
     fun requirePrimaryExecution(policyProof: V5R2VerifiedRead, localNow: Long, maximumAge: Long) {
         walletProof.requireLive(localNow, maximumAge)
@@ -80,7 +86,7 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
                 TosV5R2AccountState.vaultCounter(vaultData, route.vaultData), wallet, network, policy,
                 vault.accountTime(vaultAddress, vaultCode), epoch0, globalId, birth.address, route.moduleAddress,
                 wallet.accountTime("0:" + birth.address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) },
-                    birth.walletInit.refs[0].hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }))
+                    birth.walletInit.refs[0].hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }), route)
         }
     }
 }
