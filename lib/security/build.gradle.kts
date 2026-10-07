@@ -11,6 +11,13 @@ val feeStateTargets = listOf("aarch64-linux-android", "armv7-linux-androideabi",
 val feeStateManifest = layout.projectDirectory.file("src/main/rust/fee-state-bundle/Cargo.toml")
 val feeStateOutput = layout.buildDirectory.dir("rust-fee-state")
 
+val proofAbis = providers.gradleProperty("tosProofAbis").orElse("arm64-v8a,armeabi-v7a,x86,x86_64").get().split(",").toSet()
+require(proofAbis.isNotEmpty() && proofAbis.all { it in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") })
+require(gradle.startParameter.taskNames.none { it.contains("Release", ignoreCase = true) } || proofAbis.size == 4) {
+    "Release proof packaging requires all four ABIs"
+}
+val proofOutput = layout.buildDirectory.dir("generated/v5r2-proof-jni")
+
 android {
     namespace = Build.namespacePrefix("security")
     compileSdk = Build.compileSdkVersion
@@ -29,6 +36,8 @@ android {
         }
     }
 
+    sourceSets.getByName("main").jniLibs.srcDir(proofOutput)
+
     buildFeatures {
         prefab = true
     }
@@ -39,6 +48,21 @@ android {
         }
     }
 }
+
+val proofBuilds = proofAbis.map { abi ->
+    tasks.register<Exec>("buildV5R2Proof${abi.replace("-", "").replace("_", "")}") {
+        workingDir(rootProject.projectDir)
+        inputs.file(rootProject.file("scripts/build_v5r2_proof.py"))
+        inputs.file(rootProject.file("scripts/v5r2-proof-revision.txt"))
+        outputs.file(proofOutput.map { it.file("$abi/libtosproofverify.so") })
+        // CMake checks the pinned source graph and repairs missing/corrupt outputs.
+        outputs.upToDateWhen { false }
+        commandLine("python3", rootProject.file("scripts/build_v5r2_proof.py").absolutePath,
+            "--ndk", File(android.sdkDirectory, "ndk/${Build.ndkVersion}").absolutePath,
+            "--output", proofOutput.get().asFile.absolutePath, "--abi", abi)
+    }
+}
+tasks.named("preBuild") { dependsOn(proofBuilds) }
 
 val feeStateBuilds = feeStateTargets.mapIndexed { index, target ->
     tasks.register<Exec>("buildV5R2FeeState$index") {
