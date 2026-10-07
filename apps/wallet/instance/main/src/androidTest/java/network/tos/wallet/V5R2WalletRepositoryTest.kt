@@ -3,6 +3,12 @@ package network.tos.wallet
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import android.os.SystemClock
 import network.tos.wallet.data.account.pq.V5R2WalletRepository
 import network.tos.blockchain.ton.contract.*
 import network.tos.security.pq.*
@@ -61,6 +67,32 @@ class V5R2WalletRepositoryTest {
    }.exceptionOrNull()
    assertEquals("Incompatible successor reached proof acquisition", "Successor namespace mismatch", routeError?.message)
    assertEquals(0, proofCalls)
+   val queryStarted = CountDownLatch(1)
+   val pending = launch(Dispatchers.Default) {
+    val outcome = runCatching {
+     repository.observeInitial(record.id, address, anchor, true, false, V5R2ProofTransport { _, _ ->
+      queryStarted.countDown()
+      Thread.sleep(20000)
+      error("Uncancelled test transport")
+     })
+    }
+    assertTrue("Cancelled observation returned", outcome.isFailure)
+   }
+   try {
+    assertTrue("Proof query did not start", queryStarted.await(10, TimeUnit.SECONDS))
+    val cancelStart = SystemClock.elapsedRealtime()
+    pending.cancelAndJoin()
+    assertTrue("Cancelled proof transport was not interrupted", SystemClock.elapsedRealtime() - cancelStart < 5000)
+    assertTrue(pending.isCancelled)
+    assertFalse("Cancelled proof committed checkpoint", java.io.File(proofDirectory, "checkpoint.json").exists())
+   } finally { pending.cancelAndJoin() }
+   val released = runCatching {
+    repository.observeInitial(record.id, address, anchor, true, false, V5R2ProofTransport { _, _ ->
+     throw IllegalStateException("Public lock-release probe")
+    })
+   }.exceptionOrNull()
+   assertEquals("Cancelled proof kept checkpoint lock", "Public lock-release probe", released?.message)
+
    java.io.File(app.noBackupFilesDir, "v5r2-proof-checkpoints/" + record.id).deleteRecursively()
 
    unlocked = false
