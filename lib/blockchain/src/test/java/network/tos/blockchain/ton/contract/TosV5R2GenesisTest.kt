@@ -51,4 +51,34 @@ class TosV5R2GenesisTest {
         assertTrue(runCatching { w.successorFor(w.moduleAddress) }.isFailure)
         val config = w.configHash; config.fill(0); assertFalse(w.configHash.all { it == 0.toByte() })
     }
+    @Test fun allSuccessorVaultIdentitiesMatchIndependentVectors() {
+        run {
+            val w = create(V5R2Policy.READY, 42L, 456)
+            val next = w.successorFor(AddrStd(0, hex("0000000000000000000000000000000000000000000000000000000000000064")))
+            assertArrayEquals(hex("c616901d34d08eebcee377f6bbd44be27463d294d3368636ac8071b55bfd223b"), next.first.hash().toByteArray())
+            assertArrayEquals(hex("b9334f25f72bf4923cd4c450d47777bba89a98ec6df1fe083a76645bbef1e622"), next.first.refs[1].hash().toByteArray())
+            assertArrayEquals(hex("d18325849c3c2aa35d89abc8c216954c3934ff007e285a91244f175c31fd29f9"), next.second)
+        }
+        run {
+            val w = create(V5R2Policy.REQUIRED, 42L, 456)
+            val next = w.successorFor(AddrStd(0, hex("0000000000000000000000000000000000000000000000000000000000000064")))
+            assertArrayEquals(hex("1ae955effa177cfb429cce6e3dead9ff09f978b8c1b192248341b6696201027e"), next.first.hash().toByteArray())
+            assertArrayEquals(hex("0e8a69fbee3d9b5df5a4914e6a0f93e116bc749abe54f79bc01ee29400974386"), next.first.refs[1].hash().toByteArray())
+            assertArrayEquals(hex("d31917c93dd4c7bb692a147e52cc0c1e239da830817660eee7ad4153926f4967"), next.second)
+        }
+        run {
+            val w = create(V5R2Policy.READY, 43L, 456)
+            val next = w.successorFor(AddrStd(0, hex("0000000000000000000000000000000000000000000000000000000000000065")))
+            assertArrayEquals(hex("2c9a67e64cdcc302fcb7bd25029c966352e68087bfa7742e88b8b7634f36a9f8"), next.first.hash().toByteArray())
+            assertArrayEquals(hex("b6f689c7adc966beebda591ba5b6394f33b3b5ef6874988fc6f20d46a72570b7"), next.first.refs[1].hash().toByteArray())
+            assertArrayEquals(hex("610f8bb0d0516602ae55d4d650f0e2d5741bea4f602319150172556ee8900ab4"), next.second)
+        }
+        run {
+            val w = create(V5R2Policy.READY, 42L, 457)
+            val next = w.successorFor(AddrStd(0, hex("0000000000000000000000000000000000000000000000000000000000000064")))
+            assertArrayEquals(hex("02f1bf187c695faf2387d365e09b8f8e166d2cb4ae4163fd68c6f5dbbc057431"), next.first.hash().toByteArray())
+            assertArrayEquals(hex("79cd92f323dff126874ec02ab294adca4b834ad80e15dfc9dbe4a99f3061d4ef"), next.first.refs[1].hash().toByteArray())
+            assertArrayEquals(hex("d932551660dc34e01ca7127d6cbd54aab08d63f6e3bb04e5aa648888fac82d68"), next.second)
+        }
+    }
 }
