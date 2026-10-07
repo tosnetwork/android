@@ -34,5 +34,5 @@ endif()
 add_library(tos_fee_state STATIC IMPORTED)
 set_target_properties(tos_fee_state PROPERTIES IMPORTED_LOCATION
   "${TOS_FEE_STATE_TARGET_DIR}/${FEE_STATE_TARGET}/release/liblms_fee_state.a")
-target_link_libraries(tos_mobile_pq PRIVATE tospq tos_fee_state ${CMAKE_DL_LIBS} log android)
+target_link_libraries(tos_mobile_pq PRIVATE tospq tos_mobile_lms tos_fee_state ${CMAKE_DL_LIBS} log android)
 set_target_properties(tos_mobile_pq PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")

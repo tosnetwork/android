@@ -5,6 +5,8 @@ internal object FeeStateNative {
     external fun open(path: ByteArray, globalId: Int, network: ByteArray, vault: ByteArray, treeId: ByteArray, epoch0: Long, time: Long): LongArray
     external fun preview(handle: Long, time: Long, chainNext: Long): LongArray
     external fun reserve(handle: Long, time: Long, chainNext: Long, leaf: Long, digest: ByteArray): LongArray
+    external fun cache(handle: Long, token: Long, key: ByteArray, signature: ByteArray): Int
+    external fun cached(handle: Long, leaf: Long, digest: ByteArray, key: ByteArray): ByteArray?
     external fun close(handle: Long): Int
 }
 
@@ -16,6 +18,16 @@ class V5R2FeeState private constructor(private var handle: Long) : AutoCloseable
     @Synchronized fun reserve(time: Long, chainNext: Long, leaf: Long, digest: ByteArray): Long {
         require(digest.size == 32)
         return value(FeeStateNative.reserve(active(), time, chainNext, leaf, digest))
+    }
+    /** The key must come from an authenticated enrollment; this does not approve broadcast. */
+    @Synchronized fun cacheVerified(token: Long, key: ByteArray, signature: ByteArray) {
+        require(key.size == 60 && signature.size == 2832)
+        val status = FeeStateNative.cache(active(), token, key, signature)
+        if (status != 0) throw FeeStateException(status)
+    }
+    @Synchronized fun cachedVerified(leaf: Long, digest: ByteArray, key: ByteArray): ByteArray {
+        require(digest.size == 32 && key.size == 60)
+        return FeeStateNative.cached(active(), leaf, digest, key) ?: throw FeeStateException(-2)
     }
     @Synchronized override fun close() {
         if (handle == 0L) return

@@ -82,3 +82,21 @@ extern "C" JNIEXPORT jint JNICALL
 Java_network_tos_security_pq_FeeStateNative_close(JNIEnv *,jobject,jlong handle) {
  return tos_fee_state_close((uint64_t)handle);
 }
+
+extern "C" int tos_wallet_lms_fee_verify(uint32_t,const unsigned char*,size_t,const unsigned char*,size_t,const unsigned char*,size_t) noexcept;
+static int32_t fee_verify(void*,const uint8_t* key,uint32_t leaf,const uint8_t* digest,const uint8_t* sig,size_t size) {
+ return tos_wallet_lms_fee_verify(leaf,digest,32,sig,size,key,60);
+}
+extern "C" JNIEXPORT jint JNICALL
+Java_network_tos_security_pq_FeeStateNative_cache(JNIEnv* e,jobject,jlong handle,jlong token,jbyteArray key,jbyteArray signature) {
+ auto k=bytes(e,key,60),s=bytes(e,signature,2832);
+ if(e->ExceptionCheck()||k.size()!=60||s.size()!=2832)return -1;
+ return tos_fee_state_cache_verified((uint64_t)handle,(uint64_t)token,k.data(),s.data(),s.size(),fee_verify,nullptr);
+}
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_pq_FeeStateNative_cached(JNIEnv* e,jobject,jlong handle,jlong leaf,jbyteArray digest,jbyteArray key) {
+ auto d=bytes(e,digest,32),k=bytes(e,key,60);std::array<uint8_t,2832> signature{};
+ if(e->ExceptionCheck()||!state_u32(leaf)||d.size()!=32||k.size()!=60)return nullptr;
+ int32_t rc=tos_fee_state_cached_verified((uint64_t)handle,(uint32_t)leaf,d.data(),k.data(),fee_verify,nullptr,signature.data(),signature.size());
+ return rc==0?out(e,signature.data(),signature.size()):nullptr;
+}
