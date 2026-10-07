@@ -128,3 +128,13 @@ Java_network_tos_security_pq_FeeStateNative_signOnce(JNIEnv* e,jobject,jlong han
  int32_t rc=tos_fee_state_sign_once((uint64_t)handle,(uint32_t)time,(uint32_t)next,(uint32_t)leaf,d.data(),k.data(),fee_sign,fee_verify,&secret,output.data(),output.size());
  tos_pq_clear(s.data(),s.size());auto result=rc==0?out(e,output.data(),output.size()):nullptr;tos_pq_clear(output.data(),output.size());return result;
 }
+
+extern "C" int tos_wallet_lms_fee_bind_seed(const unsigned char*,size_t,uint32_t,const unsigned char*,size_t,const unsigned char*,size_t) noexcept;
+extern "C" JNIEXPORT jboolean JNICALL
+Java_network_tos_security_pq_FeeSeedNative_bind(JNIEnv* e,jobject,jbyteArray seed,jlong leaf,jbyteArray path,jbyteArray key) {
+ auto s=bytes(e,seed,48),p=bytes(e,path,640),k=bytes(e,key,60);
+ int valid=0;
+ if(!e->ExceptionCheck() && state_u32(leaf) && s.size()==48 && p.size()==640 && k.size()==60)
+  valid=tos_wallet_lms_fee_bind_seed(s.data(),s.size(),(uint32_t)leaf,p.data(),p.size(),k.data(),k.size());
+ tos_pq_clear(s.data(),s.size());return valid==1;
+}
