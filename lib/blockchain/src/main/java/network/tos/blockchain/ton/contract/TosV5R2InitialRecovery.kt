@@ -8,8 +8,10 @@ import org.ton.block.AddrStd
 
 /** Initial public metadata only. Live proofs, possession, retirement and fee continuity remain separate gates. */
 class TosV5R2InitialRecovery private constructor(
-    val genesis: TosV5R2Genesis, val derivation: Derivation, val lastObservedEpoch: ULong?
+    val genesis: TosV5R2Genesis, val derivation: Derivation, val lastObservedEpoch: ULong?,
+    private val wire: JsonObject
 ) {
+    fun toJson(): ByteArray = wire.toString().toByteArray(Charsets.UTF_8).also { require(it.size <= 16 * 1024) }
     enum class SeedProfile(val wire: String) {
         NATIVE_MNEMONIC("tos-native-mnemonic-v1"), RAW_MASTER_32("raw-master-32-v1")
     }
@@ -24,6 +26,41 @@ class TosV5R2InitialRecovery private constructor(
             "primary_key", "rescue_key", "policy", "fee_profile", "fee_tree_id", "fee_public_key", "fee_epoch0",
             "wallet_code", "module_code", "vault_code", "wallet_state_init", "module_state_init", "vault_state_init", "fee_config_hash")
         private val derivationFields = setOf("account_index", "key_generation", "primary_seed_profile", "rescue_seed_profile", "fee_seed_profile")
+
+        /** Prepare public creation metadata. This does not demonstrate possession or fund a recovery route. */
+        fun prepare(codes: V5R2Codes, pins: V5R2CodePins, globalId: Int, network: ByteArray, walletId: Long,
+                    primaryKey: ByteArray, rescueKey: ByteArray, policy: V5R2Policy, tree: ByteArray,
+                    feeKey: ByteArray, epoch0: Long, derivation: Derivation): TosV5R2InitialRecovery {
+            require(derivation.account in 0..0xffffffffL && derivation.generation in 0..0xffffffffL)
+            require(network.size == 32 && primaryKey.size == 1312 && rescueKey.size == 32 && tree.size == 32 && feeKey.size == 60)
+            require(pins.wallet.size == 32 && pins.module.size == 32 && pins.vault.size == 32)
+            val n = network.copyOf(); val p = primaryKey.copyOf(); val r = rescueKey.copyOf()
+            val t = tree.copyOf(); val f = feeKey.copyOf()
+            val trusted = V5R2CodePins(pins.wallet.copyOf(), pins.module.copyOf(), pins.vault.copyOf())
+            val g = TosV5R2Genesis(codes, trusted, globalId, n, walletId, p, r, policy, t, f, epoch0)
+            val obj = buildJsonObject {
+                put("schema", SCHEMA); put("kdf", KDF)
+                putJsonObject("derivation") {
+                    put("account_index", derivation.account); put("key_generation", derivation.generation)
+                    put("primary_seed_profile", derivation.primary.wire); put("rescue_seed_profile", derivation.rescue.wire)
+                    put("fee_seed_profile", derivation.fee.wire)
+                }
+                put("workchain", 0); put("global_id", globalId); put("network", hex(n)); put("wallet_id", walletId)
+                put("primary_key", hex(p)); put("rescue_key", hex(r))
+                put("policy", if (policy == V5R2Policy.READY) "RESCUE_READY" else "SLH_REQUIRED")
+                put("fee_profile", FEE); put("fee_tree_id", hex(t)); put("fee_public_key", hex(f)); put("fee_epoch0", epoch0)
+                put("wallet_code", hex(trusted.wallet)); put("module_code", hex(trusted.module)); put("vault_code", hex(trusted.vault))
+                put("wallet_state_init", hex(g.walletInit.hash().toByteArray()))
+                put("module_state_init", hex(g.moduleInit.hash().toByteArray()))
+                put("vault_state_init", hex(g.vaultInit.hash().toByteArray())); put("fee_config_hash", hex(g.configHash))
+                put("last_observed_epoch", JsonNull)
+            }
+            return parseAndReconstruct(obj.toString().toByteArray(Charsets.UTF_8), codes, trusted, g.address)
+        }
+        private fun hex(value: ByteArray): String {
+            val digits = "0123456789abcdef"
+            return buildString { for (byte in value) { val n = byte.toInt() and 255; append(digits[n ushr 4]); append(digits[n and 15]) } }
+        }
 
         /** Independently trusted pins and expected wallet must not be taken from this manifest. */
         fun parseAndReconstruct(encoded: ByteArray, codes: V5R2Codes, pins: V5R2CodePins,
@@ -64,7 +101,7 @@ class TosV5R2InitialRecovery private constructor(
                 require(!p.isString)
                 p.content.toULongOrNull() ?: error("Invalid epoch hint")
             }
-            return TosV5R2InitialRecovery(genesis, derivation, hint)
+            return TosV5R2InitialRecovery(genesis, derivation, hint, root)
         }
         private fun safeJson(text: String): JsonElement = try { json.parseToJsonElement(text) }
             catch (_: Exception) { throw IllegalArgumentException("Invalid recovery manifest encoding") }

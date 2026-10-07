@@ -45,4 +45,18 @@ class TosV5R2InitialRecoveryTest {
         assertFalse(error.toString().contains(marker))
         assertNull(error.cause)
     }
+    @Test fun preparedPublicMetadataMatchesIndependentCorpusAndRoundTrips() {
+        val tree = ByteArray(32).also { it[30] = 1; it[31] = 0xc8.toByte() }
+        val network = ByteArray(32).also { it[31] = 123 }
+        val fee = hex("000000010000000800000003" + "33".repeat(16) + "44".repeat(32))
+        val profile = TosV5R2InitialRecovery.SeedProfile.RAW_MASTER_32
+        val m = TosV5R2InitialRecovery.prepare(codes, pins, 42, network, 42, ByteArray(1312) { 0x11 },
+            ByteArray(32) { 0x22 }, V5R2Policy.READY, tree, fee, 1779992790,
+            TosV5R2InitialRecovery.Derivation(0, 0, profile, profile, profile))
+        val expected = kotlinx.serialization.json.Json.parseToJsonElement(text.replace("18446744073709551615", "null"))
+        assertEquals(expected, kotlinx.serialization.json.Json.parseToJsonElement(m.toJson().toString(Charsets.UTF_8)))
+        assertEquals(address, TosV5R2InitialRecovery.parseAndReconstruct(m.toJson(), codes, pins, address).genesis.address)
+        val first = m.toJson(); first.fill(0)
+        assertEquals(address, TosV5R2InitialRecovery.parseAndReconstruct(m.toJson(), codes, pins, address).genesis.address)
+    }
 }
