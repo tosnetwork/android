@@ -9,8 +9,9 @@ import network.tos.blockchain.ton.contract.TosV5R2FeeProofTime
 import network.tos.security.pq.V5R2VerifiedRead
 import org.ton.block.AddrStd
 import org.ton.cell.Cell
+import network.tos.blockchain.ton.contract.TosV5R2InstalledRoute
 
-/** Authenticated initial installed tuple. Global retirement, solvency, custody and
+/** Authenticated installed tuple. Global retirement, solvency, custody and
  * signing/action policy are additional gates; this is not RESCUE_READY approval.
  */
 class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val nextFeeLeaf: Long,
@@ -32,7 +33,15 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
     }
     companion object {
         fun bindInitial(birth: TosV5R2Genesis, wallet: V5R2VerifiedRead, module: V5R2VerifiedRead,
-                        vault: V5R2VerifiedRead, localNow: Long, maximumAge: Long): V5R2InstalledWallet {
+                        vault: V5R2VerifiedRead, localNow: Long, maximumAge: Long): V5R2InstalledWallet =
+            bind(birth, TosV5R2InstalledRoute.initial(birth), wallet, module, vault, localNow, maximumAge)
+
+        fun bindSuccessor(birth: TosV5R2Genesis, next: TosV5R2Genesis, wallet: V5R2VerifiedRead, module: V5R2VerifiedRead,
+                          vault: V5R2VerifiedRead, localNow: Long, maximumAge: Long): V5R2InstalledWallet =
+            bind(birth, TosV5R2InstalledRoute.successor(birth, next), wallet, module, vault, localNow, maximumAge)
+
+        private fun bind(birth: TosV5R2Genesis, route: TosV5R2InstalledRoute, wallet: V5R2VerifiedRead, module: V5R2VerifiedRead,
+                         vault: V5R2VerifiedRead, localNow: Long, maximumAge: Long): V5R2InstalledWallet {
             wallet.requireLive(localNow, maximumAge)
             wallet.requireSameCheckpoint(module); wallet.requireSameCheckpoint(vault)
             fun data(proof: V5R2VerifiedRead, address: AddrStd, code: Cell): Cell {
@@ -41,20 +50,20 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
                 return TosV5R2AccountState.data(proof.accountState(text, hash), address, code)
             }
             val walletData = data(wallet, birth.address, birth.walletInit.refs[0])
-            val moduleData = data(module, birth.moduleAddress, birth.moduleInit.refs[0])
-            val vaultData = data(vault, birth.vaultAddress, birth.vaultInit.refs[0])
-            check(moduleData.hash() == birth.moduleData.hash()) { "Installed module data mismatch" }
+            val moduleData = data(module, route.moduleAddress, route.moduleInit.refs[0])
+            val vaultData = data(vault, route.vaultAddress, route.vaultInit.refs[0])
+            check(moduleData.hash() == route.moduleData.hash()) { "Installed module data mismatch" }
             val identity = moduleData.beginParse()
             identity.loadBits(40)
             val network = identity.loadBits(256).toByteArray()
             identity.loadBits(8 + 256)
             val policy = identity.loadUInt(8).toInt()
-            val metadata = birth.metadata.beginParse(); metadata.loadBits(272)
+            val metadata = route.metadata.beginParse(); metadata.loadBits(272)
             val epoch0 = metadata.loadUInt(32).toLong()
-            val vaultAddress = "0:" + birth.vaultAddress.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
-            val vaultCode = birth.vaultInit.refs[0].hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
-            return V5R2InstalledWallet(TosV5R2WalletData.parse(walletData, birth),
-                TosV5R2AccountState.vaultCounter(vaultData, birth.vaultData), wallet, network, policy,
+            val vaultAddress = "0:" + route.vaultAddress.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+            val vaultCode = route.vaultInit.refs[0].hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+            return V5R2InstalledWallet(TosV5R2WalletData.parse(walletData, birth, route.moduleInit, route.metadata),
+                TosV5R2AccountState.vaultCounter(vaultData, route.vaultData), wallet, network, policy,
                 vault.accountTime(vaultAddress, vaultCode), epoch0)
         }
     }
