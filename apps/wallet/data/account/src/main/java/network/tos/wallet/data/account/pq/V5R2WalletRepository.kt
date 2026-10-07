@@ -11,7 +11,9 @@ import java.util.UUID
 
 /** Initial public registry and authenticated role import. No current-authority/readiness or broadcast API. */
 class V5R2WalletRepository(context: Context, private val codes: V5R2Codes, pins: V5R2CodePins,
-                          private val authenticate: suspend () -> Boolean, namespace: String = "tos-v5r2-wallets-v1") {
+                          private val authenticate: suspend () -> Boolean, namespace: String = "tos-v5r2-wallets-v1", expectedNetwork: ByteArray? = null, private val expectedGlobalId: Int? = null) {
+    private val expectedNetwork = expectedNetwork?.copyOf()
+    init { require((expectedNetwork == null) == (expectedGlobalId == null)); require(expectedNetwork == null || expectedNetwork.size == 32) }
     class Record internal constructor(val id: String, val name: String, data: ByteArray, val address: AddrStd) {
         private val encoded = data.copyOf()
         fun publicManifest(): ByteArray = encoded.copyOf()
@@ -25,6 +27,14 @@ class V5R2WalletRepository(context: Context, private val codes: V5R2Codes, pins:
         require(value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' })
         return ByteArray(32) { value.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
     }
+    private fun requireChain(encoded: ByteArray) {
+        expectedNetwork?.let { network ->
+            val root = JSONObject(encoded.toString(Charsets.UTF_8))
+            require(root.getInt("global_id") == expectedGlobalId && decode(root.getString("network")).contentEquals(network)) {
+                "R2 manifest chain differs from fixed code candidate"
+            }
+        }
+    }
     fun list(): List<Record> = synchronized(lock) {
         val encoded = checkNotNull(prefs.getString("registry.v1", "[]")); require(encoded.length <= 2 * 1024 * 1024)
         val array = JSONArray(encoded); require(array.length() <= 64)
@@ -37,6 +47,7 @@ class V5R2WalletRepository(context: Context, private val codes: V5R2Codes, pins:
             val bytes = Base64.decode(base64, Base64.NO_WRAP)
             val address = AddrStd(0, decode(obj.getString("address")))
             TosV5R2InitialRecovery.parseAndReconstruct(bytes, codes, trusted, address)
+            requireChain(bytes)
             Record(id, name, bytes, address)
         }
         require(records.map { it.id }.toSet().size == records.size)
@@ -53,6 +64,7 @@ class V5R2WalletRepository(context: Context, private val codes: V5R2Codes, pins:
     suspend fun registerInitial(name: String, encoded: ByteArray, independentlyKnownWallet: AddrStd): Record {
         require(name.isNotBlank() && name.toByteArray().size <= 128)
         val initial = TosV5R2InitialRecovery.parseAndReconstruct(encoded, codes, trusted, independentlyKnownWallet)
+        requireChain(initial.toJson())
         unlock()
         return synchronized(lock) {
             val records = list(); require(records.size < 64 && records.none { it.address == initial.genesis.address })
