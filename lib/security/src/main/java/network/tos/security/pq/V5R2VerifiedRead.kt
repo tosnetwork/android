@@ -55,12 +55,23 @@ class V5R2VerifiedRead private constructor(json: ByteArray, request: ByteArray, 
         }
         return Base64.decode(account.getString("state_boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
     }
-    fun configParam(index: Int, expectedCellHash: String): ByteArray {
-        require(index >= 0 && expectedCellHash.matches(Regex("[0-9a-f]{64}")))
+    private fun configuration(index: Int): JSONObject {
+        require(index >= 0)
         val params = value.getJSONArray("config_params")
         val matches = (0 until params.length()).map { params.getJSONObject(it) }.filter { it.getInt("index") == index }
-        check(matches.size == 1 && matches[0].getString("cell_hash") == expectedCellHash) { "Proof configuration binding refused" }
-        return Base64.decode(matches[0].getString("boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
+        check(matches.size == 1) { "Proven configuration absent or ambiguous" }
+        return matches.single()
+    }
+    /** Authenticated dynamic chain state, e.g. retirement policy. Schema/policy checks still apply. */
+    fun provenConfigParam(index: Int): ByteArray =
+        Base64.decode(configuration(index).getString("boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
+
+    /** Additional local release freeze, e.g. a candidate gas configuration. */
+    fun configParam(index: Int, expectedCellHash: String): ByteArray {
+        require(expectedCellHash.matches(Regex("[0-9a-f]{64}")))
+        val entry = configuration(index)
+        check(entry.getString("cell_hash") == expectedCellHash) { "Proof configuration binding refused" }
+        return Base64.decode(entry.getString("boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
     }
     private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 }

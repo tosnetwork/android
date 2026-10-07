@@ -61,6 +61,9 @@ class V5R2ProofSessionDeviceTest {
             val result = session.enrollBound(request, 1791200932, transport)
             result.requireLive(1791200932, 300)
             result.requireSameCheckpoint(result)
+            assertTrue(result.provenConfigParam(34).isNotEmpty())
+            try { result.provenConfigParam(48); fail("Unproven configuration accepted") }
+            catch (_: IllegalStateException) { }
             try { result.requireLive(1791201932, 300); fail("Expired proven read accepted") }
             catch (_: IllegalStateException) { }
             try { result.requireLive(1791200931, 300); fail("Earlier local clock accepted") }
