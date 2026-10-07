@@ -14,7 +14,7 @@ instrumentation run can use `-PtosProofAbis=arm64-v8a`; release invocations requ
 all four ABIs. The generated directory must not be committed.
 
 This package targets Android API 24. Execution on an API 24 system remains
-open, together with testing the other three ABIs, release
+open. All four ABIs compile and link; runtime tests for the other three ABIs, release
 shrinking, iOS packaging, and physical-device acceptance. The raw API does not
 provide transport, independently provision anchors, serialize concurrent reads,
 persist anti-rollback state, or authorize wallet signing. Those operations must

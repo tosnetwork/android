@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build pinned TOS proof libraries for Android application packaging."""
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -11,7 +12,7 @@ import subprocess
 
 # Expanded immutable revision is read from the checked-in pin, never an endpoint.
 
-def main():
+def build():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ndk', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
@@ -41,6 +42,16 @@ def main():
     destination.mkdir(parents=True, exist_ok=True)
     shutil.copy2(library, destination / library.name)
     (destination / 'PROVENANCE.json').write_text(json.dumps({'revision': head, 'abi': args.abi, 'sha256': hashlib.sha256(library.read_bytes()).hexdigest()}, indent=2) + '\n')
+
+def main():
+    # Gradle can execute independent Exec tasks concurrently even with project
+    # parallelism disabled. All ABI builders share one host generator graph.
+    directory = Path(__file__).resolve().parents[1] / '.gradle'
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / 'v5r2-proof-build.lock').open('a') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        build()
+
 
 if __name__ == '__main__':
     main()
