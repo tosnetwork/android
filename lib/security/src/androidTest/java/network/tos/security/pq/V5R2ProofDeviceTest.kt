@@ -22,6 +22,18 @@ class V5R2ProofDeviceTest {
         val result = V5R2ProofNative.verify(read("anchor.json"), read("historical-request.json"), byteArrayOf(), 1791200932, tags, material)
         assertEquals("verified", JSONObject(result.verifiedJson.toString(Charsets.UTF_8)).getString("status"))
         assertTrue(result.nextState.isEmpty())
+        val bound = V5R2ProofNative.verifyHistoricalBound(read("anchor.json"), read("historical-request.json"), byteArrayOf(), 1791200932, tags, material)
+        val account = JSONObject(result.verifiedJson.toString(Charsets.UTF_8)).getJSONObject("account")
+        val code = account.getString("code_hash")
+        assertTrue(bound.accountState("-1:" + "33".repeat(32), code).isNotEmpty())
+        try { bound.accountState("-1:" + "44".repeat(32), code); fail("Wrong proven account accepted") }
+        catch (_: IllegalStateException) { }
+        try { bound.accountState("-1:" + "33".repeat(32), "00".repeat(32)); fail("Wrong proven code accepted") }
+        catch (_: IllegalStateException) { }
+        try { bound.requireLive(1791200932, 300); fail("Historical read authorized live operation") }
+        catch (_: IllegalStateException) { }
+        bound.requireSameCheckpoint(bound)
+
         try {
             V5R2ProofNative.verify(read("anchor.json"), read("historical-request.json"), byteArrayOf(), 1791200932, intArrayOf(), emptyArray())
             fail("Missing proof material accepted")

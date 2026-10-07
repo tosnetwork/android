@@ -29,6 +29,12 @@ class V5R2ProofSession(context: Context, walletId: UUID, locallyProvisionedAncho
     fun read(request: ByteArray, localNow: Long, transport: V5R2ProofTransport): ByteArray =
         V5R2ProofNative.acquireLivePersisted(directory.absolutePath, false, anchor, request, localNow, transport)
 
+    fun enrollBound(request: ByteArray, localNow: Long, transport: V5R2ProofTransport): V5R2VerifiedRead =
+        V5R2VerifiedRead.live(directory.absolutePath, true, anchor, request, localNow, transport)
+
+    fun readBound(request: ByteArray, localNow: Long, transport: V5R2ProofTransport): V5R2VerifiedRead =
+        V5R2VerifiedRead.live(directory.absolutePath, false, anchor, request, localNow, transport)
+
     private fun privateDirectory(parent: File, name: String): File {
         val result = File(parent, name)
         try { Os.mkdir(result.absolutePath, 0x1c0) } // 0700, atomically private

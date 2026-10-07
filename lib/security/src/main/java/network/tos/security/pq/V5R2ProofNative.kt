@@ -20,6 +20,11 @@ object V5R2ProofNative {
         return Result(output[0], output[1])
     }
 
+    fun verifyHistoricalBound(anchor: ByteArray, request: ByteArray, priorState: ByteArray, localNow: Long,
+                    kinds: IntArray, material: Array<ByteArray>): V5R2VerifiedRead {
+        return V5R2VerifiedRead.historical(anchor, request, priorState, localNow, kinds, material)
+    }
+
     internal fun verifyLivePersisted(directory: String, initialize: Boolean, anchor: ByteArray, request: ByteArray,
                                      localNow: Long, kinds: IntArray, material: Array<ByteArray>): ByteArray {
         require(directory.isNotEmpty() && directory.toByteArray(Charsets.UTF_8).size <= 4096)

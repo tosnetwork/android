@@ -1,0 +1,66 @@
+package network.tos.security.pq
+
+import android.util.Base64
+import org.json.JSONObject
+import java.security.MessageDigest
+
+/** Created inside the native proof boundary, never from endpoint JSON.
+ * Account binding does not by itself establish V5R2 policy or signing authority.
+ */
+class V5R2VerifiedRead private constructor(json: ByteArray, request: ByteArray, anchor: ByteArray) {
+    companion object {
+        internal fun historical(anchor: ByteArray, request: ByteArray, priorState: ByteArray, localNow: Long,
+                                kinds: IntArray, material: Array<ByteArray>): V5R2VerifiedRead {
+            require(localNow > 0 && anchor.size in 1..1_048_576 && request.size in 1..1_048_576)
+            val a = anchor.copyOf(); val r = request.copyOf()
+            require(JSONObject(r.toString(Charsets.UTF_8)).getString("mode") == "historical")
+            return V5R2VerifiedRead(V5R2ProofNative.verify(a, r, priorState, localNow, kinds, material).verifiedJson, r, a)
+        }
+        internal fun live(directory: String, initialize: Boolean, anchor: ByteArray, request: ByteArray,
+                          localNow: Long, transport: V5R2ProofTransport): V5R2VerifiedRead {
+            require(localNow > 0 && anchor.size in 1..1_048_576 && request.size in 1..1_048_576)
+            val a = anchor.copyOf(); val r = request.copyOf()
+            return V5R2VerifiedRead(V5R2ProofNative.acquireLivePersisted(directory, initialize, a, r, localNow, transport), r, a)
+        }
+    }
+    private val value = JSONObject(json.toString(Charsets.UTF_8))
+    private val anchorDigest = digest(anchor)
+    private val checkpoint = value.getJSONObject("target").let {
+        listOf(it.getInt("workchain").toString(), it.getString("shard"), it.getLong("seqno").toString(),
+               it.getString("root_hash"), it.getString("file_hash"), it.getLong("gen_utime").toString())
+    }
+    init {
+        check(value.getString("status") == "verified" && value.getString("interface") == "tos-proof-verify/1" &&
+              value.getString("request_sha256") == digest(request)) { "Proof request binding refused" }
+    }
+    /** Must be called again at the point of authorization, using the local clock/policy. */
+    fun requireLive(localNow: Long, maximumAgeSeconds: Long) {
+        require(localNow > 0 && maximumAgeSeconds in 1..604800)
+        check(value.getString("mode") == "live") { "Historical proof cannot authorize a live operation" }
+        val live = value.getJSONObject("live")
+        val age = localNow - value.getJSONObject("target").getLong("gen_utime")
+        check(age in -60..maximumAgeSeconds && maximumAgeSeconds <= live.getLong("max_age_seconds") &&
+              localNow >= live.getLong("now")) { "Proof freshness refused" }
+    }
+    fun requireSameCheckpoint(other: V5R2VerifiedRead) {
+        check(anchorDigest == other.anchorDigest && checkpoint == other.checkpoint) { "Proof checkpoint mismatch" }
+    }
+    /** Returns proven raw account state only after matching locally expected identity/code. */
+    fun accountState(expectedAddress: String, expectedCodeHash: String): ByteArray {
+        require(expectedAddress.matches(Regex("-?[0-9]+:[0-9a-f]{64}")) && expectedCodeHash.matches(Regex("[0-9a-f]{64}")))
+        val account = value.getJSONObject("account")
+        check(account.getBoolean("exists") && account.getBoolean("active") &&
+              account.getString("address") == expectedAddress && account.getString("code_hash") == expectedCodeHash) {
+            "Proof account binding refused"
+        }
+        return Base64.decode(account.getString("state_boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
+    }
+    fun configParam(index: Int, expectedCellHash: String): ByteArray {
+        require(index >= 0 && expectedCellHash.matches(Regex("[0-9a-f]{64}")))
+        val params = value.getJSONArray("config_params")
+        val matches = (0 until params.length()).map { params.getJSONObject(it) }.filter { it.getInt("index") == index }
+        check(matches.size == 1 && matches[0].getString("cell_hash") == expectedCellHash) { "Proof configuration binding refused" }
+        return Base64.decode(matches[0].getString("boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
+    }
+    private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+}

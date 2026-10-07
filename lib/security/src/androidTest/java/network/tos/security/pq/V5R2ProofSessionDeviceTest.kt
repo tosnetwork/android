@@ -58,8 +58,15 @@ class V5R2ProofSessionDeviceTest {
             replies[calls++].also { assertTrue(it.size <= maximum) }
         }
         try {
-            val result = session.enroll(request, 1791200932, transport)
-            assertEquals("verified", JSONObject(result.toString(Charsets.UTF_8)).getString("status"))
+            val result = session.enrollBound(request, 1791200932, transport)
+            result.requireLive(1791200932, 300)
+            result.requireSameCheckpoint(result)
+            try { result.requireLive(1791201932, 300); fail("Expired proven read accepted") }
+            catch (_: IllegalStateException) { }
+            try { result.requireLive(1791200931, 300); fail("Earlier local clock accepted") }
+            catch (_: IllegalStateException) { }
+            try { result.configParam(34, "00".repeat(32)); fail("Wrong configuration hash accepted") }
+            catch (_: IllegalStateException) { }
             assertEquals(3, calls)
             val state = File(directory, "checkpoint.json")
             assertTrue(state.isFile)
