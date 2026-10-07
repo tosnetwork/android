@@ -55,6 +55,11 @@ class V5R2VerifiedRead private constructor(json: ByteArray, request: ByteArray, 
         }
         return Base64.decode(account.getString("state_boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
     }
+    val masterchainTime: Long get() = value.getJSONObject("target").getLong("gen_utime")
+    fun accountTime(expectedAddress: String, expectedCodeHash: String): Long {
+        accountState(expectedAddress, expectedCodeHash)
+        return value.getJSONObject("account").getLong("gen_utime")
+    }
     private fun configuration(index: Int): JSONObject {
         require(index >= 0)
         val params = value.getJSONArray("config_params")

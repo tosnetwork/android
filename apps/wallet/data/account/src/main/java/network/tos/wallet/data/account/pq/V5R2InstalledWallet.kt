@@ -5,6 +5,7 @@ import network.tos.blockchain.ton.contract.TosV5R2Genesis
 import network.tos.blockchain.ton.contract.TosV5R2WalletData
 import network.tos.blockchain.ton.contract.TosV5R2RetirementPolicy
 import org.ton.boc.BagOfCells
+import network.tos.blockchain.ton.contract.TosV5R2FeeProofTime
 import network.tos.security.pq.V5R2VerifiedRead
 import org.ton.block.AddrStd
 import org.ton.cell.Cell
@@ -14,7 +15,8 @@ import org.ton.cell.Cell
  */
 class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val nextFeeLeaf: Long,
                                             private val walletProof: V5R2VerifiedRead,
-                                            private val network: ByteArray, private val policy: Int) {
+                                            private val network: ByteArray, private val policy: Int,
+                                            private val vaultTime: Long, private val epoch0: Long) {
     /** Chain eligibility only; custody, fee-slot/solvency and signed action checks remain mandatory. */
     fun requirePrimaryExecution(policyProof: V5R2VerifiedRead, localNow: Long, maximumAge: Long) {
         walletProof.requireLive(localNow, maximumAge)
@@ -23,6 +25,10 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
         check(state.seqno < 0xffffffffL && state.primaryNonce < ULong.MAX_VALUE) { "Primary counters exhausted" }
         val root = BagOfCells(policyProof.provenConfigParam(48)).roots.single()
         TosV5R2RetirementPolicy.requirePrimary(root, network, localNow)
+    }
+    fun requireFeeProof(localNow: Long, maximumAge: Long) {
+        walletProof.requireLive(localNow, maximumAge)
+        TosV5R2FeeProofTime.check(walletProof.masterchainTime, vaultTime, localNow, maximumAge, epoch0)
     }
     companion object {
         fun bindInitial(birth: TosV5R2Genesis, wallet: V5R2VerifiedRead, module: V5R2VerifiedRead,
@@ -43,8 +49,13 @@ class V5R2InstalledWallet private constructor(val state: TosV5R2WalletData, val 
             val network = identity.loadBits(256).toByteArray()
             identity.loadBits(8 + 256)
             val policy = identity.loadUInt(8).toInt()
+            val metadata = birth.metadata.beginParse(); metadata.loadBits(272)
+            val epoch0 = metadata.loadUInt(32).toLong()
+            val vaultAddress = "0:" + birth.vaultAddress.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+            val vaultCode = birth.vaultInit.refs[0].hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
             return V5R2InstalledWallet(TosV5R2WalletData.parse(walletData, birth),
-                TosV5R2AccountState.vaultCounter(vaultData, birth.vaultData), wallet, network, policy)
+                TosV5R2AccountState.vaultCounter(vaultData, birth.vaultData), wallet, network, policy,
+                vault.accountTime(vaultAddress, vaultCode), epoch0)
         }
     }
 }
