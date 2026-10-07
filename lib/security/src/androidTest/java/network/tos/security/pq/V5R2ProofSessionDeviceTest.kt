@@ -1,0 +1,44 @@
+package network.tos.security.pq
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.json.JSONObject
+import java.io.File
+import java.util.UUID
+@RunWith(AndroidJUnit4::class)
+class V5R2ProofSessionDeviceTest {
+    @Test fun noBackupSessionCommitsReopensAndRefusesLostState() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val assets = instrumentation.context.assets
+        fun bytes(name: String) = assets.open("v5r2-proof/$name").use { it.readBytes() }
+        val id = UUID.randomUUID()
+        val directory = File(context.noBackupFilesDir, "v5r2-proof-checkpoints/$id")
+        val anchor = bytes("anchor.json")
+        val request = bytes("live-request.json")
+        val fullNames = listOf("live/masterchain-info.tl", "live/config.tl", "historical/chain-0000.tl")
+        val fullKinds = intArrayOf(1, 4, 2)
+        val liveNames = listOf("live/masterchain-info.tl", "live/config.tl", "live/chain-0000.tl")
+        val liveKinds = intArrayOf(1, 4, 2)
+        try {
+            val session = V5R2ProofSession(context, id, anchor)
+            try { session.read(request, 1791200932, fullKinds, fullNames.map(::bytes).toTypedArray()); fail("Unenrolled session accepted") }
+            catch (_: SecurityException) { }
+            val result = session.enroll(request, 1791200932, fullKinds, fullNames.map(::bytes).toTypedArray())
+            assertEquals("verified", JSONObject(result.toString(Charsets.UTF_8)).getString("status"))
+            val checkpoint = File(directory, "checkpoint.json")
+            assertTrue(checkpoint.isFile)
+            assertEquals(636922, JSONObject(checkpoint.readText()).getJSONObject("head").getInt("seqno"))
+            val reopened = V5R2ProofSession(context, id, anchor)
+            assertTrue(reopened.read(request, 1791200932, liveKinds, liveNames.map(::bytes).toTypedArray()).isNotEmpty())
+            assertTrue(checkpoint.delete())
+            try { reopened.enroll(request, 1791200932, fullKinds, fullNames.map(::bytes).toTypedArray()); fail("Lost enrolled state reset") }
+            catch (_: SecurityException) { }
+        } finally {
+            directory.deleteRecursively()
+            File(context.filesDir, "v5r2-proof-checkpoints/$id").deleteRecursively()
+        }
+    }
+}
