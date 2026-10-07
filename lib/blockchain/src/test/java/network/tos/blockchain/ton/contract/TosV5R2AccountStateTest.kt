@@ -1,6 +1,7 @@
 package network.tos.blockchain.ton.contract
 
 import java.nio.ByteBuffer
+import java.math.BigInteger
 import network.tos.blockchain.ton.extensions.storeAddress
 import network.tos.blockchain.ton.extensions.toByteArray
 import org.junit.Assert.*
@@ -16,12 +17,15 @@ class TosV5R2AccountStateTest {
     private val data = cell(2)
     private val address = AddrStd(0, ByteArray(32) { 3 })
     private fun account(extra: Int = 0, accountCode: Cell = code, accountAddress: AddrStd = address,
-                        split: Boolean = false, trailing: Boolean = false) = buildCell {
+                        split: Boolean = false, trailing: Boolean = false,
+                        balance: ByteArray = byteArrayOf(), debt: ByteArray? = null) = buildCell {
         storeBit(true); storeAddress(accountAddress)
         storeUInt(0, 3); storeUInt(0, 3); storeUInt(extra, 3)
         if (extra == 1) storeBytes(ByteArray(32) { 4 })
-        storeUInt(100, 32); storeBit(false); storeUInt(0, 64)
-        storeUInt(0, 4); storeBit(false); storeBit(true)
+        storeUInt(100, 32); storeBit(debt != null)
+        debt?.let { storeUInt(it.size, 4); storeBytes(it) }
+        storeUInt(0, 64)
+        storeUInt(balance.size, 4); storeBytes(balance); storeBit(false); storeBit(true)
         if (split) {
             storeBit(true); storeUInt(1, 5); storeBit(false)
             storeBit(true); storeRef(accountCode); storeBit(true); storeRef(data); storeBit(false)
@@ -31,6 +35,15 @@ class TosV5R2AccountStateTest {
     @Test fun tosStorageExtraNoneAndDictionaryMetadataDecode() {
         for (extra in listOf(0, 1))
             assertEquals(data.hash(), TosV5R2AccountState.data(account(extra).toByteArray(), address, code).hash())
+    }
+    @Test fun balancesAndDebtPreserveUnsignedCoinsWithoutNarrowing() {
+        val max = ByteArray(15) { 0xff.toByte() }
+        val snapshot = TosV5R2AccountState.snapshot(account(balance = max, debt = byteArrayOf(0x80.toByte())).toByteArray(), address, code)
+        assertEquals(BigInteger.ONE.shiftLeft(120).subtract(BigInteger.ONE), snapshot.balance)
+        assertEquals(BigInteger.valueOf(128), snapshot.storageDebt)
+        assertEquals(100L, snapshot.lastPaid)
+        assertEquals(data.hash(), snapshot.data.hash())
+        assertEquals(BigInteger.ZERO, TosV5R2AccountState.snapshot(account().toByteArray(), address, code).balance)
     }
     @Test fun accountIdentityCodeFlagsAndTrailingDataRefused() {
         for (value in listOf(account(extra = 2), account(accountCode = cell(9)),

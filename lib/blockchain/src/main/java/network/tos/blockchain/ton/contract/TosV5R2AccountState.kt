@@ -6,10 +6,15 @@ import org.ton.block.AddrStd
 import org.ton.boc.BagOfCells
 import org.ton.cell.Cell
 import org.ton.cell.CellType
+import java.math.BigInteger
 
 /** Raw codec only. The wallet service must obtain bytes from a verified proof capability. */
 object TosV5R2AccountState {
-    fun data(boc: ByteArray, expectedAddress: AddrStd, expectedCode: Cell): Cell {
+    /** Raw balance and recorded debt are observations, not spendable balance or a fee quote. */
+    data class Snapshot(val data: Cell, val balance: BigInteger, val storageDebt: BigInteger, val lastPaid: Long)
+    fun data(boc: ByteArray, expectedAddress: AddrStd, expectedCode: Cell): Cell =
+        snapshot(boc, expectedAddress, expectedCode).data
+    fun snapshot(boc: ByteArray, expectedAddress: AddrStd, expectedCode: Cell): Snapshot {
         require(boc.size in 1..67_108_864 && expectedAddress.workchainId == 0 && expectedAddress.anycast.value == null)
         val root = BagOfCells(boc).roots.single()
         require(root.type == CellType.ORDINARY && root.levelMask.level == 0) { "Ordinary account required" }
@@ -28,12 +33,14 @@ object TosV5R2AccountState {
             1 -> slice.loadBits(256)
             else -> error("Unknown storage extra info")
         }
-        slice.loadUInt(32) // last_paid
-        if (slice.loadBit()) {
-            val count = slice.loadUInt(4).toInt(); slice.loadBits(count * 8)
+        fun coins(): BigInteger {
+            val count = slice.loadUInt(4).toInt()
+            return if (count == 0) BigInteger.ZERO else BigInteger(1, slice.loadBits(count * 8).toByteArray())
         }
+        val lastPaid = slice.loadUInt(32).toLong()
+        val storageDebt = if (slice.loadBit()) coins() else BigInteger.ZERO
         slice.loadUInt(64) // last_trans_lt
-        val balanceBytes = slice.loadUInt(4).toInt(); slice.loadBits(balanceBytes * 8)
+        val balance = coins()
         if (slice.loadBit()) slice.loadRef() // ExtraCurrencyCollection HashmapE
         require(slice.loadBit()) { "Account is not active" }
         val state = StateInit.loadTlb(slice)
@@ -45,7 +52,7 @@ object TosV5R2AccountState {
         val data = checkNotNull(state.data.value?.value)
         require(code.type == CellType.ORDINARY && code.levelMask.level == 0 && code.hash() == expectedCode.hash()) { "Account code mismatch" }
         require(data.type == CellType.ORDINARY && data.levelMask.level == 0) { "Ordinary account data required" }
-        return data
+        return Snapshot(data, balance, storageDebt, lastPaid)
     }
     /** Everything except the monotonically consumed leaf counter must match enrollment. */
     fun vaultCounter(data: Cell, expected: Cell): Long {
