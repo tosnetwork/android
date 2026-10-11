@@ -14,7 +14,8 @@ data class FundingObservation(
     val blockRoot: String,
     val stateDigest: String,
     val finalized: Boolean,
-    val fundedAtomic: String,
+    /** The escrow v2 state decoded at [blockRoot], or null when the account does not exist there. */
+    val escrow: EscrowRuntimeState?,
 )
 
 fun interface FundingFinalityResolver {
@@ -82,17 +83,15 @@ class PurchaseCoordinator(private val journal: PurchaseJournal) {
         }
         if (expected == 0uL) throw PurchaseCoordinatorException("invalid expected funding amount")
         val observations = resolver.resolveFunding(current.purchaseId).map { observation ->
-            val amountMatches = try {
-                parseAtomicAmount(observation.fundedAtomic) == expected
-            } catch (_: IllegalArgumentException) {
-                false
-            }
+            // The amount alone is not enough: an escrow whose release or refund
+            // is pending still records the funded amount.
+            val funded = EscrowProjection.countsAsFunding(observation.escrow, expected)
             FinalizedObservation(
                 endpoint = observation.endpoint,
                 network = observation.network,
                 blockRoot = observation.blockRoot,
                 stateDigest = observation.stateDigest,
-                finalized = observation.finalized && amountMatches,
+                finalized = observation.finalized && funded,
             )
         }
         return when (val decision = FinalityQuorum.decide(configuredEndpoints, expectedNetwork, observations)) {

@@ -55,9 +55,9 @@ class PurchaseCoordinatorTest {
             val resolver = FundingFinalityResolver {
                 resolverCalls++
                 listOf(
-                    FundingObservation(endpoints[0], network, "block", "state", true, "25000000"),
-                    FundingObservation(endpoints[1], network, "block", "state", true, "25000000"),
-                    FundingObservation(endpoints[2], network, "other", "other", true, "1"),
+                    FundingObservation(endpoints[0], network, "block", "state", true, ContractEscrowStates.state("funded")),
+                    FundingObservation(endpoints[1], network, "block", "state", true, ContractEscrowStates.state("funded")),
+                    FundingObservation(endpoints[2], network, "other", "other", true, ContractEscrowStates.funded("1")),
                 )
             }
             assertEquals(
@@ -81,9 +81,9 @@ class PurchaseCoordinatorTest {
             val endpoints = listOf("https://one", "https://two", "https://three")
             val resolver = FundingFinalityResolver {
                 listOf(
-                    FundingObservation(endpoints[0], network, "block", "state", true, "25000000"),
-                    FundingObservation(endpoints[0], network, "other", "other", true, "25000000"),
-                    FundingObservation(endpoints[1], network, "block", "state", true, "24999999"),
+                    FundingObservation(endpoints[0], network, "block", "state", true, ContractEscrowStates.state("funded")),
+                    FundingObservation(endpoints[0], network, "other", "other", true, ContractEscrowStates.state("funded")),
+                    FundingObservation(endpoints[1], network, "block", "state", true, ContractEscrowStates.funded("24999999")),
                 )
             }
             assertEquals(
@@ -93,6 +93,41 @@ class PurchaseCoordinatorTest {
             assertEquals("funding_lease", journal.load().phase)
         } finally {
             directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun onlyTheFundedStatusAdvancesFunding() {
+        // Release-pending and refund-pending escrows still record the full funded
+        // amount; only the funded status itself may confirm funding.
+        val expectations = listOf(
+            "funded" to true,
+            "awaiting_funding" to false,
+            "release_pending" to false,
+            "refund_pending" to false,
+        )
+        for ((name, advances) in expectations) {
+            val directory = Files.createTempDirectory("purchase-coordinator").toFile()
+            try {
+                val journal = preparedJournal(directory)
+                journal.acquireFundingLease("lease-$name", 3uL)
+                val network = NetworkTuple("tos-local", "root", "file")
+                val endpoints = listOf("https://one", "https://two", "https://three")
+                val escrow = ContractEscrowStates.state(name)
+                val resolver = FundingFinalityResolver {
+                    endpoints.map { FundingObservation(it, network, "block", "state", true, escrow) }
+                }
+                val result = PurchaseCoordinator(journal).pollFunding(endpoints, network, "25000000", 4uL, resolver)
+                if (advances) {
+                    assertEquals(name, FundingReconciliationResult.Funded("block", "state", 3), result)
+                    assertEquals(name, "funded", journal.load().phase)
+                } else {
+                    assertEquals(name, FundingReconciliationResult.Pending, result)
+                    assertEquals(name, "funding_lease", journal.load().phase)
+                }
+            } finally {
+                directory.deleteRecursively()
+            }
         }
     }
 
