@@ -38,6 +38,7 @@ import org.koin.android.ext.android.inject
 import org.ton.block.AddrStd
 import uikit.base.BaseFragment
 import uikit.navigation.NavigationActivity
+import uikit.navigation.Navigation.Companion.navigation
 import java.math.BigDecimal
 
 /** Explicit PQ identities, with one selected native wallet paying transport fees. */
@@ -80,6 +81,7 @@ class PqWalletsScreen(private val feeWallet: WalletEntity) : BaseFragment(R.layo
     private fun refresh() {
         layout.removeAllViews()
         label("PQ Wallets")
+        button("Quantum accounts", "pq.quantum") { navigation?.add(QuantumWalletsScreen()) }
         label("Fee wallet: ${feeWallet.label.name}\n${feeWallet.address}")
         button("Create PQ wallet", "pq.create") { chooseAlgorithm(false) }
         button("Restore encrypted backup", "pq.restore") { chooseAlgorithm(true) }

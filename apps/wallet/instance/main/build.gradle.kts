@@ -103,6 +103,7 @@ baselineProfile {
 }
 
 dependencies {
+    androidTestImplementation(libs.okhttp)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(ProjectModules.Wallet.app))
 

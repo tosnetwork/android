@@ -18,5 +18,17 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      - name: Install native proof build tools
+        # The embedded proof verifier builds secp256k1 through autogen.sh,
+        # which needs autotools that the hosted macOS image does not provide.
+        run: brew install cmake ninja autoconf automake libtool pkg-config
+      - name: Install pinned Quantum Rust toolchain and platform targets
+        shell: bash
+        run: |
+          Quantum_RUST_CHANNEL=$(sed -n 's/^channel = "\(.*\)"/\1/p' lib/security/src/main/rust/fee-state-bundle/rust-toolchain.toml)
+          test -n "$Quantum_RUST_CHANNEL"
+          rustup toolchain install "$Quantum_RUST_CHANNEL" --profile minimal --component rustfmt --component clippy
+          rustup target add --toolchain "$Quantum_RUST_CHANNEL" aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
       - name: Run hermetic static, unit, and build acceptance gates
         run: make test_ci
