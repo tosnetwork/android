@@ -18,6 +18,10 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      - name: Install native proof build tools
+        # The embedded proof verifier builds secp256k1 through autogen.sh,
+        # which needs autotools that the hosted macOS image does not provide.
+        run: brew install cmake ninja autoconf automake libtool pkg-config
       - name: Install pinned Quantum Rust toolchain and platform targets
         shell: bash
         run: |
