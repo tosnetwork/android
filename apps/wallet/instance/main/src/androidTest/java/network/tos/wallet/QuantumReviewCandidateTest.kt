@@ -16,8 +16,8 @@ class QuantumReviewCandidateTest {
     @Test fun actualCandidateCodesArePinnedAndOtherNetworksAreRefused() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext
         val (codes, pins) = QuantumReviewCandidate.load(app)
-        assertEquals(18, QuantumReviewCandidate.minimumVm)
-        assertEquals("06203e98d4d8bf97b0cab37523ec435f5ab0e1d6d2c5253926eebf20ef1712f5", codes.wallet.hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) })
+        assertEquals(16, QuantumReviewCandidate.minimumVm)
+        assertEquals("18252490f90f12149832b6067ca60f3f0216f23a97d71e7afcd8017eeb75e61f", codes.wallet.hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) })
         val namespace = "quantum-candidate-qa-${UUID.randomUUID()}"
         val prefs = app.getSharedPreferences(namespace, 0)
         val repository = QuantumWalletRepository(app, codes, pins, { true }, namespace,

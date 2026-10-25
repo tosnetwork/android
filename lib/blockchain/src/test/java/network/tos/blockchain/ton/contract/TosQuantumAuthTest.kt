@@ -38,6 +38,24 @@ class TosQuantumAuthTest {
         }
         for (tag in listOf(0xad4de08eL, 0x36e6b809L, 0L)) assertTrue(runCatching { TosQuantumAuth.validateActions(send(3, tag = tag)) }.isFailure)
     }
+    @Test fun extOutSendKeepsOnlyModesTheNodeAccepts() {
+        // ext_out_msg_info$11 from and to addr_none, no StateInit, empty inline body.
+        val extOut = buildCell { storeUInt(3, 2); storeUInt(0, 4); storeUInt(0, 64); storeUInt(0, 32); storeUInt(0, 2) }
+        val internal = buildCell { storeUInt(0, 1); storeUInt(0, 63) }
+        val oneBit = buildCell { storeUInt(1, 1) }
+        fun send(mode: Int, message: Cell, previous: Cell = Cell.empty()) =
+            buildCell { storeUInt(0x0ec3c86d, 32); storeUInt(mode, 8); storeRef(previous); storeRef(message) }
+        val allowed = setOf(2, 3, 18, 19, 66, 67, 82, 83, 130, 131, 146, 147)
+        for (mode in 0..255) {
+            assertEquals("ext_out mode $mode", mode == 2 || mode == 3, runCatching { TosQuantumAuth.validateActions(send(mode, extOut)) }.isSuccess)
+            assertEquals("internal mode $mode", allowed.contains(mode), runCatching { TosQuantumAuth.validateActions(send(mode, internal)) }.isSuccess)
+            assertEquals("one-bit mode $mode", allowed.contains(mode), runCatching { TosQuantumAuth.validateActions(send(mode, oneBit)) }.isSuccess)
+        }
+        // The refusal holds for an action anywhere in the list.
+        assertTrue(runCatching { TosQuantumAuth.validateActions(send(3, internal, send(66, extOut))) }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(runCatching { TosQuantumAuth.validateActions(send(66, extOut, send(3, internal))) }.exceptionOrNull() is IllegalArgumentException)
+        TosQuantumAuth.validateActions(send(3, internal, send(2, extOut)))
+    }
     @Test fun primaryControlsAndClassicalSignatureRejected() {
         for (action in listOf(QuantumAuthAction.Configure(), QuantumAuthAction.LockPrimary,
             QuantumAuthAction.Migrate(Cell.empty(), Cell.empty(), Cell.empty()))) {

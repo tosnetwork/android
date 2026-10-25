@@ -366,7 +366,7 @@ class V1ProductUiTest {
     fun ambiguousPhraseRestoresExplicitTosFormatAndPersistedKey() {
         restoreAmbiguousPhrase("Restore TOS Wallet", WalletVersion.TOSV5R1,
             "7c2c64e1dca71c1add3777ebaeb611ad56229995d435ad7bf6ba29909d816ceb",
-            "0:f1bf21eacb1b2725e4792d4eeae23dfd5402e8b060f67d2a72719aec49e5d727")
+            "0:2bcb99f529beda2c0516f86695499d15d2b2af1dbbd6504310cf4ecc51f0c00b")
     }
 
     @Test
@@ -1686,8 +1686,8 @@ class V1ProductUiTest {
         private const val FIXTURE_MNEMONIC = "twice half glass steak version only friend bone addict during joke offer fog punch panel true regular letter topple often afraid hint ready exhibit"
         private const val APP_ID = "network.tos.wallet"
         private const val ROOT_ACTIVITY = "network.tos.wallet.app.ui.screen.root.RootActivity"
-        private const val FIXTURE_ADDRESS = "UQBtGJyHNQkw8Fq5PlZeUi4sUtyp1N71RgYGxssqkBNVWlJ3"
-        private const val FIXTURE_RAW_ADDRESS = "0:6d189c87350930f05ab93e565e522e2c52dca9d4def5460606c6cb2a9013555a"
+        private const val FIXTURE_ADDRESS = "UQCoPKX1Ak6MiN2TEPojfvZEogTsBH7xQFcsH79MegBo6CJz"
+        private const val FIXTURE_RAW_ADDRESS = "0:a83ca5f5024e8c88dd9310fa237ef644a204ec047ef140572c1fbf4c7a0068e8"
         private const val SECOND_LOCAL_RPC = "http://10.0.2.2:18546"
         private const val RECIPIENT_ADDRESS = "EQAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIp3C"
         private const val NORMALIZED_RECIPIENT_ADDRESS = "UQAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIsAH"

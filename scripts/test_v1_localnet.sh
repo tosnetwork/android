@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-address="${TOS_TEST_ADDRESS:-UQBtGJyHNQkw8Fq5PlZeUi4sUtyp1N71RgYGxssqkBNVWlJ3}"
+address="${TOS_TEST_ADDRESS:-UQCoPKX1Ak6MiN2TEPojfvZEogTsBH7xQFcsH79MegBo6CJz}"
 control="${TOS_TEST_CONTROL:-http://127.0.0.1:18745}"
 rpc_ports=(18545 18546 18547)
 
