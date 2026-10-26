@@ -24,6 +24,8 @@ import kotlinx.coroutines.runBlocking
 import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.blockchain.ton.extensions.hex
+import network.tos.blockchain.ton.extensions.toAccountId
+import network.tos.wallet.app.extensions.getWalletBadges
 import network.tos.blockchain.ton.extensions.base64
 import network.tos.blockchain.ton.extensions.cellFromBase64
 import org.ton.block.ExtInMsgInfo
@@ -99,6 +101,58 @@ class V1ProductUiTest {
         device.pressBack()
         device.pressBack()
         device.pressBack()
+    }
+
+    @Test
+    fun classicRecoveryImportsAssetsWithoutVersionSelectionOrBadges() {
+        val api = GlobalContext.get().get<API>()
+        val repository = GlobalContext.get().get<AccountRepository>()
+        val words = LEGACY_MNEMONIC.split(" ")
+        val key = TosV1Mnemonic.recoveryPrivateKey(words, TosV1Mnemonic.Profile.LEGACY).publicKey()
+        val versions = listOf(WalletVersion.V5R1, WalletVersion.V5BETA, WalletVersion.V4R2,
+            WalletVersion.V4R1, WalletVersion.V3R2, WalletVersion.V3R1)
+        val addresses = versions.associate { version ->
+            network.tos.blockchain.ton.contract.BaseWalletContract.create(key, version.title, false).address.toAccountId() to version.title
+        }
+        ClassicRecoveryRpcFixture(addresses).use { fixture ->
+            api.setCustomTosRpcEndpoint(fixture.endpoint)
+            launchImport()
+            setPhrase(LEGACY_MNEMONIC)
+            clickText("Continue")
+            assertTrue(waitText("Legacy wallet recovery", 10_000))
+            device.wait(Until.findObject(By.res("android", "button1")), 10_000)!!.click()
+            val advanced = waitText("Create passcode", 60_000)
+            assertTrue("Recovery did not advance; RPC observations: ${fixture.observations}", advanced)
+            enterPin("1234")
+            assertTrue(waitText("Re-enter passcode"))
+            enterPin("1234")
+            assertTrue(waitText("Customize your Wallet", 30_000))
+            clickResource("label_button")
+            val expected = setOf(WalletVersion.V4R2, WalletVersion.V4R1, WalletVersion.V3R2, WalletVersion.V3R1)
+            val end = SystemClock.elapsedRealtime() + 60_000
+            var wallets = runBlocking { repository.getWallets() }
+            while (wallets.map { it.version }.toSet() != expected && SystemClock.elapsedRealtime() < end) {
+                SystemClock.sleep(200)
+                wallets = runBlocking { repository.getWallets() }
+            }
+            assertEquals(expected, wallets.map { it.version }.toSet())
+            assertEquals(4, wallets.size)
+            runBlocking {
+                for (wallet in wallets) {
+                    assertEquals(wallet.version.title, addresses[wallet.accountId])
+                    assertEquals(key, repository.getPrivateKey(wallet.id)!!.publicKey())
+                    assertFalse(wallet.label.name.contains(Regex("(?i)\\b(v[345]|w5)")))
+                }
+            }
+            val observed = synchronized(fixture.observations) { fixture.observations.toList() }
+            assertTrue(observed.filter { it.first == "getAddressInformation" }.map { it.second }.toSet().containsAll(addresses.keys))
+            assertFalse(observed.any { it.first == "getAccountJettons" })
+            for (version in versions) {
+                assertEquals("", instrumentation.targetContext.getWalletBadges(Wallet.Type.Default, version).toString())
+            }
+            assertTrue(instrumentation.targetContext.getWalletBadges(Wallet.Type.Watch, WalletVersion.V4R2).isNotEmpty())
+            runBlocking { repository.logout(); GlobalContext.get().get<PasscodeManager>().reset() }
+        }
     }
 
     @Test

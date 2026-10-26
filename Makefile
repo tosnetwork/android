@@ -1,4 +1,4 @@
-.PHONY: compile release test_unit test_lint test_brand_boundary test_v1_static test_v1_emulator test_quantum_model test_signer_tos_emulator test_v1_emulator_matrix test_v1_localnet test_release_artifacts test_all test_ci test_v1_acceptance
+.PHONY: test_classic_recovery_controls compile release test_unit test_lint test_brand_boundary test_v1_static test_v1_emulator test_quantum_model test_signer_tos_emulator test_v1_emulator_matrix test_v1_localnet test_release_artifacts test_all test_ci test_v1_acceptance
 
 GRADLE := ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8'
 
@@ -10,6 +10,9 @@ release:
 
 test_unit:
 	$(GRADLE) testDebugUnitTest
+
+test_classic_recovery_controls:
+	python3 scripts/test_classic_recovery_controls.py --log-dir build/classic-recovery-controls
 
 test_lint:
 	$(GRADLE) :apps:wallet:instance:main:lintSiteRelease :apps:signer:lintRelease
@@ -38,7 +41,7 @@ test_v1_localnet:
 test_release_artifacts: release
 	bash scripts/test_release_artifacts.sh
 
-test_all: test_brand_boundary test_v1_static test_unit
+test_all: test_brand_boundary test_v1_static test_unit test_classic_recovery_controls
 
 test_ci: test_all compile test_lint test_release_artifacts
 

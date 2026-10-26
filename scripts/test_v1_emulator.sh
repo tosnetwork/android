@@ -27,6 +27,7 @@ fault_proxy_pid=$!
 trap 'kill "$fault_proxy_pid" 2>/dev/null || true' EXIT
 methods=(
   unavailableNodeCanBeReplacedBeforeImport
+  classicRecoveryImportsAssetsWithoutVersionSelectionOrBadges
   legacyV5WalletRetainsAddressAfterStorageRoundTrip
   activeLegacyV5SignsBroadcastsAndPersistsOnLocalTos
   realOldDatabasesMigrateWithoutChangingLegacyWalletOrKey

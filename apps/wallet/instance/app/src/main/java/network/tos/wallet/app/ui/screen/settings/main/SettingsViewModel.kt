@@ -2,9 +2,6 @@ package network.tos.wallet.app.ui.screen.settings.main
 
 import android.app.Application
 import androidx.lifecycle.viewModelScope
-import network.tos.blockchain.ton.contract.BaseWalletContract
-import network.tos.blockchain.ton.contract.WalletVersion
-import network.tos.blockchain.ton.extensions.toAccountId
 import network.tos.wallet.app.Environment
 import network.tos.wallet.app.core.AnalyticsHelper
 import network.tos.wallet.app.core.FirebaseHelper
@@ -144,37 +141,6 @@ class SettingsViewModel(
         }
     }
 
-    fun createV4R2Wallet() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val passcode = withContext(Dispatchers.Main) {
-                passcodeManager.legacyGetPasscode(context)
-            } ?: return@launch
-
-            val newLabel = Wallet.Label(
-                accountName = wallet.label.accountName + " V4R2",
-                emoji = wallet.label.emoji,
-                color = wallet.label.color
-            )
-            val walletId = AccountRepository.newWalletId()
-            val version = WalletVersion.V4R2
-            val mnemonic = accountRepository.getMnemonic(wallet.id)?.toList() ?: return@launch
-            val walletIds = listOf(walletId)
-            val versions = listOf(version)
-
-            rnLegacy.addMnemonics(passcode, walletIds, mnemonic)
-            accountRepository.importWallet(
-                walletIds, Wallet.NewLabel(
-                    names = listOf(newLabel.name),
-                    emoji = newLabel.emoji,
-                    color = newLabel.color,
-                ), mnemonic, versions, wallet.testnet, listOf(false)
-            )
-            backupRepository.addBackup(walletId)
-            accountRepository.setSelectedWallet(walletId)
-            finish()
-        }
-    }
-
     fun toggleTron() {
         tokensFlow.take(1).collectFlow { tokens ->
             val index = tokens.indexOfFirst { it.isTrc20Usdt }
@@ -201,30 +167,6 @@ class SettingsViewModel(
                 settingsRepository.setTokensSort(wallet.id, sortAddresses)
             }
         }
-    }
-
-    private suspend fun hasW5(): Boolean {
-        if (wallet.isQuantum) return true
-        if (wallet.version == WalletVersion.V5R1) {
-            return true
-        } else if (wallet.type == Wallet.Type.Watch || wallet.type == Wallet.Type.Lockup || wallet.type == Wallet.Type.Ledger) {
-            return true
-        }
-        val w5Contact = BaseWalletContract.create(wallet.publicKey, "v5r1", wallet.testnet)
-        val accountId = w5Contact.address.toAccountId()
-        return accountRepository.getWalletByAccountId(accountId, wallet.testnet) != null
-    }
-
-    private suspend fun hasV4R2(): Boolean {
-        if (wallet.version != WalletVersion.V5R1 && wallet.version != WalletVersion.V5BETA) {
-            return true
-        }
-        if (wallet.type == Wallet.Type.Watch || wallet.type == Wallet.Type.Lockup || wallet.type == Wallet.Type.Ledger) {
-            return true
-        }
-        val v4R2Contact = BaseWalletContract.create(wallet.publicKey, "v4r2", wallet.testnet)
-        val accountId = v4R2Contact.address.toAccountId()
-        return accountRepository.getWalletByAccountId(accountId, wallet.testnet) != null
     }
 
     private suspend fun buildUiItems(

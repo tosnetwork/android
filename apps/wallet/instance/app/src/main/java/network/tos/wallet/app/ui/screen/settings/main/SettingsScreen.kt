@@ -30,7 +30,6 @@ import network.tos.wallet.app.ui.screen.settings.main.list.Adapter
 import network.tos.wallet.app.ui.screen.settings.main.list.Item
 import network.tos.wallet.app.ui.screen.settings.security.SecurityScreen
 import network.tos.wallet.app.ui.screen.settings.theme.ThemeScreen
-import network.tos.wallet.app.ui.screen.stories.w5.W5StoriesScreen
 import network.tos.wallet.app.R
 import network.tos.uikit.icon.UIKitIcon
 import network.tos.wallet.data.account.entities.WalletEntity
@@ -87,7 +86,6 @@ class SettingsScreen(
             is Item.Widget -> installWidget()
             is Item.Security -> navigation?.add(SecurityScreen.newInstance(screenContext.wallet))
             is Item.Legal -> navigation?.add(LegalScreen.newInstance())
-            is Item.W5 -> navigation?.add(W5StoriesScreen.newInstance(!screenContext.wallet.isW5))
             is Item.Battery -> navigation?.add(BatteryScreen.newInstance(screenContext.wallet, from = "settings"))
             is Item.Logout -> if (item.delete) deleteAccount() else showSignOutDialog()
             is Item.ConnectedApps -> navigation?.add(AppsScreen.newInstance(screenContext.wallet))
@@ -95,7 +93,6 @@ class SettingsScreen(
             is Item.SearchEngine -> searchPicker(item)
             is Item.DeleteWatchAccount -> deleteAccount()
             is Item.Rate -> openRate()
-            is Item.V4R2 -> viewModel.createV4R2Wallet()
             is Item.Notifications -> navigation?.add(NotificationsManageScreen.newInstance(screenContext.wallet))
             is Item.TronToggle -> viewModel.toggleTron()
             is Item.PqWallets -> navigation?.add(network.tos.wallet.app.ui.screen.pq.PqWalletsScreen(screenContext.wallet))

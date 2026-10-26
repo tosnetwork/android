@@ -17,6 +17,9 @@ import org.ton.cell.Cell
 import org.ton.cell.CellBuilder
 import java.math.BigInteger
 
+/** Recovery discovery hints, without any signing or balance-proof capability. */
+data class TosRecoveryAssets(val tokens: Boolean, val nfts: Boolean, val complete: Boolean)
+
 /** Ordinary cells from one strictly verified legacy account snapshot.
  * Only an explicitly empty uninitialized state has null code/data. */
 data class TosLegacyWalletState(val seqno: Int, val code: Cell?, val data: Cell?) {
@@ -29,9 +32,9 @@ data class TosLegacyWalletState(val seqno: Int, val code: Cell?, val data: Cell?
  * Design: each method documents the tonapi method it replaces.
  * - Methods a bare node can serve are implemented with real RPC calls
  *   (balance / seqno / send / fee estimate / runGetMethod / raw history).
- * - Methods that need an indexer (jetton list / NFT list / fiat rates / rich parsed
- *   events) are not available from a bare TOS node, so they degrade explicitly
- *   (return empty + TODO) until a TOS indexer or client-side indexing is wired in.
+ * - Token/NFT discovery uses the optional in-node wallet index. Recovery retains
+ *   candidates when that index is unavailable or incomplete; discovery does not
+ *   grant proof or signing authority. Other rich metadata still uses its own adapters.
  *
  * Usage: API.tos.getAccountState(addr). The base URL is resolved dynamically from
  * the user's RPC setting, falling back to the application default.
@@ -314,15 +317,15 @@ class TosSource(
 
     // ---------------------------------------------------------------------
     // Aggregate queries served by the TOS in-node wc=0 wallet index
-    // (getAccountJettons / getAccountNfts). See doc/tos-wc0-wallet-index.md.
+    // (getAccountTokens / getAccountNfts). See doc/tos-wc0-wallet-index.md.
     // ---------------------------------------------------------------------
 
-    /** node getAccountJettons -> the owner's jetton-wallet addresses (raw wc:hex). */
+    /** node getAccountTokens -> the owner's jetton-wallet addresses (raw wc:hex). */
     fun getAccountJettonWallets(owner: String, testnet: Boolean = false): List<String> {
-        val result = rpc.callObject("getAccountJettons", JSONObject().put("address", owner), testnet)
-        val arr = result.optJSONArray("jettons") ?: return emptyList()
+        val result = rpc.callObject("getAccountTokens", JSONObject().put("address", owner), testnet)
+        val arr = result.getJSONArray("tokens")
         return (0 until arr.length()).mapNotNull {
-            arr.optJSONObject(it)?.optString("jetton_wallet")?.takeIf { s -> s.isNotBlank() }
+            arr.getJSONObject(it).getString("token_wallet").also { address -> require(address.isNotBlank()) }
         }
     }
 
@@ -333,6 +336,26 @@ class TosSource(
         return (0 until arr.length()).mapNotNull {
             arr.optJSONObject(it)?.optString("nft_item")?.takeIf { s -> s.isNotBlank() }
         }
+    }
+
+    /** Discovery hints only, never signing or balance proof. One endpoint per read.
+     * Nonempty index rows are retained even when a token balance may now be zero.
+     * An incomplete index cannot establish that an account has no assets. */
+    fun getRecoveryAssets(owner: String, testnet: Boolean = false): TosRecoveryAssets {
+        val node = snapshot(testnet)
+        val params = JSONObject().put("address", owner).put("limit", 1)
+        val tokens = node.rpc.callObject("getAccountTokens", params, testnet)
+        val nfts = node.rpc.callObject("getAccountNfts", params, testnet)
+        require(tokens.getString("@type") == "wallet.accountTokens")
+        require(nfts.getString("@type") == "wallet.accountNfts")
+        val tokenRows = tokens.getJSONArray("tokens")
+        val nftRows = nfts.getJSONArray("nfts")
+        require(tokenRows.length() <= 1 && nftRows.length() <= 1)
+        if (tokenRows.length() > 0) require(tokenRows.getJSONObject(0).getString("token_wallet").isNotBlank())
+        if (nftRows.length() > 0) require(nftRows.getJSONObject(0).getString("nft_item").isNotBlank())
+        val complete = tokens.optJSONObject("index_state")?.opt("complete") == true &&
+            nfts.optJSONObject("index_state")?.opt("complete") == true
+        return TosRecoveryAssets(tokenRows.length() > 0, nftRows.length() > 0, complete)
     }
 
     /** jetton-wallet get_wallet_data() -> (balance, jetton_master).

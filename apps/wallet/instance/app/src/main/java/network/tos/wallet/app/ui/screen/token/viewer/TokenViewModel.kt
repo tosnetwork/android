@@ -2,9 +2,6 @@ package network.tos.wallet.app.ui.screen.token.viewer
 
 import android.app.Application
 import androidx.lifecycle.viewModelScope
-import network.tos.blockchain.ton.contract.BaseWalletContract
-import network.tos.blockchain.ton.contract.WalletVersion
-import network.tos.blockchain.ton.extensions.toAccountId
 import network.tos.icu.Coins
 import network.tos.icu.CurrencyFormatter
 import network.tos.icu.Formatter
@@ -178,18 +175,6 @@ class TokenViewModel(
         }
     }
 
-    private suspend fun hasW5(): Boolean {
-        if (wallet.isQuantum) return true
-        if (wallet.version == WalletVersion.V5R1) {
-            return true
-        } else if (wallet.type == Wallet.Type.Watch || wallet.type == Wallet.Type.Lockup || wallet.type == Wallet.Type.Ledger) {
-            return true
-        }
-        val w5Contact = BaseWalletContract.create(wallet.publicKey, "v5r1", wallet.testnet)
-        val accountId = w5Contact.address.toAccountId()
-        return accountRepository.getWalletByAccountId(accountId, wallet.testnet) != null
-    }
-
     private suspend fun buildItems(
         token: AccountTokenEntity,
         tokens: List<AccountTokenEntity>,
@@ -318,17 +303,6 @@ class TokenViewModel(
             ethena?.about?.let {
                 items.add(Item.AboutEthena(description = it.description, url = it.aboutUrl))
             }
-        }
-
-        if (token.isUsdt && !wallet.isW5 && wallet.hasPrivateKey && !api.config.flags.disableGasless && settingsRepository.isUSDTW5(
-                wallet.id
-            )
-        ) {
-            items.add(
-                Item.W5Banner(
-                    wallet = wallet, addButton = !hasW5()
-                )
-            )
         }
 
         if (wallet.hasPrivateKey && token.isTrc20 && !api.config.flags.disableBattery) {

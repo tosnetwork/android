@@ -2,13 +2,10 @@ package network.tos.wallet.app.ui.screen.init.list
 
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
-import android.text.style.ForegroundColorSpan
 import android.view.ViewGroup
 import androidx.appcompat.widget.AppCompatTextView
-import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.icu.CurrencyFormatter.withCustomSymbol
 import network.tos.wallet.app.api.shortAddress
-import network.tos.wallet.app.extensions.fixW5Title
 import network.tos.wallet.app.R
 import network.tos.uikit.color.textTertiaryColor
 import network.tos.uikit.list.BaseListHolder
@@ -41,11 +38,11 @@ class Holder(
                 itemView.reject()
             }
         }
-        setDetails(item.walletVersion, item.balanceFormat, item.tokens, item.collectibles, item.ledgerIndex != null, item.ledgerAdded)
+        setDetails(item.balanceFormat, item.tokens, item.collectibles, item.ledgerIndex != null, item.ledgerAdded)
     }
 
-    private fun setDetails(walletVersion: WalletVersion, balance: CharSequence, tokens: Boolean, collectibles: Boolean, isLedger: Boolean, ledgerAdded: Boolean) {
-        val walletTitle = walletVersion.title.fixW5Title()
+    private fun setDetails(balance: CharSequence, tokens: Boolean, collectibles: Boolean, isLedger: Boolean, ledgerAdded: Boolean) {
+        val walletTitle = context.getString(Localization.wallet)
 
         val builder = SpannableStringBuilder()
         if (!isLedger) {

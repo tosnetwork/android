@@ -28,7 +28,6 @@ import network.tos.security.clear
 import network.tos.wallet.app.Environment
 import network.tos.wallet.app.core.AnalyticsHelper
 import network.tos.wallet.app.extensions.consistentBucketFor
-import network.tos.wallet.app.extensions.fixW5Title
 import network.tos.wallet.app.manager.push.PushManager
 import network.tos.wallet.app.ui.base.BaseWalletVM
 import network.tos.wallet.app.ui.screen.init.list.AccountItem
@@ -52,7 +51,6 @@ import network.tos.wallet.localization.Localization
 import io.tonapi.models.AccountStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -302,62 +300,38 @@ class InitViewModel(
 
     private suspend fun resolveWallets(publicKey: InitModelState.PublicKey, nativeTos: Boolean = true) =
         withContext(Dispatchers.IO) {
-            val accounts = if (publicKey.new) {
-                mutableListOf()
-            } else {
-                api.resolvePublicKey(publicKey.publicKey, testnet).filter {
-                    it.walletVersion != WalletVersion.UNKNOWN &&
-                        (if (nativeTos) it.walletVersion == WalletVersion.TOSV5R1 else it.walletVersion != WalletVersion.TOSV5R1)
-                }.sortedByDescending { it.walletVersion.index }.toMutableList()
-            }
-
+            val node = api.tos.snapshot(testnet)
             val targetVersion = if (nativeTos) WalletVersion.TOSV5R1 else WalletVersion.V5R1
-            if (accounts.count { it.walletVersion == targetVersion } == 0) {
-                val contract = if (nativeTos) TosWalletV5R1Contract(publicKey.publicKey, api.tos.getNetworkInfo(testnet).requireNativeV5().globalId)
-                    else BaseWalletContract.create(publicKey.publicKey, "v5r1", tonNetwork.value)
-                val query = contract.address.toAccountId()
-                if (publicKey.new) {
-                    accounts.add(
-                        0,
-                        AccountDetailsEntity(contract, testnet, new = true, initialized = false)
-                    )
-                } else {
-                    val apiAccount = api.resolveAccount(query, testnet)
-                    val account = if (apiAccount == null) {
-                        AccountDetailsEntity(
-                            contract,
-                            testnet = testnet,
-                            new = true,
-                            initialized = false
-                        )
-                    } else {
-                        AccountDetailsEntity(
-                            query, apiAccount.copy(
-                                interfaces = listOf("wallet_v5r1")
-                            ), testnet, false
-                        ).copy(walletVersion = targetVersion)
-                    }
-                    accounts.add(0, account)
-                }
+            val versions = if (nativeTos) listOf(targetVersion) else listOf(
+                WalletVersion.V5R1, WalletVersion.V5BETA, WalletVersion.V4R2,
+                WalletVersion.V4R1, WalletVersion.V3R2, WalletVersion.V3R1)
+            val networkId = if (nativeTos) node.getNetworkInfo(testnet).requireNativeV5().globalId else tonNetwork.value
+            val candidates = mutableListOf<LegacyRecoverySelection.Candidate>()
+            val list = versions.mapIndexed { index, version ->
+                val contract = BaseWalletContract.create(publicKey.publicKey, version.title, networkId)
+                val address = contract.address.toAccountId()
+                // Derive every supported address locally: an unavailable public-key
+                // index cannot hide a funded classic version during phrase recovery.
+                val state = if (publicKey.new) null else node.getAccountState(address, testnet)
+                val assets = if (publicKey.new) null else try { node.getRecoveryAssets(address, testnet) }
+                    catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                    catch (_: Exception) { null }
+                val balance = state?.balance ?: java.math.BigInteger.ZERO
+                require(balance.signum() >= 0)
+                val hasAssets = balance.signum() > 0 || assets?.tokens == true || assets?.nfts == true
+                candidates.add(LegacyRecoverySelection.Candidate(address, version, hasAssets,
+                    assetsKnown = publicKey.new || assets?.complete == true))
+                AccountItem(address = contract.address.toWalletAddress(testnet), name = null,
+                    walletVersion = version, balanceFormat = CurrencyFormatter.format("TOS", Coins.ofNano(balance.toString())),
+                    tokens = assets?.tokens == true, collectibles = assets?.nfts == true,
+                    selected = false, position = ListCell.getPosition(versions.size, index),
+                    initialized = state?.status in setOf("active", "frozen"))
             }
-
-            val list = accounts.mapIndexed { index, account ->
-                getAccountItem(account, ListCell.getPosition(accounts.size, index))
-            }
-
             val recoveryWallet = getRecoveryWatchWallet(publicKey = publicKey.publicKey)
-            val recoveryAccountItem = accounts.firstOrNull { it.preview.accountId == recoveryWallet?.accountId }?.let {
-                getAccountItem(it, ListCell.Position.SINGLE)
-            }
-
-            val items = mutableListOf<AccountItem>()
-            if (recoveryAccountItem != null) {
-                items.add(recoveryAccountItem)
-            } else {
-                for (account in list) {
-                    items.add(account)
-                }
-            }
+            if (watchRecoveryAccountId != null) requireNotNull(recoveryWallet)
+            val selectedIndices = LegacyRecoverySelection.select(candidates, targetVersion, recoveryWallet?.accountId)
+            val items = selectedIndices.mapIndexed { index, selected -> list[selected].copy(selected = true,
+                position = ListCell.getPosition(selectedIndices.size, index)) }
             setAccounts(items.toList())
 
             if (recoveryWallet != null) {
@@ -366,8 +340,6 @@ class InitViewModel(
 
             if (recoveryWallet != null && !requestSetPinCode) {
                 execute(context)
-            } else if (items.size > 1) {
-                routeTo(InitRoute.SelectAccount)
             } else if (requestSetPinCode) {
                 applyAccountName(items)
                 routeTo(InitRoute.CreatePasscode)
@@ -413,44 +385,6 @@ class InitViewModel(
     private fun applyAccountName() {
         viewModelScope.launch {
             applyAccountName(getSelectedAccounts())
-        }
-    }
-
-    private suspend fun getAccountItem(
-        account: AccountDetailsEntity,
-        position: ListCell.Position,
-    ): AccountItem = withContext(Dispatchers.IO) {
-        if (account.new) {
-            AccountItem(
-                address = AddrStd(account.address).toWalletAddress(testnet),
-                name = account.name,
-                walletVersion = account.walletVersion,
-                balanceFormat = CurrencyFormatter.format("TON", Coins.ZERO),
-                tokens = false,
-                collectibles = false,
-                selected = true,
-                position = position,
-                initialized = false
-            )
-        } else {
-            val tokensDeferred = async { api.getJettonsBalances(account.address, testnet) }
-            val nftItemsDeferred = async { api.getNftItems(account.address, testnet, 1) }
-            val tokens = tokensDeferred.await() ?: emptyList()
-            val nftItems = nftItemsDeferred.await() ?: emptyList()
-            val balance = Coins.of(account.balance)
-            val hasTokens = tokens.isNotEmpty()
-            val hasNftItems = nftItems.isNotEmpty()
-            AccountItem(
-                address = AddrStd(account.address).toWalletAddress(testnet),
-                name = account.name,
-                walletVersion = account.walletVersion,
-                balanceFormat = CurrencyFormatter.format("TON", balance),
-                tokens = hasTokens,
-                collectibles = hasNftItems,
-                selected = account.walletVersion == WalletVersion.V5R1 || (account.balance > 0 || hasTokens || hasNftItems),
-                position = position,
-                initialized = account.initialized
-            )
         }
     }
 
@@ -669,25 +603,10 @@ class InitViewModel(
     }
 
     private suspend fun buildNewLabel(accounts: List<SimpleAccount>): Wallet.NewLabel {
-        val versions = accounts.map { it.version }
         val walletsCount = getWalletsCount()
         val label = getLabel()
-        val isMultipleVersions = versions.distinct().size > 1
-        val isUsingDefaultName = label.name == getDefaultWalletName()
-
-        val names = mutableListOf<String>()
-        for ((index, account) in accounts.withIndex()) {
-            val builder = StringBuilder(label.name)
-            if (isMultipleVersions) {
-                builder.append(" ")
-                builder.append(account.version.title.fixW5Title())
-            }
-            if (isUsingDefaultName && !isMultipleVersions && (accounts.size > 1 || walletsCount > 1)) {
-                builder.append(" ")
-                builder.append((walletsCount + index) + 1)
-            }
-            names.add(builder.toString())
-        }
+        val names = LegacyRecoverySelection.names(label.name, accounts.size, walletsCount,
+            label.name == getDefaultWalletName())
 
         val (generatedEmoji, generatedColor) = generateLabel(names)
 

@@ -22,7 +22,6 @@ sealed class Item(type: Int): BaseListItem(type) {
         const val TYPE_BALANCE = 0
         const val TYPE_ACTIONS = 1
         const val TYPE_CHART = 2
-        const val TYPE_W5_BANNER = 3
         const val TYPE_BATTERY_BANNER = 4
         const val TYPE_ABOUT_ETHENA = 6
         const val TYPE_SPACE = 7
@@ -93,11 +92,6 @@ sealed class Item(type: Int): BaseListItem(type) {
         val delta: CharSequence,
         val currency: WalletCurrency
     ): Item(TYPE_CHART)
-
-    data class W5Banner(
-        val wallet: WalletEntity,
-        val addButton: Boolean
-    ): Item(TYPE_W5_BANNER)
 
     data class BatteryBanner(
         val wallet: WalletEntity,
