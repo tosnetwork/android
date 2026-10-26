@@ -129,16 +129,18 @@ class SettingsViewModel(
         }
     }
 
-    fun signOut(callback: () -> Unit) {
+    fun signOut(authContext: android.content.Context, callback: (Boolean) -> Unit) {
         analytics.simpleTrackEvent("delete_wallet")
         viewModelScope.launch(Dispatchers.IO) {
-            tonConnectManager.clear(wallet)
-            PushToggleWorker.run(context, wallet, PushManager.State.Delete)
-            delay(2000)
-            withContext(Dispatchers.Main) {
-                callback()
-            }
-            accountRepository.delete(wallet)
+            val success = try {
+                if (wallet.isQuantum) check(passcodeManager.confirmation(authContext, getString(Localization.app_name)))
+                tonConnectManager.clear(wallet)
+                PushToggleWorker.run(context, wallet, PushManager.State.Delete)
+                accountRepository.delete(wallet)
+                true
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (_: Exception) { false }
+            withContext(Dispatchers.Main) { callback(success) }
         }
     }
 

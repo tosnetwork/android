@@ -80,11 +80,11 @@ class V1ProductUiTest {
     private val device = UiDevice.getInstance(instrumentation)
 
     @Test
-    fun unavailableNodeCanBeReplacedFromOnboardingBeforeWalletCreation() {
+    fun unavailableNodeCanBeReplacedBeforeImport() {
         val api = GlobalContext.get().get<API>()
         api.setCustomTosRpcEndpoint("http://10.0.2.2:1")
         launch()
-        clickText("Create new wallet")
+        clickText("Import existing wallet")
         assertTrue(waitText("Node unavailable", 30_000))
         // Android's AlertDialog transforms action text to uppercase. Select its
         // neutral action by semantic resource ID instead of changing product copy.
@@ -94,8 +94,8 @@ class V1ProductUiTest {
         assertNotNull("Onboarding RPC editor is missing", input)
         input!!.text = "http://10.0.2.2:18545"
         device.wait(Until.findObject(By.res("android", "button1")), 10_000)!!.click()
-        clickText("Create new wallet")
-        assertTrue(waitText("Create passcode", 30_000))
+        clickText("Import existing wallet")
+        assertTrue(waitText("Import wallet", 30_000))
         device.pressBack()
         device.pressBack()
         device.pressBack()
@@ -331,8 +331,8 @@ class V1ProductUiTest {
                 val helperClass = Class.forName("network.tos.wallet.data.account.source.DatabaseSource")
                 val helper = helperClass.getConstructor(Context::class.java).newInstance(isolated) as SQLiteOpenHelper
                 try {
-                    val db = helper.writableDatabase // Real SQLiteOpenHelper dispatches onUpgrade(oldVersion, 5).
-                    assertEquals(5, db.version)
+                    val db = helper.writableDatabase // Real SQLiteOpenHelper dispatches onUpgrade(oldVersion, 6).
+                    assertEquals(6, db.version)
                     db.rawQuery("SELECT version,network_global_id FROM wallet", null).use { cursor ->
                         assertTrue(cursor.moveToFirst()); assertEquals(5, cursor.getInt(0)); assertTrue(cursor.isNull(1))
                     }
@@ -432,6 +432,10 @@ class V1ProductUiTest {
 
     @Test
     fun createWalletOpensPasscodeAndCancelLeavesNoWallet() {
+        // Public dummy anchor: cancellation precedes any proof acquisition or custody writes.
+        GlobalContext.get().get<API>().setCustomTosRpcEndpoint("http://10.0.2.2:18545")
+        network.tos.wallet.data.account.pq.QuantumNetworkProfile(1, "ab".repeat(32), "cd".repeat(32))
+            .save(instrumentation.targetContext)
         launch()
         clickText("Create new wallet")
 

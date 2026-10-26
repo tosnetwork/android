@@ -37,7 +37,7 @@ class StartScreen: BaseFragment(R.layout.fragment_intro) {
             setSelectAllOnFocus(true)
         }
         val dialog = AlertDialog.Builder(requireContext()).setTitle(R.string.rpc_node)
-            .setMessage(R.string.rpc_node_hint).setView(input)
+            .setMessage(R.string.rpc_node_hint).setView(network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.nodeEditor(requireContext(), input))
             .setPositiveButton(R.string.rpc_node_save, null)
             .setNeutralButton(R.string.rpc_node_reset) { _, _ -> api.resetCustomTosRpcEndpoint() }
             .setNegativeButton(android.R.string.cancel, null).create()
@@ -77,7 +77,10 @@ class StartScreen: BaseFragment(R.layout.fragment_intro) {
 
         val newWalletButton = view.findViewById<Button>(R.id.new_wallet)
         newWalletButton.setOnClickListener {
-            openWhenNodeReady { navigation?.add(InitScreen.newInstance(InitArgs.Type.New)) }
+            val profile = runCatching { network.tos.wallet.data.account.pq.QuantumNetworkProfile.selected(requireContext()) }.getOrNull()
+            if (api.customTosRpcEndpoint == null) showNodeDialog()
+            else if (profile == null) network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.show(requireContext())
+            else navigation?.add(InitScreen.newInstance(InitArgs.Type.New))
         }
 
         val importWalletButton = view.findViewById<Button>(R.id.import_wallet)

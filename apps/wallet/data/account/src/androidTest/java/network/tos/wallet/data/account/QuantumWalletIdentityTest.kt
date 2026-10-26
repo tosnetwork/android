@@ -69,6 +69,17 @@ class QuantumWalletIdentityTest {
         }
     }
 
+    @Test fun failedRegistrationThrowsAndRollsBackTheEntireBatch() = runBlocking {
+        val wallet = quantum()
+        DatabaseSource(context).use { db ->
+            db.insertAccounts(listOf(wallet))
+            val error = runCatching { db.insertAccounts(listOf(classical(), wallet)) }.exceptionOrNull()
+            assertTrue(error is android.database.sqlite.SQLiteConstraintException)
+            assertEquals(listOf(wallet), db.getAccounts())
+        }
+        DatabaseSource(context).use { assertEquals(listOf(wallet), it.getAccounts()) }
+    }
+
     @Test fun versionFiveUpgradePreservesAllSevenClassicalWallets() = runBlocking {
         val wallets = WalletVersion.entries.filter { it != WalletVersion.UNKNOWN && it != WalletVersion.QUANTUM_SELF_PAY }.map(::classical)
         context.openOrCreateDatabase("account", Context.MODE_PRIVATE, null).use { db ->

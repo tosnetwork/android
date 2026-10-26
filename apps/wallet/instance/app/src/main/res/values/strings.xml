@@ -17,4 +17,14 @@
     <string name="restore_tos_wallet">Restore TOS Wallet</string>
     <string name="restore_legacy_wallet">Restore Legacy Wallet</string>
     <string name="pq_wallets">PQ Wallets</string>
+    <string name="quantum_trusted_network">Trusted Quantum network</string>
+    <string name="quantum_trusted_network_hint">Enter the network identity obtained from an independently trusted source. The RPC node cannot establish this trust. Changes apply to new wallets.</string>
+    <string name="quantum_global_id">Global network ID</string>
+    <string name="quantum_root_hash">Zerostate root hash</string>
+    <string name="quantum_file_hash">Zerostate file hash</string>
+    <string name="quantum_network_invalid">Enter a signed 32-bit network ID and two nonzero 64-digit hexadecimal hashes. Configuration must be saved successfully.</string>
+    <string name="quantum_creation_failed">Wallet creation did not finish</string>
+    <string name="quantum_creation_failed_hint">Check the trusted network configuration, RPC connection and available device storage, then retry. Keep this device until you have backed up any created wallet.</string>
+    <string name="quantum_delete_failed">Wallet removal did not finish</string>
+    <string name="quantum_delete_failed_hint">Authentication or local storage failed. Unlock your device and check the wallet list before retrying.</string>
 </resources>

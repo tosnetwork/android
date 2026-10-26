@@ -116,7 +116,7 @@ class SettingsScreen(
         val dialog = AppCompatAlertDialog.Builder(requireContext())
             .setTitle(R.string.rpc_node)
             .setMessage(R.string.rpc_node_hint)
-            .setView(input)
+            .setView(network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.nodeEditor(requireContext(), input))
             .setPositiveButton(R.string.rpc_node_save, null)
             .setNeutralButton(R.string.rpc_node_reset) { _, _ -> viewModel.resetRpcEndpoint() }
             .setNegativeButton(Localization.cancel, null)
@@ -211,9 +211,11 @@ class SettingsScreen(
 
     private fun signOut() {
         navigation?.toastLoading(true)
-        viewModel.signOut {
+        viewModel.signOut(requireContext()) { success ->
             navigation?.toastLoading(false)
-            finish()
+            if (success) finish()
+            else AppCompatAlertDialog.Builder(requireContext()).setTitle(R.string.quantum_delete_failed)
+                .setMessage(R.string.quantum_delete_failed_hint).setPositiveButton(android.R.string.ok, null).show()
         }
     }
 

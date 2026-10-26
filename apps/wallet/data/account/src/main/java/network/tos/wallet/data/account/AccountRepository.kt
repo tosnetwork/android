@@ -1,6 +1,16 @@
 package network.tos.wallet.data.account
 
 import network.tos.blockchain.TosV1Mnemonic
+import network.tos.wallet.data.account.entities.WalletIdentity
+import network.tos.wallet.data.account.pq.QuantumCreationCustody
+import network.tos.wallet.data.account.pq.QuantumWalletCreation
+import network.tos.wallet.data.account.pq.QuantumNetworkProfile
+import network.tos.wallet.data.account.pq.QuantumProofHttpTransport
+import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
+import network.tos.security.pq.QuantumProofSession
+import kotlinx.coroutines.runInterruptible
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
 
 import android.app.KeyguardManager
 import android.content.Context
@@ -70,6 +80,8 @@ class AccountRepository(
     private val database = DatabaseSource(context)
     private val storageSource: StorageSource by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { StorageSource(context) }
     private val vaultSource: VaultSource by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { VaultSource(context) }
+    private val quantumHttpClient by lazy { OkHttpClient() }
+    private val quantumCustody by lazy { QuantumCreationCustody(context) }
     private val migrationHelper = RNMigrationHelper(rnLegacy)
 
     private val _selectedStateFlow = MutableStateFlow<SelectedState>(SelectedState.Initialization)
@@ -210,7 +222,8 @@ class AccountRepository(
 
     suspend fun getMnemonic(id: String): Array<String>? {
         val wallet = database.getAccount(id) ?: return null
-        return wallet.classicalPublicKey?.let(vaultSource::getMnemonic)
+        return if (wallet.isQuantum) quantumCustody.mnemonic(UUID.fromString(id))
+            else wallet.classicalPublicKey?.let(vaultSource::getMnemonic)
     }
 
     suspend fun getPrivateKey(id: String): PrivateKeyEd25519? {
@@ -367,15 +380,30 @@ class AccountRepository(
         return addWallet(newWalletId(), label, publicKey, Wallet.Type.Watch, version, initialized = false)
     }
 
-    suspend fun addNewWallet(
-        id: String,
-        label: Wallet.NewLabel,
-        mnemonic: List<String>
-    ): WalletEntity {
-        val networkId = api.tos.getNetworkInfo(false).requireNativeV5().globalId
-        val publicKey = vaultSource.addMnemonic(mnemonic, nativeTos = true)
-        return addWallet(id, label, publicKey, Wallet.Type.Default, WalletVersion.TOSV5R1,
-            new = true, initialized = false, networkGlobalId = networkId)
+    suspend fun addNewWallet(label: Wallet.NewLabel, mnemonic: List<String>): WalletEntity = withContext(Dispatchers.IO) {
+        val profile = requireNotNull(QuantumNetworkProfile.selected(context)) { "Configure a trusted Quantum network before creating a wallet" }
+        val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before creating a wallet" }
+            .trimEnd('/').plus("/jsonRPC").toHttpUrl()
+        val creation = QuantumWalletCreation(
+            network = { id, selected ->
+                runInterruptible(Dispatchers.IO) {
+                    val now = System.currentTimeMillis() / 1000
+                    val session = QuantumProofSession(context, id, selected.anchor())
+                    val transport = QuantumProofHttpTransport(endpoint, quantumHttpClient)
+                    val proof = session.enrollBound(QuantumSelfPayNetwork.request(300), now, transport)
+                    QuantumSelfPayNetwork.bind(proof, selected.globalId, System.currentTimeMillis() / 1000, 300)
+                }
+            },
+            saveRecord = { it.save(context) },
+            saveMnemonic = { id, words -> quantumCustody.saveMnemonic(id, words) },
+            storeRole = { id, role, binding, seed -> quantumCustody.store(id, role, binding, seed) },
+        )
+        creation.create(mnemonic, profile) { record ->
+            val wallet = WalletEntity(id = record.id.toString(), identity = WalletIdentity.Quantum(record.identity),
+                type = Wallet.Type.Default, label = label.create(0), initialized = false)
+            insertWallets(listOf(wallet), new = true)
+            wallet
+        }
     }
 
     private suspend fun addWallet(
@@ -454,11 +482,13 @@ class AccountRepository(
     }
 
     suspend fun delete(wallet: WalletEntity) = withContext(Dispatchers.IO) {
+        if (wallet.isQuantum) quantumCustody.delete(UUID.fromString(wallet.id))
         database.deleteAccount(wallet.id)
         setSelectedWallet(database.getFirstAccountId())
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {
+        quantumCustody.deleteAll()
         database.clearAccounts()
         setSelectedWallet(null)
     }

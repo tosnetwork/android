@@ -142,6 +142,8 @@ class InitViewModel(
     val labelFlow = savedState.labelFlow
 
     private val isPinSet = AtomicBoolean(false)
+    private val executing = AtomicBoolean(false)
+    private var generatedMnemonic: List<String>? = null
 
     private val requestSetPinCode: Boolean
         get() = (type == InitArgs.Type.New || type == InitArgs.Type.Import || type == InitArgs.Type.Testnet) && !isPinSet.get()
@@ -591,12 +593,17 @@ class InitViewModel(
     }
 
     private fun execute(context: Context) {
+        if (!executing.compareAndSet(false, true)) return
         setLoading(true)
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 if (requestSetPinCode) {
-                    passcodeManager.save(savedState.passcode!!)
+                    // A failed attempt may already have persisted the PIN. Never overwrite it on retry.
+                    val code = requireNotNull(savedState.passcode)
+                    if (passcodeManager.hasPinCode()) check(passcodeManager.isValid(context, code))
+                    passcodeManager.save(code)
+                    if (type == InitArgs.Type.New) isPinSet.set(true)
                 }
 
                 val alreadyWalletCount = accountRepository.getWallets()
@@ -645,10 +652,13 @@ class InitViewModel(
                 }
 
                 finish()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 context.logError(e)
                 setLoading(false)
-            }
+                _eventFlow.tryEmit(InitEvent.CreationFailed)
+            } finally { executing.set(false) }
         }
     }
 
@@ -708,10 +718,8 @@ class InitViewModel(
     private suspend fun generateNewWallet() = withContext(Dispatchers.IO) {
         AndroidSecureRandom.seed(entropyHelper.getSeed(512))
         val mnemonic = TosV1Mnemonic.generate(random = AndroidSecureRandom)
-        savedState.mnemonic = mnemonic
-        savedState.mnemonicProfile = TosV1Mnemonic.Profile.TOS
-        val publicKey = TosV1Mnemonic.recoveryPrivateKey(mnemonic).publicKey()
-        setPublicKey(publicKey)
+        // New-wallet secrets remain in the ViewModel, not in saved instance state.
+        generatedMnemonic = mnemonic
 
         val (emoji, color) = generateLabel()
 
@@ -723,12 +731,11 @@ class InitViewModel(
     }
 
     private suspend fun newWallet(context: Context): WalletEntity {
-        val mnemonic = savedState.mnemonic!!
-        val walletId = AccountRepository.newWalletId()
-        saveMnemonic(context, listOf(walletId), mnemonic)
-        val label = buildNewLabel(SimpleAccount(version = WalletVersion.TOSV5R1))
-
-        val wallet = accountRepository.addNewWallet(walletId, label, mnemonic)
+        val mnemonic = requireNotNull(generatedMnemonic) { "Wallet entropy is not ready" }
+        check(passcodeManager.confirmation(context, context.getString(Localization.app_name))) { "Creation authentication cancelled" }
+        val label = buildNewLabel(SimpleAccount(version = WalletVersion.QUANTUM_SELF_PAY))
+        val wallet = accountRepository.addNewWallet(label, mnemonic)
+        generatedMnemonic = null
 
         analytics.simpleTrackEvent(
             "wallet_generate",

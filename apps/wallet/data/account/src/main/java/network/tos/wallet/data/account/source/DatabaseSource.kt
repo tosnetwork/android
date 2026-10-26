@@ -12,7 +12,6 @@ import network.tos.extensions.closeSafe
 import network.tos.extensions.isNullOrEmpty
 import network.tos.extensions.toByteArray
 import network.tos.extensions.toParcel
-import network.tos.sqlite.withTransaction
 import network.tos.wallet.data.account.Wallet
 import network.tos.wallet.data.account.entities.WalletEntity
 import network.tos.wallet.data.account.entities.WalletIdentity
@@ -154,11 +153,12 @@ internal class DatabaseSource(
     }
 
     suspend fun insertAccounts(wallets: List<WalletEntity>) = withContext(Dispatchers.IO) {
-        writableDatabase.withTransaction {
-            for (wallet in wallets) {
-                writableDatabase.insertOrThrow(WALLET_TABLE_NAME, null, wallet.toValues())
-            }
-        }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (wallet in wallets) db.insertOrThrow(WALLET_TABLE_NAME, null, wallet.toValues())
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 
     suspend fun getAccounts(): List<WalletEntity> = withContext(Dispatchers.IO) {

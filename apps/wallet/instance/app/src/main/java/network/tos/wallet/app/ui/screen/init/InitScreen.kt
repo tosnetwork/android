@@ -84,6 +84,9 @@ class InitScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_init, S
 
     private fun onEvent(event: InitEvent) {
         when (event) {
+            is InitEvent.CreationFailed -> androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle(R.string.quantum_creation_failed).setMessage(R.string.quantum_creation_failed_hint)
+                .setPositiveButton(android.R.string.ok, null).show()
             is InitEvent.Back -> popBackStack()
             is InitEvent.Loading -> setLoading(event.loading)
         }
