@@ -45,6 +45,21 @@ class QuantumVerifiedRead private constructor(json: ByteArray, request: ByteArra
     fun requireSameCheckpoint(other: QuantumVerifiedRead) {
         check(anchorDigest == other.anchorDigest && checkpoint == other.checkpoint) { "Proof checkpoint mismatch" }
     }
+    /** Authenticated raw state, or null for proven absence. Not deployment/signing eligibility. */
+    fun provenAccountState(expectedAddress: String): ByteArray? {
+        val account = boundAccount(expectedAddress)
+        if (!account.getBoolean("exists")) return null
+        return Base64.decode(account.getString("state_boc"), Base64.NO_WRAP).also { check(it.isNotEmpty()) }
+    }
+    fun provenAccountTime(expectedAddress: String): Long = boundAccount(expectedAddress).getLong("gen_utime").also {
+        check(it in 0..0xffffffffL) { "Invalid account timestamp" }
+    }
+    private fun boundAccount(address: String): JSONObject {
+        require(address.matches(Regex("0:[0-9a-f]{64}")))
+        return value.getJSONObject("account").also {
+            check(it.getString("address") == address) { "Proof account binding refused" }
+        }
+    }
     /** Returns proven raw account state only after matching locally expected identity/code. */
     fun accountState(expectedAddress: String, expectedCodeHash: String): ByteArray {
         require(expectedAddress.matches(Regex("-?[0-9]+:[0-9a-f]{64}")) && expectedCodeHash.matches(Regex("[0-9a-f]{64}")))
