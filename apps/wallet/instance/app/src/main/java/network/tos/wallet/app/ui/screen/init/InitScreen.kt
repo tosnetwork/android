@@ -150,7 +150,8 @@ class InitScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_init, S
             accounts: List<AccountItem>? = null,
             keystone: WalletEntity.Keystone? = null,
             watchRecoveryAccountId: String? = null,
-        ) = newInstance(InitArgs(type, name, publicKeyEd25519, ledgerConnectData, accounts, keystone, watchRecoveryAccountId))
+            quantumCreationId: String? = null,
+        ) = newInstance(InitArgs(type, name, publicKeyEd25519, ledgerConnectData, accounts, keystone, watchRecoveryAccountId, quantumCreationId))
 
         fun newInstance(args: InitArgs): InitScreen {
             val fragment = InitScreen()

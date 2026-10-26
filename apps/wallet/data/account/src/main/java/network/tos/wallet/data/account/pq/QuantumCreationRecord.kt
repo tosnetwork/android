@@ -9,10 +9,11 @@ import network.tos.wallet.data.account.entities.WalletIdentity
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileInputStream
 import java.util.UUID
 
 /** Public birth identity and derivation coordinates, retained before any secret writes.
- * Failed attempts remain recoverable; this is not a backup of the mnemonic or current authority. */
+ * Resuming also requires the stored or original mnemonic; this is not a secret backup or current authority. */
 class QuantumCreationRecord(val id: UUID, val profile: QuantumNetworkProfile, val identity: TosQuantumSelfPayIdentity) {
     init {
         require(identity.wallet.initialAuthority.globalId == profile.globalId && identity.wallet.walletId == 0L)
@@ -44,6 +45,19 @@ class QuantumCreationRecord(val id: UUID, val profile: QuantumNetworkProfile, va
                 stat.st_uid == Os.getuid() && (stat.st_mode and 0x3f) == 0) { "Creation directory unavailable" }
             return directory
         }
+        fun load(context: Context, id: UUID): QuantumCreationRecord {
+            val path = File(directory(context), "$id.json")
+            val fd = Os.open(path.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
+            return FileInputStream(fd).use { input ->
+                val stat = Os.fstat(fd)
+                check((stat.st_mode and OsConstants.S_IFMT) == OsConstants.S_IFREG &&
+                    stat.st_uid == Os.getuid() && (stat.st_mode and 0x3f) == 0 && stat.st_size in 1..32768) {
+                    "Creation record unavailable"
+                }
+                decode(input.readBytes()).also { require(it.id == id) { "Creation record identifier mismatch" } }
+            }
+        }
+
         fun decode(bytes: ByteArray): QuantumCreationRecord {
             require(bytes.size in 1..32768)
             val value = JSONObject(bytes.toString(Charsets.UTF_8))

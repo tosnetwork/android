@@ -9,6 +9,9 @@ import network.tos.wallet.data.account.pq.QuantumProofHttpTransport
 import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
 import network.tos.security.pq.QuantumProofSession
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import network.tos.wallet.data.account.pq.QuantumCreationRecord
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 
@@ -80,6 +83,7 @@ class AccountRepository(
     private val database = DatabaseSource(context)
     private val storageSource: StorageSource by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { StorageSource(context) }
     private val vaultSource: VaultSource by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { VaultSource(context) }
+    private val quantumCreationMutex = Mutex()
     private val quantumHttpClient by lazy { OkHttpClient() }
     private val quantumCustody by lazy { QuantumCreationCustody(context) }
     private val migrationHelper = RNMigrationHelper(rnLegacy)
@@ -380,30 +384,65 @@ class AccountRepository(
         return addWallet(newWalletId(), label, publicKey, Wallet.Type.Watch, version, initialized = false)
     }
 
-    suspend fun addNewWallet(label: Wallet.NewLabel, mnemonic: List<String>): WalletEntity = withContext(Dispatchers.IO) {
-        val profile = requireNotNull(QuantumNetworkProfile.selected(context)) { "Configure a trusted Quantum network before creating a wallet" }
+    suspend fun pendingQuantumCreations(): List<QuantumCreationRecord> = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock { quantumCustody.pendingIds().map { QuantumCreationRecord.load(context, it) } }
+    }
+
+    suspend fun addNewWallet(label: Wallet.NewLabel, mnemonic: List<String>,
+                             onEnrollment: (UUID) -> Unit = {}): WalletEntity = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val profile = requireNotNull(QuantumNetworkProfile.selected(context)) { "Configure a trusted Quantum network before creating a wallet" }
+            quantumCreator(false, onEnrollment).create(mnemonic, profile) { finishQuantumRegistration(it, label) }
+        }
+    }
+
+    /** The original UUID, anchor and birth identity survive every retry, including a process restart. */
+    suspend fun resumeQuantumCreation(id: UUID, label: Wallet.NewLabel, mnemonic: List<String>? = null): WalletEntity = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val record = QuantumCreationRecord.load(context, id)
+            val words = mnemonic ?: requireNotNull(quantumCustody.mnemonic(id)) { "Creation mnemonic is unavailable" }.toList()
+            quantumCreator(true).resume(record, words) { finishQuantumRegistration(it, label) }
+        }
+    }
+
+    private fun quantumCreator(resuming: Boolean, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {
         val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before creating a wallet" }
             .trimEnd('/').plus("/jsonRPC").toHttpUrl()
-        val creation = QuantumWalletCreation(
+        return QuantumWalletCreation(
             network = { id, selected ->
                 runInterruptible(Dispatchers.IO) {
                     val now = System.currentTimeMillis() / 1000
                     val session = QuantumProofSession(context, id, selected.anchor())
                     val transport = QuantumProofHttpTransport(endpoint, quantumHttpClient)
-                    val proof = session.enrollBound(QuantumSelfPayNetwork.request(300), now, transport)
+                    val request = QuantumSelfPayNetwork.request(300)
+                    val proof = if (resuming) session.readBound(request, now, transport) else session.enrollBound(request, now, transport)
                     QuantumSelfPayNetwork.bind(proof, selected.globalId, System.currentTimeMillis() / 1000, 300)
                 }
             },
-            saveRecord = { it.save(context) },
-            saveMnemonic = { id, words -> quantumCustody.saveMnemonic(id, words) },
-            storeRole = { id, role, binding, seed -> quantumCustody.store(id, role, binding, seed) },
+            saveRecord = { it.save(context); onEnrollment(it.id) },
+            saveMnemonic = { id, words ->
+                if (resuming) quantumCustody.ensureMnemonic(id, words) else quantumCustody.saveMnemonic(id, words)
+            },
+            storeRole = { id, role, binding, seed ->
+                if (resuming) quantumCustody.ensureRole(id, role, binding, seed) else quantumCustody.store(id, role, binding, seed)
+            },
         )
-        creation.create(mnemonic, profile) { record ->
-            val wallet = WalletEntity(id = record.id.toString(), identity = WalletIdentity.Quantum(record.identity),
-                type = Wallet.Type.Default, label = label.create(0), initialized = false)
-            insertWallets(listOf(wallet), new = true)
-            wallet
+    }
+
+    private suspend fun finishQuantumRegistration(record: QuantumCreationRecord, label: Wallet.NewLabel): WalletEntity {
+        val identity = WalletIdentity.Quantum(record.identity)
+        val existing = database.getAccount(record.id.toString())
+        val wallet = if (existing != null) {
+            require(existing.identity == identity && existing.type == Wallet.Type.Default) { "Creation identifier collision" }
+            existing
+        } else {
+            WalletEntity(id = record.id.toString(), identity = identity, type = Wallet.Type.Default,
+                label = label.create(0), initialized = false).also { database.insertAccounts(listOf(it)) }
         }
+        // A main-row commit followed by a mirror failure is resumed with the same UUID.
+        // Do not delete custody or attempt an unsafe rollback of a possibly committed row.
+        addWalletToRN(wallet)
+        return wallet
     }
 
     private suspend fun addWallet(
@@ -465,32 +504,48 @@ class AccountRepository(
         scope.launch { setSelectedWallet(id) }
     }
 
-    suspend fun setSelectedWallet(id: String?) {
-        storageSource.setSelectedId(id)
-        if (id == null) {
-            _selectedStateFlow.value = SelectedState.Empty
-            return
-        }
+    suspend fun setSelectedWallet(id: String?) = selectWallet(id, completingCreation = false)
 
-        val entity = database.getAccount(id) ?: database.getAccounts().firstOrNull()
+    /** Called by the authenticated creation flow, not by background metadata selection. */
+    suspend fun completeQuantumCreation(id: String) = quantumCreationMutex.withLock {
+        selectWallet(id, completingCreation = true)
+    }
+
+    private suspend fun selectWallet(id: String?, completingCreation: Boolean) {
+        val entity = if (id == null) null else database.getAccount(id) ?: database.getAccounts().firstOrNull()
+        if (completingCreation) require(entity?.isQuantum == true && entity.id == id) { "Created wallet is unavailable" }
         if (entity == null) {
-            setSelectedWallet(null)
+            rnLegacy.setSelectedWallet("")
+            storageSource.setSelectedId(null)
+            _selectedStateFlow.value = SelectedState.Empty
         } else {
+            if (entity.isQuantum) addWalletToRN(entity)
+            rnLegacy.setSelectedWallet(entity.id)
+            storageSource.setSelectedId(entity.id)
+            if (completingCreation) {
+                require(entity.isQuantum)
+                quantumCustody.markComplete(UUID.fromString(entity.id))
+            }
             _selectedStateFlow.value = SelectedState.Wallet(entity)
-            rnLegacy.setSelectedWallet(id)
         }
     }
 
     suspend fun delete(wallet: WalletEntity) = withContext(Dispatchers.IO) {
-        if (wallet.isQuantum) quantumCustody.delete(UUID.fromString(wallet.id))
-        database.deleteAccount(wallet.id)
-        setSelectedWallet(database.getFirstAccountId())
+        quantumCreationMutex.withLock {
+            if (wallet.isQuantum) quantumCustody.delete(UUID.fromString(wallet.id))
+            rnLegacy.delete(wallet.id)
+            database.deleteAccount(wallet.id)
+            setSelectedWallet(database.getFirstAccountId())
+        }
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {
-        quantumCustody.deleteAll()
-        database.clearAccounts()
-        setSelectedWallet(null)
+        quantumCreationMutex.withLock {
+            quantumCustody.deleteAll()
+            rnLegacy.clear()
+            database.clearAccounts()
+            setSelectedWallet(null)
+        }
     }
 
     suspend fun getWalletsByAccountId(accountId: String, testnet: Boolean): List<WalletEntity> {

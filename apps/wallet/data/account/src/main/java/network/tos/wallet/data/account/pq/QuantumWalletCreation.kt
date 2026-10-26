@@ -18,9 +18,15 @@ internal class QuantumWalletCreation(
     private val storeRole: (UUID, QuantumRole, QuantumSeedVault.Context, ByteArray) -> ByteArray,
     private val now: () -> Long = { System.currentTimeMillis() / 1000 },
 ) {
-    suspend fun <T> create(words: List<String>, profile: QuantumNetworkProfile, publish: suspend (QuantumCreationRecord) -> T): T {
+    suspend fun <T> create(words: List<String>, profile: QuantumNetworkProfile, publish: suspend (QuantumCreationRecord) -> T): T =
+        prepare(words, profile, UUID.randomUUID(), null, publish)
+
+    suspend fun <T> resume(record: QuantumCreationRecord, words: List<String>, publish: suspend (QuantumCreationRecord) -> T): T =
+        prepare(words, record.profile, record.id, record, publish)
+
+    private suspend fun <T> prepare(words: List<String>, profile: QuantumNetworkProfile, id: UUID,
+                                   enrollment: QuantumCreationRecord?, publish: suspend (QuantumCreationRecord) -> T): T {
         require(words.size == 24) { "New Quantum wallets require 24 native mnemonic words" }
-        val id = UUID.randomUUID()
         val bound = network(id, profile)
         require(bound.globalId == profile.globalId) { "Creation network global ID mismatch" }
         currentCoroutineContext().ensureActive()
@@ -37,7 +43,8 @@ internal class QuantumWalletCreation(
             val record = QuantumCreationRecord(id, profile, identity)
             val context = QuantumSeedVault.Context(bound.namespace, bound.globalId, 0, 0)
             currentCoroutineContext().ensureActive()
-            saveRecord(record)
+            if (enrollment == null) saveRecord(record)
+            else require(identity == enrollment.identity) { "Derived wallet differs from original enrollment" }
             saveMnemonic(id, words)
             currentCoroutineContext().ensureActive()
             require(storeRole(id, QuantumRole.PRIMARY, context, primary).contentEquals(primaryKey)) { "Stored PRIMARY differs from enrollment" }

@@ -27,6 +27,7 @@ class StartScreen: BaseFragment(R.layout.fragment_intro) {
 
     override val fragmentName: String = "StartScreen"
     private val api: API by inject()
+    private val accounts: network.tos.wallet.data.account.AccountRepository by inject()
 
     private fun showNodeDialog() {
         val input = AppCompatEditText(requireContext()).apply {
@@ -77,10 +78,12 @@ class StartScreen: BaseFragment(R.layout.fragment_intro) {
 
         val newWalletButton = view.findViewById<Button>(R.id.new_wallet)
         newWalletButton.setOnClickListener {
-            val profile = runCatching { network.tos.wallet.data.account.pq.QuantumNetworkProfile.selected(requireContext()) }.getOrNull()
-            if (api.customTosRpcEndpoint == null) showNodeDialog()
-            else if (profile == null) network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.show(requireContext())
-            else navigation?.add(InitScreen.newInstance(InitArgs.Type.New))
+            network.tos.wallet.app.ui.screen.pq.QuantumPendingCreationDialog.open(requireContext(), viewLifecycleOwner, accounts) { id ->
+                val profile = runCatching { network.tos.wallet.data.account.pq.QuantumNetworkProfile.selected(requireContext()) }.getOrNull()
+                if (api.customTosRpcEndpoint == null) showNodeDialog()
+                else if (id == null && profile == null) network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.show(requireContext())
+                else navigation?.add(InitScreen.newInstance(InitArgs.Type.New, quantumCreationId = id))
+            }
         }
 
         val importWalletButton = view.findViewById<Button>(R.id.import_wallet)

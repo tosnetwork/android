@@ -30,8 +30,8 @@ class QuantumCreationUiTest {
     private val device = UiDevice.getInstance(instrumentation)
     private val repository get() = GlobalContext.get().get<AccountRepository>()
     private val api get() = GlobalContext.get().get<API>()
-    private fun launch() {
-        assertTrue(runBlocking { repository.getWallets().isEmpty() })
+    private fun launch(pending: Boolean = false) {
+        if (!pending) assertTrue(runBlocking { repository.getWallets().isEmpty() })
         context.startActivity(Intent(Intent.ACTION_MAIN).apply {
             component = ComponentName("network.tos.wallet", "network.tos.wallet.app.ui.screen.root.RootActivity")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -119,6 +119,80 @@ class QuantumCreationUiTest {
         for (role in QuantumRole.entries) assertFalse(prefs.contains("quantum.seed.v1.${role.id}.${wallet.id}"))
         assertEquals("keep", prefs.getString("unrelated-test-marker", null))
         prefs.edit().remove("unrelated-test-marker").commit()
+    }
+
+    /** First half of a process-death test. The runner must retain this installation for the next method. */
+    @Test fun mirrorFailureLeavesAnEnrolledWalletForColdResume() {
+        val args = InstrumentationRegistry.getArguments()
+        api.setCustomTosRpcEndpoint(requireNotNull(args.getString("quantumRpc")))
+        QuantumNetworkProfile(requireNotNull(args.getString("quantumGlobalId")).toInt(),
+            requireNotNull(args.getString("quantumRootHash")), requireNotNull(args.getString("quantumFileHash"))).save(context)
+        val mirror = GlobalContext.get().get<network.tos.wallet.data.rn.RNLegacy>()
+        runBlocking { mirror.getWallets() }
+        fun database() = android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath("RKStorage").path, null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READWRITE)
+        database().use { it.execSQL("CREATE TRIGGER interrupt_creation BEFORE INSERT ON catalystLocalStorage WHEN NEW.key='walletsStore' BEGIN SELECT RAISE(ABORT, 'creation interruption'); END") }
+        try {
+            launch(); click("Create new wallet")
+            assertTrue(device.wait(Until.hasObject(By.text("Create passcode")), 15000)); pin()
+            assertTrue(device.wait(Until.hasObject(By.text("Re-enter passcode")), 15000)); pin()
+            assertTrue(device.wait(Until.hasObject(By.text("Customize your Wallet")), 15000))
+            resource("input_field").text = "Interrupted Quantum wallet"
+            resource("label_button").click(); pin()
+            assertTrue(device.wait(Until.hasObject(By.text("Wallet creation did not finish")), 60000))
+            val wallet = runBlocking { repository.getWallets() }.single()
+            val record = runBlocking { repository.pendingQuantumCreations() }.single()
+            assertEquals(wallet.id, record.id.toString())
+            assertTrue(runBlocking { mirror.getWallets().wallets.isEmpty() })
+            val prefs = Security.pref(context, "_network_tos_quantum_creation_key_", "quantum_creation_custody", requireUnlockedDevice = true)
+            fun digest(role: QuantumRole) = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(requireNotNull(prefs.getString("quantum.seed.v1.${role.id}.${wallet.id}", null)).toByteArray())
+                .joinToString("") { "%02x".format(it.toInt() and 255) }
+            val receipt = org.json.JSONObject().put("id", wallet.id).put("address", record.identity.address.toString()).put("creation_process", android.os.Process.myPid())
+                .put("record", org.json.JSONObject(record.encode().toString(Charsets.UTF_8)))
+                .put("primary_ciphertext_sha256", digest(QuantumRole.PRIMARY)).put("rescue_ciphertext_sha256", digest(QuantumRole.RESCUE))
+            File(context.cacheDir, "quantum-cold-resume-receipt.json").writeText(receipt.toString())
+            // A changed creation profile must never redirect this already-enrolled wallet.
+            QuantumNetworkProfile(2, "ab".repeat(32), "cd".repeat(32)).save(context)
+        } finally { database().use { it.execSQL("DROP TRIGGER interrupt_creation") } }
+    }
+
+    /** Second half: start a new application process with the exact persisted state above. */
+    @Test fun coldResumeUsesOriginalAnchorAndDoesNotDuplicateWalletOrReplaceKeys() {
+        val receipt = org.json.JSONObject(File(context.cacheDir, "quantum-cold-resume-receipt.json").readText())
+        val id = receipt.getString("id")
+        assertNotEquals(receipt.getInt("creation_process"), android.os.Process.myPid())
+        assertEquals(2, QuantumNetworkProfile.selected(context)!!.globalId)
+        assertEquals(id, runBlocking { repository.pendingQuantumCreations() }.single().id.toString())
+        launch(pending = true)
+        click("Create new wallet")
+        assertTrue(device.wait(Until.hasObject(By.text("Resume unfinished wallet")), 15000))
+        click(receipt.getString("address"))
+        assertTrue(device.wait(Until.hasObject(By.text("Customize your Wallet")), 15000))
+        resource("label_button").click(); pin()
+        assertTrue("Resumed wallet did not reach the main screen", device.wait(Until.hasObject(By.text("TOS")), 60000))
+        val wallet = runBlocking { repository.getWallets() }.single()
+        assertEquals(id, wallet.id)
+        assertEquals(id, runBlocking { repository.getSelectedWallet() }!!.id)
+        assertEquals(1, wallet.networkGlobalId)
+        val mirror = GlobalContext.get().get<network.tos.wallet.data.rn.RNLegacy>()
+        assertEquals(listOf(id), runBlocking { mirror.getWallets().wallets.map { it.identifier } })
+        assertTrue(runBlocking { repository.pendingQuantumCreations().isEmpty() })
+        val prefs = Security.pref(context, "_network_tos_quantum_creation_key_", "quantum_creation_custody", requireUnlockedDevice = true)
+        fun digest(role: QuantumRole) = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(requireNotNull(prefs.getString("quantum.seed.v1.${role.id}.$id", null)).toByteArray())
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        assertEquals(receipt.getString("primary_ciphertext_sha256"), digest(QuantumRole.PRIMARY))
+        assertEquals(receipt.getString("rescue_ciphertext_sha256"), digest(QuantumRole.RESCUE))
+        val record = QuantumCreationRecord.load(context, java.util.UUID.fromString(id))
+        assertEquals(receipt.getJSONObject("record").getString("identity"), org.json.JSONObject(record.encode().toString(Charsets.UTF_8)).getString("identity"))
+        val again = runBlocking { repository.resumeQuantumCreation(record.id,
+            network.tos.wallet.data.account.Wallet.NewLabel(listOf("Retry"), "⭐", 0)) }
+        assertEquals(wallet, again)
+        assertEquals(listOf(id), runBlocking { mirror.getWallets().wallets.map { it.identifier } })
+        assertEquals(receipt.getString("primary_ciphertext_sha256"), digest(QuantumRole.PRIMARY))
+        assertEquals(receipt.getString("rescue_ciphertext_sha256"), digest(QuantumRole.RESCUE))
+        File(context.cacheDir, "quantum-cold-resume-success.json").writeText(receipt.put("resumed", true).put("resume_process", android.os.Process.myPid()).toString())
     }
 
     @Test fun partialPinRecordRequiresAuthenticationInsteadOfNewPin() = runBlocking {

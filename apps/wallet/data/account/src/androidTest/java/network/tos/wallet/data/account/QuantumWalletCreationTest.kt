@@ -162,6 +162,94 @@ class QuantumWalletCreationTest {
         assertNotNull(runCatching { QuantumCreationRecord(record.id, profile(2), identity) }.exceptionOrNull())
     }
 
+    @Test fun resumePreservesIdentityAndExistingCiphertextWhileRepairingMissingRole() = runBlocking {
+        val proofId = UUID.randomUUID()
+        val prefsName = "quantum-resume-${UUID.randomUUID()}"
+        val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val custody = QuantumCreationCustody(prefs) { key }
+        var record: QuantumCreationRecord? = null
+        try {
+            val network = prove(proofId, profile())
+            val initial = QuantumWalletCreation(network = { _, _ -> network },
+                saveRecord = { record = it; it.save(context) }, saveMnemonic = { id, mnemonic -> custody.saveMnemonic(id, mnemonic) },
+                storeRole = { id, role, binding, seed ->
+                    if (role == QuantumRole.RESCUE) error("injected interruption")
+                    custody.store(id, role, binding, seed)
+                }, now = { fixtureNow })
+            assertEquals("injected interruption", runCatching { initial.create(words, profile()) { fail("Early publication") } }.exceptionOrNull()?.message)
+            val original = QuantumCreationRecord.load(context, record!!.id)
+            assertEquals(listOf(original.id), custody.pendingIds())
+            val primaryName = "quantum.seed.v1.1.${original.id}"
+            val primaryCiphertext = prefs.getString(primaryName, null)
+            assertNotNull(primaryCiphertext)
+            assertFalse(prefs.contains("quantum.seed.v1.2.${original.id}"))
+            val restored = QuantumCreationCustody(prefs) { key }
+            val resumed = QuantumWalletCreation(network = { id, selected ->
+                assertEquals(original.id, id); assertEquals(original.profile.rootHash, selected.rootHash); network
+            }, saveRecord = { fail("Resume rewrote the original enrollment") },
+                saveMnemonic = { id, mnemonic -> restored.ensureMnemonic(id, mnemonic) },
+                storeRole = { id, role, binding, seed -> restored.ensureRole(id, role, binding, seed) }, now = { fixtureNow })
+            repeat(2) {
+                val published = resumed.resume(original, restored.mnemonic(original.id)!!.toList()) { it }
+                assertEquals(original.id, published.id)
+                assertEquals(original.identity, published.identity)
+                assertEquals(primaryCiphertext, prefs.getString(primaryName, null))
+            }
+            val authority = original.identity.wallet.initialAuthority
+            val binding = QuantumSeedVault.Context(authority.namespace, authority.globalId, 0, 0)
+            val roles = QuantumSeedVault(prefs)
+            assertArrayEquals(authority.primaryKey, roles.publicKey(original.id.toString(), QuantumRole.PRIMARY, binding, key))
+            assertArrayEquals(authority.rescueKey, roles.publicKey(original.id.toString(), QuantumRole.RESCUE, binding, key))
+            restored.markComplete(original.id)
+            assertTrue(restored.pendingIds().isEmpty())
+        } finally { record?.let { clean(it.id) }; clean(proofId); context.deleteSharedPreferences(prefsName) }
+    }
+
+    @Test fun resumeRefusesAnotherMnemonicAndDoesNotReplaceConflictingCustody() = runBlocking {
+        val proofId = UUID.randomUUID()
+        val prefsName = "quantum-resume-conflict-${UUID.randomUUID()}"
+        val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val custody = QuantumCreationCustody(prefs) { key }
+        try {
+            val network = prove(proofId, profile())
+            val initial = QuantumWalletCreation(network = { _, _ -> network }, saveRecord = {},
+                saveMnemonic = { id, mnemonic -> custody.saveMnemonic(id, mnemonic) },
+                storeRole = { id, role, binding, seed -> custody.store(id, role, binding, seed) }, now = { fixtureNow })
+            val original = initial.create(words, profile()) { it }
+            val before = prefs.all.toMap()
+            val resumed = QuantumWalletCreation(network = { _, _ -> network }, saveRecord = { fail("Unexpected rewrite") },
+                saveMnemonic = { id, mnemonic -> custody.ensureMnemonic(id, mnemonic) },
+                storeRole = { id, role, binding, seed -> custody.ensureRole(id, role, binding, seed) }, now = { fixtureNow })
+            val another = "coffee glad rail dry pink piano allow announce system shrug term return vague crater silly state quick glow wrestle wink tail derive device recall".split(" ")
+            assertEquals("Derived wallet differs from original enrollment", runCatching { resumed.resume(original, another) {} }.exceptionOrNull()?.message)
+            assertEquals(before, prefs.all)
+            val authority = original.identity.wallet.initialAuthority
+            val binding = QuantumSeedVault.Context(authority.namespace, authority.globalId, 0, 0)
+            val name = "quantum.seed.v1.1.${original.id}"
+            assertTrue(prefs.edit().remove(name).commit())
+            QuantumSeedVault(prefs).importAndWipe(original.id.toString(), QuantumRole.PRIMARY, binding, key, ByteArray(32) { 99 })
+            val conflicting = prefs.getString(name, null)
+            assertEquals("Creation key differs from enrollment", runCatching { resumed.resume(original, words) {} }.exceptionOrNull()?.message)
+            assertEquals(conflicting, prefs.getString(name, null))
+        } finally { clean(proofId); context.deleteSharedPreferences(prefsName) }
+    }
+
+    @Test fun mismatchedPublicEnrollmentCannotReconstructAbsentCustodyOrPublish() = runBlocking {
+        val proofId = UUID.randomUUID()
+        try {
+            val network = prove(proofId, profile())
+            var writes = 0
+            val original = QuantumCreationRecord(UUID.randomUUID(), profile(), network.makeIdentity(ByteArray(1312), ByteArray(32), now = fixtureNow))
+            val resumed = QuantumWalletCreation(network = { _, _ -> network }, saveRecord = { writes++ },
+                saveMnemonic = { _, _ -> writes++ },
+                storeRole = { _, role, _, seed -> writes++; QuantumCrypto.publicKey(role, seed) }, now = { fixtureNow })
+            assertEquals("Derived wallet differs from original enrollment", runCatching { resumed.resume(original, words) { writes++ } }.exceptionOrNull()?.message)
+            assertEquals(0, writes)
+        } finally { clean(proofId) }
+    }
+
     @Test fun custodyCommitFailuresNeverReportSuccessAndCleanupIsScoped() {
         val name = "quantum-custody-test-${UUID.randomUUID()}"
         val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)

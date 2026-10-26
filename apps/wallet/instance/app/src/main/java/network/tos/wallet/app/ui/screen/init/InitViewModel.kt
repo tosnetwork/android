@@ -155,6 +155,7 @@ class InitViewModel(
         }
 
     init {
+        args.quantumCreationId?.let { savedState.quantumCreationId = java.util.UUID.fromString(it).toString() }
         savedState.publicKey = args.publicKey?.let {
             InitModelState.PublicKey(publicKey = it)
         }
@@ -174,7 +175,11 @@ class InitViewModel(
                 }
             }
 
-            start()
+            try {
+                if (savedState.quantumCreationId != null) check(isPinSet.get()) { "Existing creation requires its PIN" }
+                start()
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (_: Exception) { setLoading(false); _eventFlow.tryEmit(InitEvent.CreationFailed) }
         }
     }
 
@@ -207,7 +212,7 @@ class InitViewModel(
                 } else {
                     routeTo(InitRoute.LabelAccount)
                 }
-                generateNewWallet()
+                if (savedState.quantumCreationId == null) generateNewWallet()
             }
         }
     }
@@ -645,7 +650,8 @@ class InitViewModel(
                 }
 
                 val selectedWallet = wallets.minByOrNull { it.version }!!
-                accountRepository.setSelectedWallet(selectedWallet.id)
+                if (type == InitArgs.Type.New) accountRepository.completeQuantumCreation(selectedWallet.id)
+                else accountRepository.setSelectedWallet(selectedWallet.id)
 
                 if (type == InitArgs.Type.Watch) {
                     openScreen(WatchInfoScreen.newInstance(selectedWallet))
@@ -731,10 +737,15 @@ class InitViewModel(
     }
 
     private suspend fun newWallet(context: Context): WalletEntity {
-        val mnemonic = requireNotNull(generatedMnemonic) { "Wallet entropy is not ready" }
         check(passcodeManager.confirmation(context, context.getString(Localization.app_name))) { "Creation authentication cancelled" }
         val label = buildNewLabel(SimpleAccount(version = WalletVersion.QUANTUM_SELF_PAY))
-        val wallet = accountRepository.addNewWallet(label, mnemonic)
+        val pending = savedState.quantumCreationId
+        val wallet = if (pending != null) {
+            accountRepository.resumeQuantumCreation(java.util.UUID.fromString(pending), label, generatedMnemonic)
+        } else {
+            val mnemonic = requireNotNull(generatedMnemonic) { "Wallet entropy is not ready" }
+            accountRepository.addNewWallet(label, mnemonic) { savedState.quantumCreationId = it.toString() }
+        }
         generatedMnemonic = null
 
         analytics.simpleTrackEvent(
