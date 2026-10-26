@@ -32,3 +32,14 @@ jobs:
 
       - name: Run hermetic static, unit, and build acceptance gates
         run: make test_ci
+
+      - name: Verify Quantum self-pay native signing domains
+        run: python3 scripts/test_quantum_self_pay_native.py --output build/quantum-self-pay-native
+
+      - name: Retain Quantum self-pay native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-quantum-self-pay-${{ github.sha }}
+          path: build/quantum-self-pay-native/report.json
+          if-no-files-found: warn

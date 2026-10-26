@@ -23,7 +23,9 @@ class TosNetworkInfoTest {
         }
         assertTrue(TosNetworkInfo(3, 6).requireNativeV5().supportsNativeV5)
         assertTrue(network.supportsMlDsa)
-        assertFalse(network.supportsFalcon)
+        assertTrue(network.supportsFalcon)
+        assertFalse(TosNetworkInfo(3, 15).supportsFalcon)
+        assertTrue(TosNetworkInfo(3, 16).supportsFalcon)
         assertThrows(IllegalArgumentException::class.java) { TosNetworkInfo.fromConfig(version18, version18) }
         assertThrows(IllegalArgumentException::class.java) { TosNetworkInfo.fromConfig(global3, global3) }
     }
