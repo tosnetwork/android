@@ -66,13 +66,13 @@ sealed class Item(type: Int): BaseListItem(type) {
             get() = token.asCurrency
 
         val send: Boolean
-            get() = !wallet.isWatchOnly && token.isTransferable
+            get() = wallet.isSendSupported && token.isTransferable
 
         val swap: Boolean
             get() = if (token.isTrc20) {
                 !swapDisabled && wallet.hasPrivateKey && tronSwapUrl != null
             } else {
-                !swapDisabled && token.verified && !wallet.isWatchOnly
+                !swapDisabled && token.verified && wallet.isSendSupported
             }
 
         val maxColumnCount: Int

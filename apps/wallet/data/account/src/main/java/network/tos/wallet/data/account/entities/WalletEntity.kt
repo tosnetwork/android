@@ -6,6 +6,8 @@ import network.tos.blockchain.ton.TonNetwork
 import network.tos.blockchain.ton.contract.BaseWalletContract
 import network.tos.blockchain.ton.contract.WalletFeature
 import network.tos.blockchain.ton.contract.WalletVersion
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import org.ton.block.AddrStd
 import network.tos.blockchain.ton.extensions.EmptyPrivateKeyEd25519
 import network.tos.blockchain.ton.extensions.hex
 import network.tos.blockchain.ton.extensions.publicKeyFromHex
@@ -28,15 +30,34 @@ import org.ton.contract.wallet.WalletTransfer
 
 data class WalletEntity(
     val id: String,
-    val publicKey: PublicKeyEd25519,
+    val identity: WalletIdentity,
     val type: Wallet.Type,
-    val version: WalletVersion,
     val label: Wallet.Label,
     val ledger: Ledger? = null,
     val keystone: Keystone? = null,
     val initialized: Boolean,
-    val networkGlobalId: Int? = null,
 ): Parcelable {
+    init {
+        if (identity is WalletIdentity.Quantum) {
+            require(type == Wallet.Type.Default || type == Wallet.Type.Testnet)
+            require(ledger == null && keystone == null) { "Quantum cannot use a classical hardware signer" }
+        }
+    }
+
+    constructor(id: String, publicKey: PublicKeyEd25519, type: Wallet.Type, version: WalletVersion,
+                label: Wallet.Label, ledger: Ledger? = null, keystone: Keystone? = null,
+                initialized: Boolean, networkGlobalId: Int? = null) : this(
+        id, WalletIdentity.Classical(publicKey, version, networkGlobalId), type, label, ledger, keystone, initialized
+    )
+
+    val classicalPublicKey: PublicKeyEd25519? get() = (identity as? WalletIdentity.Classical)?.publicKey
+    val publicKey: PublicKeyEd25519 get() = requireNotNull(classicalPublicKey) { "Quantum has no Ed25519 public key" }
+    val quantumIdentity: TosQuantumSelfPayIdentity? get() = (identity as? WalletIdentity.Quantum)?.birth
+    val isQuantum: Boolean get() = identity is WalletIdentity.Quantum
+    val version: WalletVersion get() = identity.version
+    val networkGlobalId: Int? get() = identity.networkGlobalId
+    val accountAddress: AddrStd get() = quantumIdentity?.address ?: contract.address
+
 
     companion object {
 
@@ -53,7 +74,25 @@ data class WalletEntity(
 
         @JvmField
         val CREATOR = object : Parcelable.Creator<WalletEntity> {
-            override fun createFromParcel(parcel: Parcel) = WalletEntity(parcel)
+            override fun createFromParcel(parcel: Parcel): WalletEntity {
+                val id = requireNotNull(parcel.readString())
+                val key = requireNotNull(parcel.readString())
+                val type = requireNotNull(parcel.readEnum(Wallet.Type::class.java))
+                val version = requireNotNull(parcel.readEnum(WalletVersion::class.java))
+                val label = requireNotNull(parcel.readParcelableCompat<Wallet.Label>())
+                val ledger = parcel.readParcelableCompat<Ledger>()
+                val keystone = parcel.readParcelableCompat<Keystone>()
+                val initialized = parcel.readBooleanCompat()
+                val hasNetwork = parcel.readByte().toInt()
+                require(hasNetwork == 0 || hasNetwork == 1)
+                val network = if (hasNetwork == 1) parcel.readInt() else null
+                val birth = if (key.startsWith("qsi1:")) WalletIdentity.quantumFromBase64(key.removePrefix("qsi1:")) else null
+                val identity = WalletIdentity.restore(
+                    if (birth == null) key.publicKeyFromHex().key.toByteArray() else null,
+                    birth?.toBoc(), version, network
+                )
+                return WalletEntity(id, identity, type, label, ledger, keystone, initialized)
+            }
 
             override fun newArray(size: Int): Array<WalletEntity?> = arrayOfNulls(size)
         }
@@ -73,6 +112,7 @@ data class WalletEntity(
     ) : Parcelable
 
     val contract: BaseWalletContract by lazy {
+        require(!isQuantum) { "Quantum requires its own self-pay signing flow" }
         val network = networkGlobalId ?: if (testnet) TonNetwork.TESTNET.value else TonNetwork.MAINNET.value
 
         require(version != WalletVersion.TOSV5R1 || networkGlobalId != null) { "TOS wallet network is required" }
@@ -80,7 +120,7 @@ data class WalletEntity(
     }
 
     val maxMessages: Int
-        get() = if (type == Wallet.Type.Ledger) 1 else contract.maxMessages
+        get() = if (isQuantum) 255 else if (type == Wallet.Type.Ledger) 1 else contract.maxMessages
 
     val testnet: Boolean
         get() = type == Wallet.Type.Testnet
@@ -89,11 +129,11 @@ data class WalletEntity(
         get() = type == Wallet.Type.Signer || type == Wallet.Type.SignerQR
 
     val hasPrivateKey: Boolean
-        get() = type == Wallet.Type.Default || type == Wallet.Type.Testnet || type == Wallet.Type.Lockup
+        get() = !isQuantum && (type == Wallet.Type.Default || type == Wallet.Type.Testnet || type == Wallet.Type.Lockup)
 
-    val accountId: String = contract.address.toAccountId()
+    val accountId: String = accountAddress.toAccountId()
 
-    val address: String = contract.address.toWalletAddress(testnet)
+    val address: String = accountAddress.toWalletAddress(testnet)
 
     val blockchainAddress: BlockchainAddress
         get() = BlockchainAddress(
@@ -117,27 +157,18 @@ data class WalletEntity(
     val isExternal: Boolean
         get() = signer || isLedger || isKeystone
 
-    val isTonConnectSupported: Boolean
-        get() = type != Wallet.Type.Watch // !testnet &&
+    // Enabled when the dedicated authenticated self-pay send flow is installed.
+    val isSendSupported: Boolean get() = !isQuantum && !isWatchOnly
 
-    constructor(parcel: Parcel) : this(
-        id = parcel.readString()!!,
-        publicKey = parcel.readString()!!.publicKeyFromHex(),
-        type = parcel.readEnum(Wallet.Type::class.java)!!,
-        version = parcel.readEnum(WalletVersion::class.java)!!,
-        label = parcel.readParcelableCompat()!!,
-        ledger = parcel.readParcelableCompat(),
-        keystone = parcel.readParcelableCompat(),
-        initialized = parcel.readBooleanCompat(),
-        networkGlobalId = if (parcel.readByte().toInt() == 1) parcel.readInt() else null,
-    )
+    val isTonConnectSupported: Boolean
+        get() = !isQuantum && type != Wallet.Type.Watch
 
     fun isMyAddress(address: String): Boolean {
         return address.toRawAddress().equals(accountId, ignoreCase = true)
     }
 
     fun isSupportedFeature(feature: WalletFeature): Boolean {
-        return contract.isSupportedFeature(feature)
+        return !isQuantum && contract.isSupportedFeature(feature)
     }
 
     fun createBody(
@@ -169,7 +200,7 @@ data class WalletEntity(
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
         parcel.writeString(id)
-        parcel.writeString(publicKey.hex())
+        parcel.writeString((identity as? WalletIdentity.Quantum)?.let { "qsi1:" + it.toBase64() } ?: publicKey.hex())
         parcel.writeEnum(type)
         parcel.writeEnum(version)
         parcel.writeParcelable(label, flags)

@@ -11,7 +11,7 @@ data class RNWallet(
     val color: Color,
     val emoji: String,
     val identifier: String,
-    val pubkey: String,
+    val pubkey: String?,
     val network: Network,
     val type: Type,
     val version: String,
@@ -19,8 +19,20 @@ data class RNWallet(
     val allowedDestinations: String?,
     val configPubKey: String?,
     val ledger: RNLedger?,
-    val keystone: RNKeystone?
+    val keystone: RNKeystone?,
+    val networkGlobalId: Int? = null,
+    val quantumIdentity: String? = null,
 ): RNData() {
+
+    init {
+        if (type == Type.Quantum) {
+            require(version == "quantumSelfPay" && pubkey == null && networkGlobalId != null)
+            require(quantumIdentity != null && quantumIdentity.length in 1..(4 * ((16 * 1024 + 2) / 3)))
+            require(workchain == 0 && ledger == null && keystone == null && allowedDestinations == null && configPubKey == null)
+        } else {
+            require(pubkey != null && quantumIdentity == null && version != "quantumSelfPay")
+        }
+    }
 
     companion object {
 
@@ -123,6 +135,7 @@ data class RNWallet(
     }
 
     enum class Type(val title: String) {
+        Quantum("Quantum"),
         Regular("Regular"),
         Lockup("Lockup"),
         WatchOnly("WatchOnly"),
@@ -169,7 +182,7 @@ data class RNWallet(
         enumColor(json.getString("color")),
         json.getString("emoji"),
         json.getString("identifier"),
-        json.getString("pubkey"),
+        if (json.isNull("pubkey")) null else json.getString("pubkey"),
         enumNetwork(json.getInt("network")),
         enumType(json.getString("type")),
         json.getString("version"),
@@ -177,8 +190,22 @@ data class RNWallet(
         json.optString("allowedDestinations", null),
         json.optString("configPubKey", null),
         json.optJSONObject("ledger")?.let { RNLedger(it) },
-        json.optJSONObject("keystone")?.let { RNKeystone(it) }
-    )
+        json.optJSONObject("keystone")?.let { RNKeystone(it) },
+        if (json.isNull("networkGlobalId")) null else json.get("networkGlobalId").let {
+            require((it is Int || it is Long) && (it as Number).toLong() in Int.MIN_VALUE..Int.MAX_VALUE)
+            (it as Number).toInt()
+        },
+        if (json.isNull("quantumIdentity")) null else json.getString("quantumIdentity")
+    ) {
+        if (type == Type.Quantum) {
+            val networkValue = json.get("network")
+            require((networkValue is Int || networkValue is Long) &&
+                Network.entries.any { it.code.toLong() == (networkValue as Number).toLong() }) { "Unsupported Quantum network selector" }
+            val workchainValue = json.get("workchain")
+            require((workchainValue is Int || workchainValue is Long) && (workchainValue as Number).toLong() == 0L)
+            require(listOf("path", "xfp", "ledger", "keystone").all(json::isNull))
+        }
+    }
 
     override fun toJSON(): JSONObject {
         return JSONObject().apply {
@@ -187,6 +214,8 @@ data class RNWallet(
             put("emoji", emoji)
             put("identifier", identifier)
             put("pubkey", pubkey)
+            networkGlobalId?.let { put("networkGlobalId", it) }
+            quantumIdentity?.let { put("quantumIdentity", it) }
             put("network", network.code)
             put("type", type.title)
             put("version", version)

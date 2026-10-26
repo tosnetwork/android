@@ -583,7 +583,7 @@ class InitViewModel(
         val wallet = accountRepository.getWallets()
             .first { it.accountId == watchRecoveryAccountId && it.type == Wallet.Type.Watch }
 
-        if (wallet.publicKey == publicKey) {
+        if (wallet.classicalPublicKey == publicKey) {
             wallet
         } else {
             null

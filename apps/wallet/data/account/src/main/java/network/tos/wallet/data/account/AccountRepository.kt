@@ -7,7 +7,6 @@ import android.content.Context
 import network.tos.blockchain.MnemonicHelper
 import network.tos.blockchain.ton.contract.BaseWalletContract
 import network.tos.blockchain.ton.contract.WalletVersion
-import network.tos.blockchain.ton.contract.walletVersion
 import network.tos.blockchain.ton.extensions.base64
 import network.tos.blockchain.ton.extensions.equalsAddress
 import network.tos.blockchain.ton.extensions.hex
@@ -24,8 +23,6 @@ import network.tos.wallet.data.account.source.StorageSource
 import network.tos.wallet.data.account.source.VaultSource
 import network.tos.wallet.data.core.recordException
 import network.tos.wallet.data.rn.RNLegacy
-import network.tos.wallet.data.rn.data.RNKeystone
-import network.tos.wallet.data.rn.data.RNLedger
 import network.tos.wallet.data.rn.data.RNWallet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -134,6 +131,7 @@ class AccountRepository(
         if (wallets.isNotEmpty()) {
             database.insertAccounts(wallets)
             for (wallet in wallets) {
+                if (wallet.isQuantum) continue
                 val token = rnLegacy.getTonProof(wallet.id) ?: continue
                 storageSource.setTonProofToken(wallet.publicKey, token)
             }
@@ -142,44 +140,7 @@ class AccountRepository(
     }
 
     private suspend fun addWalletToRN(wallet: WalletEntity) {
-        val type = when (wallet.type) {
-            Wallet.Type.Default -> RNWallet.Type.Regular
-            Wallet.Type.Watch -> RNWallet.Type.WatchOnly
-            Wallet.Type.Lockup -> RNWallet.Type.Lockup
-            Wallet.Type.SignerQR -> RNWallet.Type.Signer
-            Wallet.Type.Signer -> RNWallet.Type.SignerDeeplink
-            Wallet.Type.Ledger -> RNWallet.Type.Ledger
-            Wallet.Type.Keystone -> RNWallet.Type.Keystone
-            else -> RNWallet.Type.Regular
-        }
-
-        val rnWallet = RNWallet(
-            name = wallet.label.accountName,
-            color = RNWallet.resolveColor(wallet.label.color),
-            emoji = RNWallet.fixEmoji(wallet.label.emoji),
-            identifier = wallet.id,
-            pubkey = wallet.publicKey.hex(),
-            network = if (wallet.testnet) RNWallet.Network.Testnet else RNWallet.Network.Mainnet,
-            type = type,
-            version = walletVersion(wallet.version),
-            workchain = wallet.contract.workchain,
-            allowedDestinations = null,
-            configPubKey = null,
-            ledger = wallet.ledger?.let {
-                RNLedger(
-                    deviceId = it.deviceId,
-                    accountIndex = it.accountIndex
-                )
-            },
-            keystone = wallet.keystone?.let {
-                RNKeystone(
-                    xfp = it.xfp,
-                    path = it.path
-                )
-            }
-        )
-
-        rnLegacy.addWallet(rnWallet)
+        rnLegacy.addWallet(wallet.toRNWallet())
     }
 
     fun editLabel(
@@ -249,12 +210,12 @@ class AccountRepository(
 
     suspend fun getMnemonic(id: String): Array<String>? {
         val wallet = database.getAccount(id) ?: return null
-        return vaultSource.getMnemonic(wallet.publicKey)
+        return wallet.classicalPublicKey?.let(vaultSource::getMnemonic)
     }
 
     suspend fun getPrivateKey(id: String): PrivateKeyEd25519? {
         val wallet = database.getAccount(id) ?: return null
-        return vaultSource.getPrivateKey(wallet.publicKey)
+        return wallet.classicalPublicKey?.let { vaultSource.getPrivateKey(it) }
     }
 
     private suspend fun getTrxAccountsProvider(id: String): KeychainTrxAccountsProvider? {
@@ -510,7 +471,7 @@ class AccountRepository(
 
     suspend fun getWalletByPublicKey(publicKey: PublicKeyEd25519, testnet: Boolean): List<WalletEntity> {
         return database.getAccounts().filter {
-            it.publicKey == publicKey && it.testnet == testnet
+            it.classicalPublicKey == publicKey && it.testnet == testnet
         }
     }
 
@@ -540,6 +501,7 @@ class AccountRepository(
     suspend fun getSeqno(
         wallet: WalletEntity
     ): Int = withContext(Dispatchers.IO) {
+        require(!wallet.isQuantum) { "Quantum sequence and authority must come from authenticated self-pay state" }
         val node = api.tos.snapshot(wallet.testnet)
         wallet.networkGlobalId?.let { node.requireNetwork(it, wallet.testnet) }
         node.getSeqno(wallet.accountId, wallet.testnet, wallet.contract)

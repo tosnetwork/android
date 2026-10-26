@@ -202,6 +202,7 @@ class SettingsViewModel(
     }
 
     private suspend fun hasW5(): Boolean {
+        if (wallet.isQuantum) return true
         if (wallet.version == WalletVersion.V5R1) {
             return true
         } else if (wallet.type == Wallet.Type.Watch || wallet.type == Wallet.Type.Lockup || wallet.type == Wallet.Type.Ledger) {
