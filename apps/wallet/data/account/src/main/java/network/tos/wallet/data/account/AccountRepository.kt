@@ -7,6 +7,8 @@ import network.tos.wallet.data.account.pq.QuantumWalletCreation
 import network.tos.wallet.data.account.pq.QuantumNetworkProfile
 import network.tos.wallet.data.account.pq.QuantumProofHttpTransport
 import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
+import network.tos.wallet.data.account.pq.QuantumAccountReader
+import network.tos.wallet.data.account.pq.QuantumSelfPayAccount
 import network.tos.security.pq.QuantumProofSession
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
@@ -403,6 +405,14 @@ class AccountRepository(
             val words = mnemonic ?: requireNotNull(quantumCustody.mnemonic(id)) { "Creation mnemonic is unavailable" }.toList()
             quantumCreator(true).resume(record, words) { finishQuantumRegistration(it, label) }
         }
+    }
+
+    suspend fun readQuantumAccount(wallet: WalletEntity): QuantumSelfPayAccount.Snapshot = runInterruptible(Dispatchers.IO) {
+        val identity = requireNotNull(wallet.quantumIdentity) { "Quantum identity required" }
+        val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before reading a wallet" }
+            .trimEnd('/').plus("/jsonRPC").toHttpUrl()
+        QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
+            .read(UUID.fromString(wallet.id), identity)
     }
 
     private fun quantumCreator(resuming: Boolean, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {

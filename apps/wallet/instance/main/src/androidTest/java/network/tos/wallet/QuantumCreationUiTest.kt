@@ -20,6 +20,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koin.core.context.GlobalContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.File
 
 /** Run each UI case in a cleared disposable installation. Live creation requires a fresh chain anchor. */
@@ -103,6 +104,8 @@ class QuantumCreationUiTest {
         val record = QuantumCreationRecord.decode(File(context.noBackupFilesDir, "quantum-creation/${wallet.id}.json").readBytes())
         assertEquals(wallet.quantumIdentity, record.identity)
         assertEquals(profile.rootHash, record.profile.rootHash)
+        verifyQuantumBalanceAndFailureRecovery(wallet, endpoint)
+        verifyFundedQuantumTotals(profile, endpoint)
         File(context.cacheDir, "quantum-live-creation-receipt.json").writeBytes(record.encode())
         val authority = record.identity.wallet.initialAuthority
         val binding = QuantumSeedVault.Context(authority.namespace, authority.globalId, 0, 0)
@@ -119,6 +122,88 @@ class QuantumCreationUiTest {
         for (role in QuantumRole.entries) assertFalse(prefs.contains("quantum.seed.v1.${role.id}.${wallet.id}"))
         assertEquals("keep", prefs.getString("unrelated-test-marker", null))
         prefs.edit().remove("unrelated-test-marker").commit()
+    }
+
+    private fun verifyQuantumBalanceAndFailureRecovery(wallet: network.tos.wallet.data.account.entities.WalletEntity, endpoint: String) {
+        val assets = GlobalContext.get().get<network.tos.wallet.app.manager.assets.AssetsManager>()
+        val currency = network.tos.wallet.data.core.currency.WalletCurrency.TON
+        val balance = runBlocking { repository.readQuantumAccount(wallet) }
+        assertTrue(balance.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Absent)
+        assertEquals(java.math.BigInteger.ZERO, balance.balance)
+        assertEquals(java.math.BigInteger.ZERO, runBlocking { assets.getTokens(wallet, currency, true) }.single().balance.toBigInteger())
+        assets.setCachedTotalBalance(wallet, currency, true, network.tos.icu.Coins.ofNano("999999999000000000"))
+        assertNull(assets.getCachedTotalBalance(wallet, currency, true))
+        assertTrue(device.wait(Until.hasObject(By.res("network.tos.wallet", "wallet_balance")), 30000))
+        fun refresh() {
+            val bounds = resource("refresh").visibleBounds
+            val start = maxOf(bounds.top + 120, resource("header").visibleBounds.bottom + 120)
+            assertTrue(device.swipe(bounds.centerX(), start, bounds.centerX(), minOf(start + 650, bounds.bottom - 100), 50))
+        }
+        QuantumBalancePoisonServer().use { poison ->
+            try {
+                api.setCustomTosRpcEndpoint(poison.endpoint)
+                // Positive control: the ordinary endpoint really offers a usable
+                // false balance. It must not become the Quantum fallback.
+                val unproven = runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                    api.getTosBalance(wallet.accountId, wallet.testnet, "TON")
+                }
+                assertEquals(java.math.BigInteger("999999999000000000"), unproven!!.value.toBigInteger())
+                poison.methods.clear()
+                refresh()
+                val unavailable = device.wait(Until.hasObject(By.text("Balance unavailable")), 30000)
+                assertTrue("Missing proof failure UI; methods=${poison.methods}; package=${device.currentPackageName}", unavailable)
+                assertFalse(device.hasObject(By.res("network.tos.wallet", "wallet_balance")))
+                assertTrue(poison.methods.contains("getProofQuery"))
+                assertFalse(poison.methods.contains("getAddressInformation"))
+                assertNull(runBlocking { assets.requestTotalBalance(wallet, network.tos.wallet.data.core.currency.WalletCurrency.USD, true) })
+                assertNull(runBlocking { assets.getToken(wallet, "TON") })
+                assertTrue(runBlocking { assets.getTokens(wallet, listOf("TON")) }.isEmpty())
+                click(wallet.label.name)
+                assertTrue(device.wait(Until.hasObject(By.text("Add wallet")), 15000))
+                assertTrue(device.wait(Until.hasObject(By.text("Balance unavailable")), 15000))
+                assertEquals("network.tos.wallet", device.currentPackageName)
+                device.pressBack()
+            } finally { api.setCustomTosRpcEndpoint(endpoint) }
+        }
+        // The current selection must not replace the saved wallet's anchor.
+        QuantumNetworkProfile(2, "ab".repeat(32), "cd".repeat(32)).save(context)
+        refresh()
+        assertTrue(device.wait(Until.hasObject(By.res("network.tos.wallet", "wallet_balance")), 30000))
+        assertFalse(device.hasObject(By.text("Balance unavailable")))
+        assertEquals(java.math.BigInteger.ZERO, runBlocking { repository.readQuantumAccount(wallet) }.balance)
+    }
+
+    private fun verifyFundedQuantumTotals(profile: QuantumNetworkProfile, endpoint: String) {
+        val args = InstrumentationRegistry.getArguments()
+        val identity = network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity.fromBoc(
+            android.util.Base64.decode(requireNotNull(args.getString("quantumFundedIdentity")), android.util.Base64.NO_WRAP))
+        val expected = java.math.BigInteger(requireNotNull(args.getString("quantumFundedNanos")))
+        assertTrue(expected > java.math.BigInteger.ZERO)
+        val id = java.util.UUID.randomUUID()
+        try {
+            QuantumCreationRecord(id, profile, identity).save(context)
+            val transport = network.tos.wallet.data.account.pq.QuantumProofHttpTransport(
+                (endpoint + "/jsonRPC").toHttpUrl(), okhttp3.OkHttpClient())
+            val request = org.json.JSONObject().put("mode", "live").put("max_age_seconds", 300)
+                .put("config_params", org.json.JSONArray(listOf(19))).toString().toByteArray()
+            QuantumProofSession(context, id, profile.anchor()).enrollBound(request, System.currentTimeMillis() / 1000, transport)
+            val wallet = network.tos.wallet.data.account.entities.WalletEntity(id.toString(),
+                network.tos.wallet.data.account.entities.WalletIdentity.Quantum(identity),
+                network.tos.wallet.data.account.Wallet.Type.Default,
+                network.tos.wallet.data.account.Wallet.Label("Public funded fixture"), initialized = true)
+            val assets = GlobalContext.get().get<network.tos.wallet.app.manager.assets.AssetsManager>()
+            val total = runBlocking { assets.requestTotalBalance(wallet, network.tos.wallet.data.core.currency.WalletCurrency.USD, true) }
+            assertEquals(expected, requireNotNull(total).toBigInteger())
+            val item = network.tos.wallet.app.ui.screen.wallet.picker.list.Adapter.map(context, listOf(wallet), wallet,
+                network.tos.wallet.data.core.currency.WalletCurrency.USD,
+                listOf(network.tos.wallet.app.manager.assets.WalletBalanceEntity(wallet.accountId, false, total)))
+                .first() as network.tos.wallet.app.ui.screen.wallet.picker.list.Item.Wallet
+            assertTrue(item.balance.toString().contains("TOS"))
+            assertFalse(item.balance.toString().contains("$"))
+        } finally {
+            File(context.noBackupFilesDir, "quantum-proof-checkpoints/$id").deleteRecursively()
+            File(context.noBackupFilesDir, "quantum-creation/$id.json").delete()
+        }
     }
 
     /** First half of a process-death test. The runner must retain this installation for the next method. */

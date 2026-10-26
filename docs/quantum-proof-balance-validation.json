@@ -1,0 +1,160 @@
+{
+  "scope": "Read-only mobile balances. No signing/payment/backup/rescue/migration acceptance.",
+  "android_base": "3bc6d869652882dd9b9d686324b28f950fc46813",
+  "native_node_source": "295d5029b2a465e9e17a332c34acb1eac475cca3",
+  "mobile_native_proof_pin": "1aa8821c0c208d09796b897b158c45203c99da51",
+  "source_files": {
+    "apps/wallet/data/account/src/androidTest/java/network/tos/wallet/data/account/QuantumAccountReaderTest.kt": "87334d75c35193e61d9cd987303313a2e322f45df5ba390815dfa50f7cbdac32",
+    "apps/wallet/data/account/src/main/java/network/tos/wallet/data/account/AccountRepository.kt": "e597f3c3651d7110d483e9be59b5fbeeea15af737e304dab5dc87bf3cb1f0807",
+    "apps/wallet/data/account/src/main/java/network/tos/wallet/data/account/pq/QuantumAccountReader.kt": "b639576bfd4f3e8b81cfda38a6effbdef686827dedad6b53be0aaaaacbbf29a6",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/manager/assets/AssetsManager.kt": "2a9a1ae594809f500b01c352ecad272e18729c381826c14bd4dc316c51a85ddb",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/manager/assets/QuantumBalanceProjection.kt": "376398b006fd8d02e5cd675e37d3a7227489fe1ad8155d705888e7331cbe962c",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/manager/assets/TotalBalanceCache.kt": "f3c003bd045f5d6858ee8db3f32c52d840b15f84f091468f6a7e8abb1160c1e6",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/root/RootViewModel.kt": "e0973bc3e739caad988bb988cd9b09b8422ad5eedc0dfe93134137c61e6f89c8",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/wallet/main/WalletViewModel.kt": "d882de3ee5d9689536d3fce98bba23149a9df49488a83182e724b6c81d80c74c",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/wallet/main/list/Item.kt": "b259202ba05344c228d54755e78f4bdd98718be54de36a2bc1e3f009ef93d090",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/ui/screen/wallet/picker/list/Adapter.kt": "55449faf60ffaa9f84578473094bd38d4cab06357a4ff8d27a3718122cbf1767",
+    "apps/wallet/instance/app/src/main/java/network/tos/wallet/app/worker/WidgetUpdaterWorker.kt": "2d30fcb259a1b6461ba4f63b92e23abcdd6a44370346888c1fc4b621ebd0f5ee",
+    "apps/wallet/instance/main/build.gradle.kts": "1d8d5bf00121eeaedc6fccc73fe9636e03b6aa4a7205d5560b66eed067d7893c",
+    "apps/wallet/instance/main/src/androidTest/java/network/tos/wallet/QuantumBalancePoisonServer.kt": "9affcdb3ba319ea6e30c451b74f7c617e3eede8447bad53fd84f1326c8f66585",
+    "apps/wallet/instance/main/src/androidTest/java/network/tos/wallet/QuantumBalanceProjectionTest.kt": "e9ce37aa0f53e82bb88c13b3065bf5d6da9d0d7a716f53fbcd8cb4da894111cd",
+    "apps/wallet/instance/main/src/androidTest/java/network/tos/wallet/QuantumCreationUiTest.kt": "e804493b4ba382f9afce2c0d1b386042e00bf39098e4f26836b25546022d2cca"
+  },
+  "results": {
+    "account_device_pass": 33,
+    "account_device_skip": 0,
+    "account_device_fail": 0,
+    "projection_device_pass": 2,
+    "fresh_three_validator_ui_pass": 1,
+    "app_unit_pass": 14,
+    "app_build": 0,
+    "brand_static": 0,
+    "v1_static": 0,
+    "packaged_abis": 4,
+    "review": "Scoped ACCEPT after fixing B1/B2/B3; read-only reviewers did not run tests"
+  },
+  "controls": {
+    "network_id_guard": "Removed comparison: targeted native runtime assertion fails; restored full33 pass",
+    "unproven_balance": "Ordinary API first returns usable false999999999 TOS, then invalid proof produces unavailable UI; no ordinary balance fallback query; picker remains available; nullable callers remain unknown",
+    "funded_total": "Synthetic public genesis active wallet: native1000000000000000 nanos retained under USD preference, picker labels TOS; no private custody or signed spend claim"
+  },
+  "retention": "Retain external artifacts and exact installed APK copies until complete HANDOFF acceptance. Never publish network private runtime files.",
+  "artifacts": [
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-account-reader-tests-after-fixture-fix.log",
+      "bytes": 42872,
+      "sha256": "d697238235d7f804bf888f85ee1c618eb8c911dd63294eada12bd27f1a59c56f"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-account-reader-network-mutant.log",
+      "bytes": 44948,
+      "sha256": "a16b1180721c9526556da5f05c535d870ddff891d2eaddbe7f9125c4c4013312"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-account-reader-network-control.json",
+      "bytes": 136,
+      "sha256": "99dfb43268025ae3cb54181c94844259a72d5faef2e2e5b2df75b70919bee4ed"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-account-reader-restored-full.log",
+      "bytes": 44040,
+      "sha256": "779936da87918e29bd5057d71932dddf94af5cecbc1313802aebe18c1be6b914"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-review.json",
+      "bytes": 8972,
+      "sha256": "5571f4c95dfc90bfdbda1c25cd31dada0b123465732758a3f737da7a317c480b"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-review-fix.json",
+      "bytes": 7563,
+      "sha256": "4d6481f77f2001c50e5c26fbf2b121202e394f4e026e62b8fe810a11368ff474"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-final-build.log",
+      "bytes": 98283,
+      "sha256": "9ccf9f3fa40ff5412b290442579f1a8f82fcafa43ad4d49be7f91c49f5b44d35"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-final-stages.json",
+      "bytes": 511,
+      "sha256": "f84d28a4eca5e61b29c36f85280cc2a51e4978afa982146c8164036961009cbf"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-final-package-provenance.json",
+      "bytes": 1357,
+      "sha256": "a276f5c03178f9df6da4a6934edd415cef57107440ae31182e75a4a2c8844072"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-brand.log",
+      "bytes": 21,
+      "sha256": "8a99566cb3a92785b7f1fcb4b70321401cfd2a9e59861f5de8ca9246aeab5cfb"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-static.log",
+      "bytes": 16,
+      "sha256": "9129a48eec6123d2ed4b2ab052b91c24841e04b844b7fd13478b05c89736fc02"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/tos295d-live-node-build.log",
+      "bytes": 10105,
+      "sha256": "560f7c1ef39daa1b2383587a661c8f5c110f445deba36dc422aeb131377f10e8"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/run-android-proof-balance-live.py",
+      "bytes": 5993,
+      "sha256": "a659c396af9c58bd89f53857b3ab9e3413f69236247e28588c34535cd4716348"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/installed-artifacts.json",
+      "bytes": 925,
+      "sha256": "517c0894ff33eb7ec27a256fa8a28c30b9ff23d7160551152050533b30fad674"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/source.json",
+      "bytes": 2764,
+      "sha256": "8dd61dae7ee8e794cdce4964e0b78ccbfca0afaa0d13d0dd5a02c37d95f44a42"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/install-tests.log",
+      "bytes": 36,
+      "sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/projection.log",
+      "bytes": 81,
+      "sha256": "ef926d92fce41e19653fe35650acffeef1ef175b7ad2d2705a2206be67d6712c"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/live-creation-balance-poison-retry.log",
+      "bytes": 73,
+      "sha256": "122e51eb47173ea4f8ca7ec0bb74cb5232e1a2354ff5c533b41de72b334a6761"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/network-exit.json",
+      "bytes": 36,
+      "sha256": "fe56440a4af3d3fe3cc7650a1ac2987c66c0a325f91dd8caca68e6be854a36e4"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/public-anchor.json",
+      "bytes": 187,
+      "sha256": "1e1265850c39f83710875d069b2bfc5111786a136f7255b381db54ee3a61dad6"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/install-app.log",
+      "bytes": 36,
+      "sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/stages.json",
+      "bytes": 6194,
+      "sha256": "14d48d0120911f170320b51f62939482f15731fbe876c3c71d552bdc72bd6677"
+    },
+    {
+      "path": "/Users/tomisetsu/validation/mobile-quantum-handoff/android-proof-balance-live-1793029774938739000/clear-disposable-app.log",
+      "bytes": 8,
+      "sha256": "7fc0023a6402c7bd7abd98bb3e580968de4833eed07d88d1cc8d70819d69c7a0"
+    }
+  ],
+  "setup_failures": "Initial fixtureIDs1/2 violated creation-only ID0; corrected without weakening production invariant. Test classpath deps fixed. Legacy intermediates APK lacked new test class; install now uses output-metadata with DEX markers and retained copies. Header-covered swipe fixed. Nonzero label assertion led to shared symbol conversion. These are not passing runs or sensitivity controls."
+}
