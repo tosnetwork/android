@@ -11,6 +11,39 @@ class TosRecoveryAssetsTest {
     private val owner = "0:" + "11".repeat(32)
     private val tokenWallet = "0:" + "22".repeat(32)
     private val nft = "0:" + "33".repeat(32)
+    @Test fun recoveryAccountKeepsDeployedStatesAndFullUnsignedAmounts() {
+        MockWebServer().use { server ->
+            server.start()
+            val source = TosSource(OkHttpClient(), { server.url("/").toString() })
+            val maximum = java.math.BigInteger.ONE.shiftLeft(120).subtract(java.math.BigInteger.ONE)
+            for (status in listOf("active", "frozen", "uninit", "uninitialized", "nonexist")) {
+                val amount = if (status in setOf("active", "frozen")) java.math.BigInteger.ZERO else maximum
+                server.enqueue(MockResponse.Builder().code(200).body("""{"result":{"state":"$status","balance":"$amount"}}""").build())
+                val state = source.getRecoveryAccountState(owner)
+                assertEquals(status, state.status)
+                assertEquals(amount, state.balance)
+                val request = JSONObject(server.takeRequest().body!!.utf8())
+                assertEquals("getAddressInformation", request.getString("method"))
+                assertEquals(owner, request.getJSONObject("params").getString("address"))
+            }
+        }
+    }
+    @Test fun malformedRecoveryAccountCannotBecomeAnEmptyDefault() {
+        MockWebServer().use { server ->
+            server.start()
+            val source = TosSource(OkHttpClient(), { server.url("/").toString() })
+            val overflow = java.math.BigInteger.ONE.shiftLeft(120)
+            val invalid = listOf("{}", """{"state":"active","balance":0}""",
+                """{"state":"active","balance":"-1"}""", """{"state":"active","balance":"+1"}""",
+                """{"state":"active","balance":"garbage"}""", """{"state":"active","balance":"$overflow"}""",
+                """{"state":"active","balance":"${"9".repeat(1000)}"}""",
+                """{"balance":"0"}""", """{"state":"unknown","balance":"0"}""")
+            for (raw in invalid) {
+                server.enqueue(MockResponse.Builder().code(200).body("""{"result":$raw}""").build())
+                assertThrows(Exception::class.java) { source.getRecoveryAccountState(owner) }
+            }
+        }
+    }
     private fun enqueue(server: MockWebServer, type: String, field: String, rows: String, complete: Boolean) {
         server.enqueue(MockResponse.Builder().code(200).body("""{"result":{"@type":"$type","$field":$rows,"index_state":{"complete":$complete}}}""").build())
     }

@@ -84,6 +84,21 @@ class TosSource(
         return TosAccountState.fromJson(rpc.callObject("getAddressInformation", params, testnet))
     }
 
+    /** Recovery must not interpret malformed or missing account fields as known absence.
+     * This remains ordinary RPC discovery, without proof or signing authority. */
+    fun getRecoveryAccountState(address: String, testnet: Boolean = false): TosAccountState {
+        val raw = rpc.callObject("getAddressInformation", JSONObject().put("address", address), testnet)
+        val amount = raw.opt("balance") as? String
+        require(amount != null && amount.isNotEmpty() && amount.length <= 37 &&
+            amount.all { it in '0'..'9' } && amount.toBigInteger().bitLength() <= 120) {
+            "Invalid recovery account balance"
+        }
+        require(raw.opt("state") in setOf("active", "frozen", "uninit", "uninitialized", "nonexist")) {
+            "Invalid recovery account state"
+        }
+        return TosAccountState.fromJson(raw)
+    }
+
     /** getWalletInformation — replaces WalletApi.getAccountSeqno + part of getAccountPublicKey. */
     fun getWalletInformation(address: String, testnet: Boolean = false): TosWalletInfo {
         val params = JSONObject().put("address", address)

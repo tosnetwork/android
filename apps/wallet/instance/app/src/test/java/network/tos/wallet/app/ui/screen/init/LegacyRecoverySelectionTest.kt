@@ -23,6 +23,11 @@ class LegacyRecoverySelectionTest {
         assertEquals(listOf(0), LegacyRecoverySelection.select(values, WalletVersion.V5R1))
         assertEquals(listOf(2), LegacyRecoverySelection.select(values, WalletVersion.TOSV5R1))
     }
+    @Test fun deployedZeroBalanceAccountKeepsItsOriginalAddress() {
+        val values = listOf(candidate(WalletVersion.V5R1),
+            candidate(WalletVersion.V4R2).copy(deployed = true))
+        assertEquals(listOf(1), LegacyRecoverySelection.select(values, WalletVersion.V5R1))
+    }
     @Test fun watchRecoveryRetainsItsExactAddressEvenIfUnfunded() {
         val values = listOf(candidate(WalletVersion.V5R1, true), candidate(WalletVersion.V4R2))
         assertEquals(listOf(1), LegacyRecoverySelection.select(values, WalletVersion.V5R1, WalletVersion.V4R2.name))

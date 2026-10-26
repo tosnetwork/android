@@ -26,6 +26,8 @@ def run(name, full=False):
 
 controls = [('unknown-assets', ' || !candidates[it].assetsKnown', '',
              'missingOrIncompleteDiscoveryCannotHidePotentialAssets'),
+            ('deployed-account', 'candidates[it].deployed || ', '',
+             'deployedZeroBalanceAccountKeepsItsOriginalAddress'),
             ('watch-address', 'if (recoveryAddress != null)', 'if (false)',
              'watchRecoveryRetainsItsExactAddressEvenIfUnfunded')]
 try:

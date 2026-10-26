@@ -312,20 +312,21 @@ class InitViewModel(
                 val address = contract.address.toAccountId()
                 // Derive every supported address locally: an unavailable public-key
                 // index cannot hide a funded classic version during phrase recovery.
-                val state = if (publicKey.new) null else node.getAccountState(address, testnet)
+                val state = if (publicKey.new) null else node.getRecoveryAccountState(address, testnet)
                 val assets = if (publicKey.new) null else try { node.getRecoveryAssets(address, testnet) }
                     catch (error: kotlinx.coroutines.CancellationException) { throw error }
                     catch (_: Exception) { null }
                 val balance = state?.balance ?: java.math.BigInteger.ZERO
                 require(balance.signum() >= 0)
                 val hasAssets = balance.signum() > 0 || assets?.tokens == true || assets?.nfts == true
+                val deployed = state?.status in setOf("active", "frozen")
                 candidates.add(LegacyRecoverySelection.Candidate(address, version, hasAssets,
-                    assetsKnown = publicKey.new || assets?.complete == true))
+                    assetsKnown = publicKey.new || assets?.complete == true, deployed = deployed))
                 AccountItem(address = contract.address.toWalletAddress(testnet), name = null,
                     walletVersion = version, balanceFormat = CurrencyFormatter.format("TOS", Coins.ofNano(balance.toString())),
                     tokens = assets?.tokens == true, collectibles = assets?.nfts == true,
                     selected = false, position = ListCell.getPosition(versions.size, index),
-                    initialized = state?.status in setOf("active", "frozen"))
+                    initialized = deployed)
             }
             val recoveryWallet = getRecoveryWatchWallet(publicKey = publicKey.publicKey)
             if (watchRecoveryAccountId != null) requireNotNull(recoveryWallet)

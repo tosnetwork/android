@@ -128,7 +128,7 @@ class V1ProductUiTest {
             enterPin("1234")
             assertTrue(waitText("Customize your Wallet", 30_000))
             clickResource("label_button")
-            val expected = setOf(WalletVersion.V4R2, WalletVersion.V4R1, WalletVersion.V3R2, WalletVersion.V3R1)
+            val expected = versions.toSet()
             val end = SystemClock.elapsedRealtime() + 60_000
             var wallets = runBlocking { repository.getWallets() }
             while (wallets.map { it.version }.toSet() != expected && SystemClock.elapsedRealtime() < end) {
@@ -136,7 +136,7 @@ class V1ProductUiTest {
                 wallets = runBlocking { repository.getWallets() }
             }
             assertEquals(expected, wallets.map { it.version }.toSet())
-            assertEquals(4, wallets.size)
+            assertEquals(6, wallets.size)
             runBlocking {
                 for (wallet in wallets) {
                     assertEquals(wallet.version.title, addresses[wallet.accountId])

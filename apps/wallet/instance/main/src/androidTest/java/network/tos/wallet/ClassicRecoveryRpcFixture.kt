@@ -78,7 +78,8 @@ internal class ClassicRecoveryRpcFixture(private val versions: Map<String, Strin
                 JSONObject().put("@type", "configInfo").put("config", JSONObject().put("@type", "tvm.cell").put("bytes", cell.base64()))
             }
             "getAddressInformation" -> JSONObject().put("balance", if (version == "v4R2") "1000000000" else "0")
-                .put("state", "uninit").put("code", "").put("data", "").put("sync_utime", System.currentTimeMillis() / 1000)
+                .put("state", when (version) { "v5R1" -> "active"; "v5Beta" -> "frozen"; else -> "uninit" })
+                .put("code", "").put("data", "").put("sync_utime", System.currentTimeMillis() / 1000)
             "getAccountTokens", "getAccountNfts" -> {
                 val tokens = method == "getAccountTokens"
                 val rows = JSONArray()

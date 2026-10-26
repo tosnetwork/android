@@ -6,7 +6,7 @@ import network.tos.blockchain.ton.contract.WalletVersion
  * Incomplete/unavailable asset discovery retains the account rather than hiding it. */
 internal object LegacyRecoverySelection {
     data class Candidate(val address: String, val version: WalletVersion, val hasAssets: Boolean,
-                         val assetsKnown: Boolean = true)
+                         val assetsKnown: Boolean = true, val deployed: Boolean = false)
 
     fun select(candidates: List<Candidate>, fallback: WalletVersion, recoveryAddress: String? = null): List<Int> {
         require(candidates.isNotEmpty() && candidates.size <= 64)
@@ -14,7 +14,7 @@ internal object LegacyRecoverySelection {
         if (recoveryAddress != null) {
             return listOf(candidates.indexOfFirst { it.address == recoveryAddress }.also { require(it >= 0) })
         }
-        val retained = candidates.indices.filter { candidates[it].hasAssets || !candidates[it].assetsKnown }
+        val retained = candidates.indices.filter { candidates[it].deployed || candidates[it].hasAssets || !candidates[it].assetsKnown }
         return retained.ifEmpty {
             listOf(candidates.indexOfFirst { it.version == fallback }.also { require(it >= 0) })
         }
