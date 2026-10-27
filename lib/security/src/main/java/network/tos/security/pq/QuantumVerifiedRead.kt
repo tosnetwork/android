@@ -1,5 +1,8 @@
 package network.tos.security.pq
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import android.util.Base64
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -9,6 +12,14 @@ import java.security.MessageDigest
  */
 class QuantumVerifiedRead private constructor(json: ByteArray, request: ByteArray, anchor: ByteArray) {
     companion object {
+        internal fun exactTransactionHeadTime(json: ByteArray): String? {
+            val root = Json.parseToJsonElement(json.toString(Charsets.UTF_8)) as JsonObject
+            val account = root["account"] as? JsonObject
+            return (account?.get("last_trans_lt") as? JsonPrimitive)?.let {
+                check(!it.isString && it.content.matches(Regex("0|[1-9][0-9]{0,19}")) && it.content.toULongOrNull() != null)
+                it.content
+            }
+        }
         internal fun historical(anchor: ByteArray, request: ByteArray, priorState: ByteArray, localNow: Long,
                                 kinds: IntArray, material: Array<ByteArray>): QuantumVerifiedRead {
             require(localNow > 0 && anchor.size in 1..1_048_576 && request.size in 1..1_048_576)
@@ -24,6 +35,9 @@ class QuantumVerifiedRead private constructor(json: ByteArray, request: ByteArra
         }
     }
     private val value = JSONObject(json.toString(Charsets.UTF_8))
+    // Android JSONObject converts UInt64 values above Long.MAX_VALUE to Double.
+    // Retain the lexical integer before that lossy representation is consulted.
+    private val transactionHeadTime = exactTransactionHeadTime(json)
     private val anchorDigest = digest(anchor)
     private val checkpoint = value.getJSONObject("target").let {
         listOf(it.getInt("workchain").toString(), it.getString("shard"), it.getLong("seqno").toString(),
@@ -53,6 +67,16 @@ class QuantumVerifiedRead private constructor(json: ByteArray, request: ByteArra
     }
     fun provenAccountTime(expectedAddress: String): Long = boundAccount(expectedAddress).getLong("gen_utime").also {
         check(it in 0..0xffffffffL) { "Invalid account timestamp" }
+    }
+    data class TransactionHead(val logicalTime: String, val hash: String)
+    /** Authenticated ShardAccount head, never an RPC transaction_id. */
+    fun provenTransactionHead(expectedAddress: String): TransactionHead {
+        val account = boundAccount(expectedAddress)
+        val time = checkNotNull(transactionHeadTime) { "Missing proven transaction head" }
+        val hash = account.getString("last_trans_hash")
+        check(hash.matches(Regex("[0-9a-f]{64}")))
+        check((time == "0") == (hash == "00".repeat(32))) { "Inconsistent transaction head" }
+        return TransactionHead(time, hash)
     }
     private fun boundAccount(address: String): JSONObject {
         require(address.matches(Regex("0:[0-9a-f]{64}")))
