@@ -8,6 +8,8 @@ import network.tos.wallet.data.account.pq.QuantumNetworkProfile
 import network.tos.wallet.data.account.pq.QuantumProofHttpTransport
 import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
 import network.tos.wallet.data.account.pq.QuantumAccountReader
+import network.tos.wallet.data.account.pq.QuantumHistoryReader
+import network.tos.wallet.data.account.pq.QuantumHistoryHttpTransport
 import network.tos.wallet.data.account.pq.QuantumSelfPayAccount
 import network.tos.security.pq.QuantumProofSession
 import kotlinx.coroutines.runInterruptible
@@ -413,6 +415,16 @@ class AccountRepository(
             .trimEnd('/').plus("/jsonRPC").toHttpUrl()
         QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
             .read(UUID.fromString(wallet.id), identity)
+    }
+
+    /** Proof-anchored cells for product history; no ordinary event cache is consulted. */
+    suspend fun readQuantumHistory(wallet: WalletEntity, cursor: QuantumHistoryReader.Cursor? = null,
+                                   limit: Int = 20): QuantumHistoryReader.Page {
+        val identity = requireNotNull(wallet.quantumIdentity) { "Quantum identity required" }
+        val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before reading a wallet" }
+            .trimEnd('/').plus("/jsonRPC").toHttpUrl()
+        return QuantumHistoryReader(QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+            QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(UUID.fromString(wallet.id), identity, cursor, limit)
     }
 
     private fun quantumCreator(resuming: Boolean, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {

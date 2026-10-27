@@ -8,6 +8,7 @@ android {
     namespace = Build.namespacePrefix("wallet.data.account")
     defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     sourceSets["androidTest"].assets.srcDir(rootProject.file("scripts/fixtures"))
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("lib/security/src/androidTest/assets"))
     // Reuse the captured native proofs without duplicating frozen binary material.
     sourceSets["androidTest"].assets.srcDir(rootProject.file("apps/wallet/instance/main/src/androidTest/assets/quantum-live-genesis"))
 }

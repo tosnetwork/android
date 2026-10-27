@@ -17,7 +17,10 @@ require(gradle.startParameter.taskNames.none { it.contains("Release", ignoreCase
     "Release proof packaging requires all four ABIs"
 }
 require(Build.minSdkVersion >= 24) { "Pinned proof libraries require Android API24 or later" }
-val proofOutput = layout.buildDirectory.dir("generated/quantum-proof-jni")
+// AAR consumers do not inherit this library's ndk.abiFilters. Isolate the
+// producer input tree so cached libraries for other selections cannot leak in.
+val proofSelection = proofAbis.sorted().joinToString("_")
+val proofOutput = layout.buildDirectory.dir("generated/quantum-proof-jni/selection-$proofSelection")
 
 android {
     namespace = Build.namespacePrefix("security")

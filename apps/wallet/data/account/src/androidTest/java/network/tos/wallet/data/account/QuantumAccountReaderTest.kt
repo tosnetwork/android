@@ -1,6 +1,7 @@
 package network.tos.wallet.data.account
 
 import android.util.Base64
+import kotlinx.coroutines.runBlocking
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import network.tos.blockchain.ton.contract.*
@@ -67,6 +68,30 @@ class QuantumAccountReaderTest {
                 "active" -> { assertTrue(observed.status is QuantumSelfPayAccount.Status.Active); assertEquals(BigInteger("1000000000000000"), observed.balance) }
             }
         }
+    }
+
+    @Test fun historyEmptyHeadUsesProofAndNeverCallsUntrustedTransactionRelay() = Fixture("active").use { f ->
+        f.enroll()
+        val transport = Transcript(f.readNames.map(f::read))
+        val reader = QuantumHistoryReader(QuantumAccountReader(f.context, transport) { f.now },
+            QuantumHistoryReader.Query { _, _, _ -> error("Empty authenticated head must not query RPC history") }) { f.now }
+        val page = runBlocking { reader.read(f.id, f.identity) }
+        assertTrue(page.transactions.isEmpty())
+        assertNull(page.next)
+        assertEquals("1000000000000000", page.balanceNano)
+        assertEquals(5, transport.calls)
+        assertTrue(page.checkpointTime <= f.now)
+    }
+
+    @Test fun invalidHistoryPageBoundRefusesBeforeProofOrTransactionIO() = Fixture("active").use { f ->
+        val transport = Transcript(emptyList())
+        val reader = QuantumHistoryReader(QuantumAccountReader(f.context, transport) { f.now },
+            QuantumHistoryReader.Query { _, _, _ -> error("Unexpected transaction IO") }) { f.now }
+        for (limit in listOf(0, 21, Int.MAX_VALUE)) {
+            val failure = runCatching { runBlocking { reader.read(f.id, f.identity, limit = limit) } }.exceptionOrNull()
+            assertTrue(failure is IllegalArgumentException)
+        }
+        assertEquals(0, transport.calls)
     }
 
     @Test fun missingCheckpointCannotBeReenrolledByBalanceRefresh() = Fixture("active").use { f ->
