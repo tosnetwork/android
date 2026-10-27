@@ -19,7 +19,7 @@ class QuantumHistoryHttpTransport(private val endpoint: HttpUrl, client: OkHttpC
     override fun transaction(address: String, logicalTime: String, hash: String): String {
         require(address.matches(Regex("0:[0-9a-f]{64}")) && QuantumHistoryTransaction.time(logicalTime) > 0uL)
         val expected = Base64.encodeToString(QuantumHistoryTransaction.hex(hash), Base64.NO_WRAP)
-        check(!Thread.currentThread().isInterrupted)
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("History transport cancelled")
         val id = sequence.incrementAndGet()
         val body = JSONObject().put("jsonrpc", "2.0").put("id", id).put("method", "getTransactions")
             .put("params", JSONObject().put("address", address).put("limit", 1).put("lt", logicalTime).put("hash", expected))
@@ -33,7 +33,7 @@ class QuantumHistoryHttpTransport(private val endpoint: HttpUrl, client: OkHttpC
             payload.byteStream().use { input ->
                 val buffer = ByteArray(8192)
                 while (true) {
-                    check(!Thread.currentThread().isInterrupted)
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException("History transport cancelled")
                     val count = input.read(buffer)
                     if (count < 0) break
                     check(count <= cap - bytes.size())

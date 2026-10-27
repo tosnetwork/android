@@ -31,7 +31,8 @@ class QuantumHistoryReader(
             try {
                 val deadline = System.nanoTime() + 60_000_000_000L
                 fun requireRunning() {
-                    check(!Thread.currentThread().isInterrupted && System.nanoTime() - deadline < 0) { "History read cancelled or expired" }
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException("History read cancelled")
+                    check(System.nanoTime() - deadline < 0) { "History read expired" }
                 }
                 requireRunning()
                 val observation = cursor?.observation ?: accounts.observe(id, identity)

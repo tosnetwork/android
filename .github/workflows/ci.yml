@@ -81,11 +81,16 @@ jobs:
           cmake: 3.22.1
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: make test_quantum_proof_device
+          script: |
+            make test_quantum_proof_device
+            make test_quantum_history_transport_device
       - name: Retain native device test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: quantum-proof-device-${{ github.sha }}
-          path: build/quantum-proof-device/instrumentation.log
+          path: |
+            build/quantum-proof-device/instrumentation.log
+            apps/wallet/data/account/build/outputs/androidTest-results/connected/
+            apps/wallet/data/account/build/reports/androidTests/connected/
           if-no-files-found: warn

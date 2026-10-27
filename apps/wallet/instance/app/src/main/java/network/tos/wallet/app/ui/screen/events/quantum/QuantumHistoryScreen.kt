@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import network.tos.wallet.app.ui.base.BaseWalletVM
 import network.tos.wallet.app.ui.base.compose.ComposeWalletScreen
 import network.tos.wallet.data.account.AccountRepository
@@ -102,6 +104,8 @@ private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDe
             status = if (records.isEmpty()) "No transactions. Verified through $checkpoint." else "Verified through $checkpoint"
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
+            if (operationID != id) return@LaunchedEffect
             records = emptyList(); balance = null; starts = listOf(null); pageIndex = 0; next = null
             status = "Unable to verify history. Refresh to try again."
         } finally { if (operationID == id) loading = false }

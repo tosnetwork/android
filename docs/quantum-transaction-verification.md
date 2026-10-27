@@ -82,3 +82,13 @@ Both explicit and aggregate release graphs still require all four ABIs.
 
 Protected-custody deployment/payment, an outbox, fee budgeting, complete backup,
 rescue/migration and final release acceptance remain separate unfinished work.
+
+
+History HTTP transport device controls use a real loopback server. The three
+`QuantumHistoryHttpTransportTest` methods verify a valid reply, wrong IDs,
+trailing/deep JSON, refused redirects, declared/chunked oversized replies and
+cancelled blocking reads. Interrupted reads retain coroutine cancellation;
+the history UI checks cancellation and request identity before presenting errors.
+Run `make test_quantum_history_transport_device` on a connected emulator. The
+existing proof-device CI job runs this target after its seven native tests and
+retains both reports. These controls need no disposable chain or signing keys.
