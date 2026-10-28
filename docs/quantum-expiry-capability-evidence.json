@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "scope": "R03 A only; no retirement, slot deletion, public summary, signing, broadcast or UNKNOWN retry",
+  "base_head": "2e916026d8b94f6f7e5c3ea8d68c9686a0c7b42a",
+  "native_pin": "127fd94d9274d663b6ff96748ad8e571b9b797e8",
+  "raw_directory": "/Users/tomisetsu/validation/mobile-quantum-handoff",
+  "artifacts": {
+    "android-R03-A-final/index.json": {
+      "bytes": 3451,
+      "sha256": "19fa4a672d36d884dcd829f64fb79dfefd82e0ac1286d522f0db775c977c0738"
+    },
+    "android-R03-A-controls/results.json": {
+      "bytes": 3298,
+      "sha256": "f7c766e4080c8757e9e58bd01364808790a884b3e0c5b4f15bce9c202e17badd"
+    },
+    "android-R03-A-controls/restored-source.json": {
+      "bytes": 359,
+      "sha256": "5b08c65bf80f703ddc6972822b2a68248c989b30ec91bcca7735c8979c734baf"
+    },
+    "android-R03-A-compile-first.log": {
+      "bytes": 79890,
+      "sha256": "3f51293cee8bdd5308eb55e48f30e079081fc7cd993873f1b5e88728a688dd63"
+    },
+    "android-R03-A-device-initial.log": {
+      "bytes": 6441,
+      "sha256": "f76af4c009f54ec0d2f0fb2be02548d1282a3750eb6d40440d5963c085b827e7"
+    },
+    "android-R03-A-device-baseline.log": {
+      "bytes": 6704,
+      "sha256": "4cc1b669634693e788cf3255ae94569514d248e6b87f36624ebef7f0e5fbdb28"
+    },
+    "android-R03-A-restored-build.log": {
+      "bytes": 79990,
+      "sha256": "14bf25b1eafbdf8b07e6343616ea8155cfde747cd92c10a3295afb8bc806a28c"
+    },
+    "android-R03-A-restored-device.log": {
+      "bytes": 6704,
+      "sha256": "dd664f8fb21cee873583ff93138dd0cd4712bcec601fbb8e0f457deae9dad746"
+    }
+  },
+  "executed_jvm_tests": 12,
+  "baseline_device_tests": 9,
+  "restored_device_tests": 9,
+  "designated_controls": 3,
+  "new_chain": false,
+  "production_gate_closed": true
+}

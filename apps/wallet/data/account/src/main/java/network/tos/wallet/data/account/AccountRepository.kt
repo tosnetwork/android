@@ -475,6 +475,13 @@ class AccountRepository(
     }
     suspend fun cancelUnsignedQuantumPayment(wallet: WalletEntity, operation: UUID) = quantumPayments(wallet).cancelUnsigned(
         UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity), operation)
+    /** Authentication-only expiry capability; this does not remove an authorization or enable signing. */
+    suspend fun readQuantumPaymentExpiry(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumExpiredAuthorization {
+        val endpoint = quantumPaymentEndpoint()
+        return network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader(context,
+            QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+            QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).expiry(UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity))
+    }
     suspend fun readQuantumPaymentOutcome(wallet: WalletEntity, cursor: network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader.Cursor? = null): network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader.Page {
         val endpoint = quantumPaymentEndpoint()
         return network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader(context,

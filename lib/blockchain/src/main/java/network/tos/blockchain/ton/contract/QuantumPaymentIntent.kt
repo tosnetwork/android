@@ -31,15 +31,10 @@ class QuantumPaymentIntent(val recipient: AddrStd, val amount: BigInteger, val b
     fun actions(): Cell = buildCell {
         storeUInt(0x0ec3c86d, 32); storeUInt(3, 8); storeRef(buildCell { }); storeRef(message())
     }
-    fun requireBound(request: Cell) {
-        val s = request.beginParse()
-        require(s.remainingBits == 1019 && s.refs.size == 1)
-        s.loadBits(32 + 32 + 256 + 267 + 256)
-        require(s.loadUInt(8).toInt() == QuantumAuthRole.PRIMARY.id)
-        s.loadBits(64 + 64 + 32)
-        require(s.loadUInt(8).toInt() == 0)
-        val expected = buildCell { storeUInt(0x45584543, 32); storeRef(actions()) }
-        require(s.loadRef().hash() == expected.hash()) { "Payment intent differs from authorization" }
+    fun requireBound(request: Cell) = requireBound(QuantumStoredSelfPayRequest.parse(request))
+    fun requireBound(request: QuantumStoredSelfPayRequest) {
+        require(request.role == QuantumAuthRole.PRIMARY && request.kind == 0 &&
+            request.executeActions?.hash() == actions().hash()) { "Payment intent differs from authorization" }
     }
     override fun equals(other: Any?): Boolean = other is QuantumPaymentIntent && recipient == other.recipient &&
         amount == other.amount && bounce == other.bounce &&
