@@ -621,8 +621,9 @@ class RootViewModel(
             showStory(route.id, "deep-link")
         } else if (route is DeepLinkRoute.Tabs) {
             _eventFlow.tryEmit(RootEvent.OpenTab(route.tabUri.toUri(), wallet, route.from))
-        } else if (route is DeepLinkRoute.Send && wallet.isSendSupported) {
-            openScreen(SendScreen.newInstance(wallet, type = SendScreen.Companion.Type.Default))
+        } else if (route is DeepLinkRoute.Send && (wallet.isSendSupported || wallet.isQuantum)) {
+            if (wallet.isQuantum) openScreen(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newInstance(wallet))
+            else openScreen(SendScreen.newInstance(wallet, type = SendScreen.Companion.Type.Default))
         } else if (route is DeepLinkRoute.Staking && !wallet.isWatchOnly) {
             openScreen(StakingScreen.newInstance(wallet, from = "deeplink"))
         } else if (route is DeepLinkRoute.StakingPool) {

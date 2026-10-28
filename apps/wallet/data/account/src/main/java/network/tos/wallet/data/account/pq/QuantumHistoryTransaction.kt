@@ -22,14 +22,24 @@ class QuantumHistoryTransaction private constructor(
     val outbound: List<Message>,
     val successfulExecution: Boolean,
     val skippedActions: Long,
+    val messagesCreated: Long?,
     val direction: Direction,
     val outcome: Outcome,
 ) {
     data class Message(val kind: String, val hash: String, val bodyHash: String,
         val source: String?, val destination: String?, val amountNano: String?,
-        val otherCurrencies: Boolean, val bounced: Boolean)
+        val otherCurrencies: Boolean, val bounced: Boolean, val bounce: Boolean?)
     enum class Direction { Incoming, Outgoing, Operation }
     enum class Outcome { Included, Executed, SendSkipped, ExecutionFailed }
+
+    internal fun matchesPayment(externalHash: String, intent: network.tos.blockchain.ton.contract.QuantumPaymentIntent): Boolean =
+        successfulExecution && !otherFeeCurrencies && skippedActions == 0L && messagesCreated == 1L &&
+        inbound?.kind == "external_in" && inbound.hash == externalHash && inbound.destination == account &&
+        outbound.size == 1 && outbound.single().let { out ->
+            out.kind == "internal" && out.source == account && out.destination == QuantumAccountReader.rawAddressFor(intent.recipient) &&
+                !out.otherCurrencies && !out.bounced && out.bounce == intent.bounce && out.amountNano == intent.amount.toString() &&
+                out.bodyHash == QuantumPaymentQuote.hex(intent.body.hash().toByteArray())
+        }
 
     companion object {
         private val hashPattern = Regex("[0-9a-f]{64}")
@@ -58,7 +68,8 @@ class QuantumHistoryTransaction private constructor(
             require((kind == "internal") == (amount != null))
             return Message(kind, hash, body, source, destination, amount,
                 if (kind == "internal") value.getBoolean("other_currencies") else false,
-                if (kind == "internal") value.getBoolean("bounced") else false)
+                if (kind == "internal") value.getBoolean("bounced") else false,
+                if (kind == "internal") value.getBoolean("bounce") else null)
         }
         fun formatNano(value: String): String? {
             if (runCatching { coins(value) }.isFailure) return null
@@ -107,7 +118,7 @@ class QuantumHistoryTransaction private constructor(
                 else -> Outcome.Included
             }
             return QuantumHistoryTransaction(account, expectedHash, logicalTime, previousHash, previousTime,
-                timestamp, fees, value.getBoolean("other_fee_currencies"), input, messages, success, skipped, direction, outcome)
+                timestamp, fees, value.getBoolean("other_fee_currencies"), input, messages, success, skipped, action?.getLong("messages_created"), direction, outcome)
         }
     }
 }

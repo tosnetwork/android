@@ -22,6 +22,7 @@ class QuantumAccountReader(
     internal data class Observation(
         val id: UUID,
         val identity: TosQuantumSelfPayIdentity,
+        val profile: QuantumNetworkProfile,
         val network: QuantumVerifiedRead,
         val proof: QuantumVerifiedRead,
         val snapshot: QuantumSelfPayAccount.Snapshot,
@@ -35,20 +36,21 @@ class QuantumAccountReader(
 
     fun read(id: UUID, identity: TosQuantumSelfPayIdentity): QuantumSelfPayAccount.Snapshot = observe(id, identity).snapshot
 
-    internal fun observe(id: UUID, identity: TosQuantumSelfPayIdentity): Observation {
+    internal fun observe(id: UUID, identity: TosQuantumSelfPayIdentity, configIndices: IntArray = intArrayOf(19)): Observation {
         val record = QuantumCreationRecord.load(context, id)
         require(record.id == id && record.identity == identity) { "Wallet birth identity mismatch" }
-        return observeEnrolled(id, identity, record.profile)
+        return observeEnrolled(id, identity, record.profile, configIndices)
     }
 
     internal fun readEnrolled(id: UUID, identity: TosQuantumSelfPayIdentity, profile: QuantumNetworkProfile): QuantumSelfPayAccount.Snapshot =
         observeEnrolled(id, identity, profile).snapshot
 
-    private fun observeEnrolled(id: UUID, identity: TosQuantumSelfPayIdentity, profile: QuantumNetworkProfile): Observation {
+    internal fun observeEnrolled(id: UUID, identity: TosQuantumSelfPayIdentity, profile: QuantumNetworkProfile, configIndices: IntArray = intArrayOf(19)): Observation {
+        require(configIndices.isNotEmpty() && configIndices.size <= 8 && 19 in configIndices && configIndices.toSet().size == configIndices.size && configIndices.all { it in setOf(8,18,19,20,21,24,25,48) })
         require(identity.wallet.initialAuthority.globalId == profile.globalId) { "Wallet network identity mismatch" }
         val session = QuantumProofSession(context, id, profile.anchor())
         val request = JSONObject().put("mode", "live").put("max_age_seconds", MAXIMUM_AGE)
-            .put("config_params", JSONArray(listOf(19))).toString().toByteArray(Charsets.UTF_8)
+            .put("config_params", JSONArray(configIndices.toList())).toString().toByteArray(Charsets.UTF_8)
         val network = session.readBound(request, now(), transport)
         val root = BagOfCells(network.provenConfigParam(19)).roots.single()
         require(root.type == CellType.ORDINARY && root.levelMask.level == 0)
@@ -60,11 +62,13 @@ class QuantumAccountReader(
         network.requireSameCheckpoint(proof)
         val account = QuantumSelfPayAccount.bind(identity, proof, now(), MAXIMUM_AGE)
         network.requireLive(now(), MAXIMUM_AGE)
-        return Observation(id, identity, network, proof, account.snapshot(now())).also { it.requireFresh(now()) }
+        return Observation(id, identity, profile, network, proof, account.snapshot(now())).also { it.requireFresh(now()) }
     }
 
     companion object {
         private const val MAXIMUM_AGE = 300L
+        internal fun rawAddressFor(address: org.ton.block.AddrStd): String =
+            "${address.workchainId}:" + address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
         internal fun rawAddress(identity: TosQuantumSelfPayIdentity): String =
             "0:" + identity.address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
     }

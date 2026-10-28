@@ -46,7 +46,9 @@ def build():
     if not (host / 'CMakeCache.txt').exists():
         subprocess.run(['cmake', '-S', str(source), '-B', str(host), '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DTOS_USE_ROCKSDB=OFF', '-DTOS_USE_ABSEIL=OFF'], check=True)
     target = work / args.abi
-    subprocess.run(['python3', str(source / 'scripts/build-embedded-proof-android.py'), '--ndk', str(args.ndk), '--host-build', str(host), '--build-dir', str(target), '--abi', args.abi], check=True)
+    jobs = int(os.environ.get('TOS_PROOF_BUILD_JOBS', '4'))
+    if not 1 <= jobs <= 32: raise RuntimeError('Proof build jobs must be in 1..32')
+    subprocess.run(['python3', str(source / 'scripts/build-embedded-proof-android.py'), '--ndk', str(args.ndk), '--host-build', str(host), '--build-dir', str(target), '--abi', args.abi, '--jobs', str(jobs)], check=True)
     library = target / 'lite-client/proof-verify/libtosproofverify.so'
     destination = args.output.resolve() / args.abi
     destination.mkdir(parents=True, exist_ok=True)

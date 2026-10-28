@@ -7,6 +7,7 @@ import network.tos.security.pq.QuantumDeviceKey
 import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumRole
 import network.tos.security.pq.QuantumSeedVault
+import network.tos.security.pq.QuantumPurpose
 import java.util.UUID
 import javax.crypto.SecretKey
 
@@ -76,6 +77,9 @@ internal class QuantumCreationCustody internal constructor(
             }
         } finally { seed.fill(0) }
     }
+
+    fun signPayment(id: UUID, context: QuantumSeedVault.Context, expectedPublicKey: ByteArray, digest: ByteArray): ByteArray =
+        roles.sign(id.toString(), QuantumRole.PRIMARY, context, wrappingKey(false), expectedPublicKey, QuantumPurpose.SELF_PAY, digest)
 
     fun markComplete(id: UUID) = synchronized(lock) {
         check(preferences.contains(mnemonicKey(id)))

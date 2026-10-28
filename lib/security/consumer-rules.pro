@@ -10,3 +10,5 @@
 
 # The JNI entry point uses the class/method names at the C ABI boundary.
 -keep class network.tos.security.pq.QuantumWalletTransactionNative { *; }
+-keep class network.tos.security.pq.QuantumSimulationNative { *; }
+-keep class network.tos.security.pq.QuantumSimulationNative$Refused { *; }

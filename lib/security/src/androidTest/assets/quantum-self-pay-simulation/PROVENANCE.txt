@@ -1,0 +1,1 @@
+Public three-validator simulation fixture from tosnetwork/tos at 127fd94d9274d663b6ff96748ad8e571b9b797e8, test/pq-native/data/self-pay-simulation-live. Contains public signed test traffic; no production custody or private keys.

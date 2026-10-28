@@ -35,6 +35,10 @@ class QuantumProofSession(context: Context, walletId: UUID, locallyProvisionedAn
     fun readBound(request: ByteArray, localNow: Long, transport: QuantumProofTransport): QuantumVerifiedRead =
         QuantumVerifiedRead.live(directory.absolutePath, false, anchor, request, localNow, transport)
 
+    /** Requires an existing enrolled checkpoint and commits its successor before returning an estimate. */
+    fun simulate(request: ByteArray, localNow: Long, signedMessage: ByteArray, transport: QuantumProofTransport): QuantumLocalSimulation =
+        QuantumSimulationNative.simulate(directory.absolutePath, anchor, request, localNow, signedMessage, transport)
+
     private fun privateDirectory(parent: File, name: String): File {
         val result = File(parent, name)
         try { Os.mkdir(result.absolutePath, 0x1c0) } // 0700, atomically private

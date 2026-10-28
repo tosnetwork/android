@@ -31,12 +31,13 @@ class TosQuantumSelfPayIdentity(val wallet: TosQuantumSelfPayWallet) {
 
         fun fromBoc(bytes: ByteArray): TosQuantumSelfPayIdentity {
             require(bytes.size in 1..MAX_BOC_BYTES) { "Invalid Quantum identity size" }
-            preflight(bytes)
+            preflightOrdinaryBoc(bytes)
             return parse(BagOfCells(bytes).roots.single())
         }
 
         /** Bound declared counts and references before the general SDK allocates or indexes them. */
-        private fun preflight(bytes: ByteArray) {
+        fun preflightOrdinaryBoc(bytes: ByteArray, maximumBytes: Int = MAX_BOC_BYTES) {
+            require(maximumBytes in 1..1_048_576 && bytes.size in 1..maximumBytes)
             var offset = 0
             fun uint(width: Int): Long {
                 require(width in 1..4 && width <= bytes.size - offset)
@@ -53,8 +54,8 @@ class TosQuantumSelfPayIdentity(val wallet: TosQuantumSelfPayWallet) {
             val roots = uint(size)
             val absent = uint(size)
             val cellBytes = uint(offsetSize)
-            require(cells in 1..(MAX_BOC_BYTES / 2).toLong() && roots == 1L && absent == 0L &&
-                cellBytes <= MAX_BOC_BYTES && cells <= cellBytes / 2 && uint(size) == 0L)
+            require(cells in 1..minOf(maximumBytes / 2, 16384).toLong() && roots == 1L && absent == 0L &&
+                cellBytes <= maximumBytes && cells <= cellBytes / 2 && uint(size) == 0L)
             val count = cells.toInt()
             val index = if (flags and 0x80 != 0) List(count) { uint(offsetSize) } else emptyList()
             require(bytes.size - offset == cellBytes.toInt() + if (flags and 0x40 != 0) 4 else 0)

@@ -52,7 +52,9 @@ class QuantumHistoryScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet) {
     }
     @Composable
     override fun ScreenContent() {
-        QuantumHistoryContent(wallet, visible, coinDetails, { finish() }) { cursor ->
+        QuantumHistoryContent(wallet, visible, coinDetails, { finish() }, {
+            navigation?.add(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newInstance(wallet))
+        }) { cursor ->
             accounts.readQuantumHistory(wallet, cursor)
         }
     }
@@ -62,7 +64,7 @@ private data class PageRequest(val index: Int, val cursor: QuantumHistoryReader.
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDetails: Boolean, onClose: () -> Unit,
+private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDetails: Boolean, onClose: () -> Unit, onPayment: () -> Unit,
                                   read: suspend (QuantumHistoryReader.Cursor?) -> QuantumHistoryReader.Page) {
     var request by remember(wallet.id) { mutableStateOf(PageRequest(0, null, true, 0)) }
     var records by remember(wallet.id) { mutableStateOf<List<QuantumHistoryTransaction>>(emptyList()) }
@@ -112,6 +114,9 @@ private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDe
     }
     Column(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }.background(UIKit.colorScheme.background.page).statusBarsPadding().padding(horizontal = 16.dp)) {
         if (coinDetails) TextButton(onClick = onClose) { Text("Back", color = UIKit.colorScheme.text.accent) }
+        TextButton(onClick = onPayment, modifier = Modifier.testTag("quantum.payment.open")) {
+            Text("Pending payment / review", color = UIKit.colorScheme.text.accent)
+        }
         Text(if (coinDetails) "TOS" else "History", style = UIKit.typography.h2, color = UIKit.colorScheme.text.primary)
         if (coinDetails) Text(balance ?: if (loading) "Verifying balance…" else "Balance unavailable", color = UIKit.colorScheme.text.primary)
         Text(status, color = UIKit.colorScheme.text.secondary,

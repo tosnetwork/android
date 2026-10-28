@@ -427,6 +427,61 @@ class AccountRepository(
             QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(UUID.fromString(wallet.id), identity, cursor, limit)
     }
 
+    private fun quantumPaymentEndpoint() = requireNotNull(api.customTosRpcEndpoint) {
+        "Configure the wallet RPC endpoint"
+    }.trimEnd('/').plus("/jsonRPC").toHttpUrl()
+
+    private fun quantumPayments(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumPaymentCoordinator {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        require(wallet.networkGlobalId == identity.wallet.initialAuthority.globalId)
+        val endpoint = quantumPaymentEndpoint()
+        val broadcast = network.tos.wallet.data.account.pq.QuantumPaymentHttpTransport(endpoint, quantumHttpClient)
+        return network.tos.wallet.data.account.pq.QuantumPaymentCoordinator(context,
+            QuantumProofHttpTransport(endpoint, quantumHttpClient), broadcast::send)
+    }
+    suspend fun pendingQuantumPayment(wallet: WalletEntity) = quantumPayments(wallet).pending(
+        UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity))
+    private suspend fun checkQuantumRecipient(wallet: WalletEntity, intent: network.tos.blockchain.ton.contract.QuantumPaymentIntent) {
+        // Metadata is advisory only and cannot change the raw signed recipient.
+        val raw = "${intent.recipient.workchainId}:" + intent.recipient.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+        val hints = api.resolveAccount(raw, wallet.testnet)
+        check(hints?.isScam != true) { "Recipient is marked unsafe" }
+        check(hints?.memoRequired != true || !intent.comment.isNullOrEmpty()) { "Recipient requires a comment" }
+    }
+    suspend fun prepareQuantumPayment(wallet: WalletEntity, intent: network.tos.blockchain.ton.contract.QuantumPaymentIntent): network.tos.wallet.data.account.pq.QuantumPreparedPayment {
+        checkQuantumRecipient(wallet, intent)
+        return quantumPayments(wallet).prepare(UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity), intent)
+    }
+    /** The App must complete its existing passcode/biometry gate before this call. */
+    suspend fun authorizeQuantumPayment(wallet: WalletEntity, payment: network.tos.wallet.data.account.pq.QuantumPreparedPayment): network.tos.wallet.data.account.pq.QuantumPaymentQuote {
+        require(payment.walletId == UUID.fromString(wallet.id) && payment.identity == wallet.quantumIdentity)
+        checkQuantumRecipient(wallet, payment.intent)
+        return quantumPayments(wallet).authorizeAndEstimate(payment)
+    }
+    suspend fun submitQuantumPayment(wallet: WalletEntity, quote: network.tos.wallet.data.account.pq.QuantumPaymentQuote) {
+        require(quote.payment.walletId == UUID.fromString(wallet.id) && quote.payment.identity == wallet.quantumIdentity)
+        quantumPayments(wallet).submit(quote)
+    }
+    suspend fun refreshQuantumPayment(wallet: WalletEntity, quote: network.tos.wallet.data.account.pq.QuantumPaymentQuote): network.tos.wallet.data.account.pq.QuantumPaymentQuote {
+        require(quote.payment.walletId == UUID.fromString(wallet.id) && quote.payment.identity == wallet.quantumIdentity)
+        return quantumPayments(wallet).refresh(quote)
+    }
+    suspend fun estimatePendingQuantumPayment(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumPaymentQuote {
+        val coordinator = quantumPayments(wallet)
+        val id = UUID.fromString(wallet.id); val identity = requireNotNull(wallet.quantumIdentity)
+        val entry = checkNotNull(coordinator.pending(id, identity))
+        checkQuantumRecipient(wallet, entry.intent)
+        return coordinator.estimatePending(id, identity)
+    }
+    suspend fun cancelUnsignedQuantumPayment(wallet: WalletEntity, operation: UUID) = quantumPayments(wallet).cancelUnsigned(
+        UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity), operation)
+    suspend fun readQuantumPaymentOutcome(wallet: WalletEntity, cursor: network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader.Cursor? = null): network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader.Page {
+        val endpoint = quantumPaymentEndpoint()
+        return network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader(context,
+            QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+            QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity), cursor)
+    }
+
     private fun quantumCreator(resuming: Boolean, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {
         val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before creating a wallet" }
             .trimEnd('/').plus("/jsonRPC").toHttpUrl()
