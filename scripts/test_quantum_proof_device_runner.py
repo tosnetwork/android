@@ -41,17 +41,20 @@ else: sys.exit(99)
     def test_incomplete_suite_cannot_pass(self):
         self.assertNotEqual(self.run_gate('OK (4 tests)').returncode, 0)
 
+    def test_previous_suite_without_simulation_cannot_pass(self):
+        self.assertNotEqual(self.run_gate('OK (7 tests)').returncode, 0)
+
     def test_failure_output_cannot_pass(self):
-        self.assertNotEqual(self.run_gate('OK (7 tests)\nFAILURES!!!').returncode, 0)
+        self.assertNotEqual(self.run_gate('OK (8 tests)\nFAILURES!!!').returncode, 0)
 
     def test_crash_cannot_pass(self):
         self.assertNotEqual(self.run_gate('INSTRUMENTATION_FAILED: process crashed').returncode, 0)
 
     def test_failed_command_cannot_pass(self):
-        self.assertNotEqual(self.run_gate('OK (7 tests)', 1).returncode, 0)
+        self.assertNotEqual(self.run_gate('OK (8 tests)', 1).returncode, 0)
 
     def test_complete_selected_suite_passes(self):
-        result = self.run_gate('OK (7 tests)')
+        result = self.run_gate('OK (8 tests)')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('quantum-proof-device: PASS', result.stdout)
 

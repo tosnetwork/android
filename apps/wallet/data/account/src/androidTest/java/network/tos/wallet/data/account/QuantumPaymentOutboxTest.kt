@@ -46,8 +46,32 @@ class QuantumPaymentOutboxTest {
             val first = outbox.reserve(payment, now)
             assertEquals(first.id, QuantumPaymentOutbox(context).pending(identity)!!.id)
             assertThrows(IllegalStateException::class.java) { outbox.reserve(payment, now) }
+            val original = journal.readBytes()
+            try {
+                val malformed = JSONObject(original.toString(Charsets.UTF_8))
+                malformed.getJSONObject("intent").put("amount", 1.0)
+                journal.writeText(malformed.toString())
+                assertThrows(IllegalStateException::class.java) { outbox.pending(identity) }
+            } finally { journal.writeBytes(original) }
+            assertEquals(first.id, outbox.pending(identity)!!.id)
             outbox.cancelUnsigned(first)
             assertNull(outbox.pending(identity))
+            val start = java.util.concurrent.CountDownLatch(1)
+            val workers = java.util.concurrent.Executors.newFixedThreadPool(2)
+            try {
+                val attempts = (0..1).map {
+                    workers.submit<Pair<QuantumPaymentOutbox.Entry?, Throwable?>> {
+                        check(start.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        try { Pair(outbox.reserve(payment, now), null) }
+                        catch (error: Throwable) { Pair(null, error) }
+                    }
+                }
+                start.countDown()
+                val results = attempts.map { it.get(5, java.util.concurrent.TimeUnit.SECONDS) }
+                assertEquals(1, results.count { it.first != null })
+                assertEquals(1, results.count { it.second is IllegalStateException })
+                outbox.cancelUnsigned(results.single { it.first != null }.first!!)
+            } finally { start.countDown(); workers.shutdownNow() }
             val second = outbox.reserve(payment, now)
             assertThrows(IOException::class.java) {
                 outbox.sign(second) {
@@ -60,6 +84,15 @@ class QuantumPaymentOutboxTest {
             assertNull(retained.signedBOC)
             assertThrows(IllegalStateException::class.java) { outbox.cancelUnsigned(retained) }
             assertThrows(IllegalStateException::class.java) { outbox.reserve(payment, now) }
+            val retainedBytes = journal.readBytes()
+            val orphan = File(journal.parentFile, "${UUID.randomUUID()}.pending")
+            try {
+                assertTrue(orphan.createNewFile())
+                assertThrows(IllegalStateException::class.java) { QuantumPaymentOutbox(context).pending(identity) }
+                assertTrue("Uncertain write must not be silently deleted", orphan.isFile)
+                assertArrayEquals(retainedBytes, journal.readBytes())
+            } finally { orphan.delete() }
+            assertEquals(second.id, outbox.pending(identity)!!.id)
         } finally {
             journal.delete()
             File(context.noBackupFilesDir, "quantum-proof-checkpoints/$id").deleteRecursively()

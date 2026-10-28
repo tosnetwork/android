@@ -55,7 +55,11 @@ class ActionsHolder(parent: ViewGroup): Holder<Item.Actions>(parent, R.layout.vi
                 return@setOnClickListener
             }
 
-            navigation?.add(SendScreen.newInstance(item.wallet, type = SendScreen.Companion.Type.Default))
+            if (item.wallet.isQuantum) {
+                navigation?.add(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newInstance(item.wallet))
+            } else {
+                navigation?.add(SendScreen.newInstance(item.wallet, type = SendScreen.Companion.Type.Default))
+            }
         }
         sendView.setEnabledAlpha(isSendEnabled)
         scanView.setEnabledAlpha(isScanEnabled)
