@@ -84,6 +84,7 @@ jobs:
           script: |
             make test_quantum_proof_device
             make test_quantum_history_transport_device
+            make test_quantum_expiry_device
       - name: Retain native device test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,6 +92,7 @@ jobs:
           name: quantum-proof-device-${{ github.sha }}
           path: |
             build/quantum-proof-device/instrumentation.log
+            build/quantum-expiry-device/instrumentation.log
             apps/wallet/data/account/build/outputs/androidTest-results/connected/
             apps/wallet/data/account/build/reports/androidTests/connected/
           if-no-files-found: warn

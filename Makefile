@@ -28,6 +28,12 @@ test_v1_emulator:
 
 test_quantum_proof_runner:
 	python3 scripts/test_quantum_proof_device_runner.py
+	python3 scripts/test_quantum_expiry_device_runner.py
+
+.PHONY: test_quantum_expiry_device
+test_quantum_expiry_device:
+	$(GRADLE) :apps:wallet:data:account:assembleDebugAndroidTest
+	bash scripts/test_quantum_expiry_device.sh
 
 test_quantum_proof_device:
 	$(GRADLE) :lib:security:assembleDebugAndroidTest
