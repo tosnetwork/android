@@ -1,6 +1,7 @@
 .PHONY: test_quantum_history_transport_device test_quantum_proof_runner test_quantum_proof_device test_classic_recovery_controls compile release test_unit test_lint test_brand_boundary test_v1_static test_v1_emulator test_quantum_model test_signer_tos_emulator test_v1_emulator_matrix test_v1_localnet test_release_artifacts test_all test_ci test_v1_acceptance
 
-GRADLE := ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8'
+GRADLE_JVM_ARGS ?= -Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+GRADLE := ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=$(GRADLE_JVM_ARGS)'
 
 compile:
 	$(GRADLE) :apps:wallet:instance:main:assembleDefaultDebug :apps:wallet:instance:main:assembleDefaultDebugAndroidTest :apps:wallet:data:account:assembleDebugAndroidTest :apps:signer:assembleDebug :apps:signer:assembleDebugAndroidTest
