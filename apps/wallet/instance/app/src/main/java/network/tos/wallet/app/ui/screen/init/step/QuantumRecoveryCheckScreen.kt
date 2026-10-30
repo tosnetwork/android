@@ -24,7 +24,13 @@ class QuantumRecoveryCheckScreen : BaseFragment(R.layout.fragment_init_quantum_r
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         view.findViewById<HeaderView>(R.id.header).doOnCloseClick = { initViewModel.routePopBackStack() }
-        val indexes = initViewModel.newWalletRecoveryCheckIndices()
+        val indexes = initViewModel.newWalletRecoveryCheckIndices() ?: run {
+            // A restored Fragment can precede the new ViewModel's asynchronous
+            // setup. Never accept an absent process-local backup challenge.
+            view.findViewById<TextHeaderView>(R.id.text).desciption = getString(R.string.quantum_backup_check_interrupted)
+            view.findViewById<Button>(R.id.button).isEnabled = false
+            return
+        }
         view.findViewById<TextHeaderView>(R.id.text).desciption = getString(
             R.string.quantum_backup_check_hint, indexes[0] + 1, indexes[1] + 1, indexes[2] + 1
         )

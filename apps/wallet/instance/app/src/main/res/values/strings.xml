@@ -43,6 +43,7 @@
     <string name="quantum_backup_check_title">Confirm your recovery phrase</string>
     <string name="quantum_backup_check_hint">Enter words %1$d, %2$d, and %3$d from your written recovery phrase.</string>
     <string name="quantum_backup_check_continue">Confirm and continue</string>
+    <string name="quantum_backup_check_interrupted">Backup confirmation was interrupted. Go back to reveal and confirm your recovery phrase again.</string>
     <string name="quantum_backup_check_error">Those words do not match. Check your written recovery phrase and try again.</string>
     <string name="quantum_create_another">Create another wallet</string>
     <string name="quantum_resume_creation">Resume unfinished wallet</string>

@@ -40,11 +40,12 @@ class QuantumCreationUiTest {
     private val device = UiDevice.getInstance(instrumentation)
     private var coldRecovery = false
     private var displayedBackup: List<String>? = null
+    private val revisitBackupChallenge get() = InstrumentationRegistry.getArguments().getString("quantumBackupBackNavigation") == "true"
     @get:Rule val failureEvidence = object : TestWatcher() {
         override fun failed(error: Throwable, description: Description) {
             // Capture before runner cleanup closes the failed product screen.
             runCatching { captureActualPaymentStatus() }
-            val secretScreen = coldRecovery || device.hasObject(By.text("Back up your recovery phrase")) ||
+            val secretScreen = coldRecovery || revisitBackupChallenge || device.hasObject(By.text("Back up your recovery phrase")) ||
                 device.hasObject(By.text("Confirm your recovery phrase"))
             if (!secretScreen) runCatching { device.dumpWindowHierarchy(File(context.cacheDir, "quantum-ui-failure.xml")) }
             if (!secretScreen) runCatching { device.takeScreenshot(File(context.cacheDir, "quantum-ui-failure.png")) }
@@ -190,10 +191,26 @@ class QuantumCreationUiTest {
             input.text = words[index]
         }
         if (coldRecovery) displayedBackup = words.toList()
-        words.clear()
-        device.pressBack()
-        click("Confirm and continue")
-        assertTrue(device.wait(Until.hasObject(By.text("Customize your Wallet")), 15000))
+        try {
+            device.pressBack()
+            click("Confirm and continue")
+            assertTrue(device.wait(Until.hasObject(By.text("Customize your Wallet")), 15000))
+            if (revisitBackupChallenge) {
+                device.pressBack()
+                if (!device.wait(Until.hasObject(By.text("Confirm your recovery phrase")), 3000)) device.pressBack()
+                assertTrue("Back navigation must restore the backup challenge", device.wait(Until.hasObject(By.text("Confirm your recovery phrase")), 15000))
+                val repeated = device.findObjects(By.res("network.tos.wallet", "word_input_text"))
+                assertEquals(3, repeated.size)
+                repeated.forEach { input ->
+                    val index = input.parent.findObject(By.res("network.tos.wallet", "word_input_index"))
+                        .text.removeSuffix(":").toInt() - 1
+                    input.text = words[index]
+                }
+                device.pressBack()
+                click("Confirm and continue")
+                assertTrue(device.wait(Until.hasObject(By.text("Customize your Wallet")), 15000))
+            }
+        } finally { words.clear() }
     }
 
     @Test fun temporaryProofCleanupRemovesNativeFilesAndRefusesUnexpectedEntries() {

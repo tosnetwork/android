@@ -333,9 +333,9 @@ class InitViewModel(
         routeTo(InitRoute.QuantumRecoveryCheck)
     }
 
-    fun newWalletRecoveryCheckIndices(): List<Int> = recoveryChallengeIndices.toList().also {
-        check(type == InitArgs.Type.New && it.size == 3)
-    }
+    fun newWalletRecoveryCheckIndices(): List<Int>? = recoveryChallengeIndices.takeIf {
+        type == InitArgs.Type.New && generatedMnemonic != null && recoveryPhraseWasRevealed && it.size == 3
+    }?.toList()
 
     fun newWalletRecoveryWordIsCorrect(index: Int, answer: String): Boolean {
         val wordIndex = recoveryChallengeIndices.getOrNull(index) ?: return false
@@ -350,7 +350,8 @@ class InitViewModel(
         val normalized = answers.map { TosV1Mnemonic.normalize(listOf(it)).singleOrNull() ?: "" }
         if (normalized != recoveryChallengeIndices.map(words::get)) return false
         savedState.quantumRecoveryPhraseConfirmed = true
-        recoveryChallengeIndices = emptyList()
+        // The challenge fragment remains in the back stack. Keep its indices
+        // for this phrase until a new phrase is generated or the flow ends.
         routeTo(InitRoute.LabelAccount)
         return true
     }
