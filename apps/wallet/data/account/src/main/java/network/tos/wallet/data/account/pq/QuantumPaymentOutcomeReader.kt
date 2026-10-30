@@ -18,10 +18,15 @@ class QuantumPaymentOutcomeReader(
     class Receipt private constructor(
         private val binding: QuantumAuthorizationBinding,
         private val observation: QuantumAccountReader.Observation,
-        val transactionHash: String, val logicalTime: String, val outcome: Outcome,
+        val transactionHash: String, val logicalTime: String, val outcome: Outcome, val mismatchReason: String?,
     ) {
         val operationId: UUID = binding.operationId
         internal val identity: TosQuantumSelfPayIdentity get() = binding.identity
+        internal fun provenTarget(entry: QuantumPaymentOutbox.Entry, now: Long): org.json.JSONObject {
+            requireCurrent(entry, now)
+            return org.json.JSONObject(observation.proof.requestAtCheckpoint(QuantumAccountReader.rawAddress(identity), maximumAge = 300)
+                .toString(Charsets.UTF_8)).getJSONObject("target")
+        }
         internal fun requireCurrent(entry: QuantumPaymentOutbox.Entry, now: Long) {
             observation.requireFresh(now)
             check(observation.identity == entry.identity && sameProfile(observation.profile, entry.profile))
@@ -30,11 +35,12 @@ class QuantumPaymentOutcomeReader(
         companion object {
             /** The private receipt constructor is reachable only after this authenticated chain walk. */
             internal suspend fun read(reader: QuantumPaymentOutcomeReader, id: UUID, identity: TosQuantumSelfPayIdentity,
-                                      cursor: Cursor?, limit: Int): Page {
+                                      cursor: Cursor?, limit: Int, retirement: Boolean = false): Page {
                 require(limit in 1..20)
                 return reader.perform(identity) { running ->
                     val record = QuantumCreationRecord.load(reader.context, id); check(record.id == id && record.identity == identity)
-                    val outbox = QuantumPaymentOutbox(reader.context); val entry = checkNotNull(outbox.pending(identity))
+                    val outbox = QuantumPaymentOutbox(reader.context)
+                    val entry = if (retirement) outbox.retirementSnapshot(identity) else checkNotNull(outbox.pending(identity))
                     check(sameProfile(entry.profile, record.profile))
                     val binding = QuantumAuthorizationBinding.capture(entry)
                     val bytes = checkNotNull(entry.signedBOC) { "Signing outcome is unknown; no message hash is available" }
@@ -60,13 +66,19 @@ class QuantumPaymentOutcomeReader(
                         if (tx.inbound?.hash == externalHash) {
                             check(tx.inbound.kind == "external_in" && tx.inbound.destination == address)
                             receipt = Receipt(binding, observation, tx.hash, tx.logicalTime,
-                                if (tx.matchesPayment(externalHash, entry.intent)) Outcome.SenderSent else Outcome.IncludedWithoutExactTransfer)
+                                if (tx.matchesPayment(externalHash, entry.intent)) Outcome.SenderSent else Outcome.IncludedWithoutExactTransfer,
+                                tx.paymentMismatchReason(externalHash, entry.intent))
                             break
                         }
                     }
                     observation.requireFresh(reader.now()); running()
-                    outbox.validateBinding(binding)
-                    receipt?.let { outbox.validateReceipt(it, reader.now()) }
+                    if (retirement) {
+                        outbox.validateRetirementBinding(binding)
+                        receipt?.let { outbox.validateRetirementReceipt(it, reader.now()) }
+                    } else {
+                        outbox.validateBinding(binding)
+                        receipt?.let { outbox.validateReceipt(it, reader.now()) }
+                    }
                     Page(entry.id, receipt, if (receipt == null && time != "0") Cursor(id, binding, historicalTime, time, hash, newer) else null,
                         count, shardTime, shardTime > binding.deadline)
                 }
@@ -84,6 +96,12 @@ class QuantumPaymentOutcomeReader(
     suspend fun expiry(id: UUID, identity: TosQuantumSelfPayIdentity): QuantumExpiredAuthorization = perform(identity) { running ->
         QuantumExpiredAuthorization.acquire(context, accounts, id, identity, now, running)
     }
+    /** Recovery obtains proofs against a validated full snapshot, including after canonical unlink. */
+    suspend fun retirementExpiry(id: UUID, identity: TosQuantumSelfPayIdentity): QuantumExpiredAuthorization = perform(identity) { running ->
+        QuantumExpiredAuthorization.acquire(context, accounts, id, identity, now, running, retirement = true)
+    }
+    suspend fun retirementOutcome(id: UUID, identity: TosQuantumSelfPayIdentity, cursor: Cursor? = null, limit: Int = 20): Page =
+        Receipt.read(this, id, identity, cursor, limit, retirement = true)
     private suspend fun <T> perform(identity: TosQuantumSelfPayIdentity, body: (() -> Unit) -> T): T {
         val originalFailure = AtomicReference<Throwable?>()
         try {

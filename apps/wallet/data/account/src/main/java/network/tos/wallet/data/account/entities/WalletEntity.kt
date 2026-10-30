@@ -160,6 +160,9 @@ data class WalletEntity(
     // Enabled when the dedicated authenticated self-pay send flow is installed.
     val isSendSupported: Boolean get() = !isQuantum && !isWatchOnly
 
+    /** Quantum is sendable only through its dedicated proof-backed TOS payment flow. */
+    val isQuantumSelfPayAvailable: Boolean get() = isQuantum
+
     val isTonConnectSupported: Boolean
         get() = !isQuantum && type != Wallet.Type.Watch
 

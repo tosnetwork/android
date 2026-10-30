@@ -54,6 +54,10 @@ class QuantumHistoryScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet) {
     override fun ScreenContent() {
         QuantumHistoryContent(wallet, visible, coinDetails, { finish() }, {
             navigation?.add(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newInstance(wallet))
+        }, {
+            navigation?.add(network.tos.wallet.app.ui.screen.qr.QRScreen.newInstance(wallet))
+        }, {
+            navigation?.add(network.tos.wallet.app.ui.screen.settings.main.SettingsScreen.newInstance(wallet, "quantum-history"))
         }) { cursor ->
             accounts.readQuantumHistory(wallet, cursor)
         }
@@ -64,7 +68,7 @@ private data class PageRequest(val index: Int, val cursor: QuantumHistoryReader.
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDetails: Boolean, onClose: () -> Unit, onPayment: () -> Unit,
+private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDetails: Boolean, onClose: () -> Unit, onPayment: () -> Unit, onReceive: () -> Unit, onConfigureRpc: () -> Unit,
                                   read: suspend (QuantumHistoryReader.Cursor?) -> QuantumHistoryReader.Page) {
     var request by remember(wallet.id) { mutableStateOf(PageRequest(0, null, true, 0)) }
     var records by remember(wallet.id) { mutableStateOf<List<QuantumHistoryTransaction>>(emptyList()) }
@@ -74,6 +78,7 @@ private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDe
     var status by remember(wallet.id) { mutableStateOf("Verifying history…") }
     var balance by remember(wallet.id) { mutableStateOf<String?>(null) }
     var loading by remember(wallet.id) { mutableStateOf(true) }
+    var historyUnavailable by remember(wallet.id) { mutableStateOf(false) }
     var detail by remember(wallet.id) { mutableStateOf<QuantumHistoryTransaction?>(null) }
     var operationID by remember(wallet.id) { mutableStateOf(0L) }
     val date = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
@@ -83,6 +88,7 @@ private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDe
         records = emptyList(); balance = null; detail = null
         if (!visible) { loading = false; return@LaunchedEffect }
         loading = true; status = "Verifying history…"
+        historyUnavailable = false
         try {
             var loaded: QuantumHistoryReader.Page? = null
             for (attempt in 0..2) {
@@ -104,12 +110,14 @@ private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDe
             balance = QuantumHistoryTransaction.formatNano(page.balanceNano)
             val checkpoint = date.format(Date(page.checkpointTime * 1000))
             status = if (records.isEmpty()) "No transactions. Verified through $checkpoint." else "Verified through $checkpoint"
+            historyUnavailable = false
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
             currentCoroutineContext().ensureActive()
             if (operationID != id) return@LaunchedEffect
             records = emptyList(); balance = null; starts = listOf(null); pageIndex = 0; next = null
             status = "Unable to verify history. Refresh to try again."
+            historyUnavailable = true
         } finally { if (operationID == id) loading = false }
     }
     Column(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }.background(UIKit.colorScheme.background.page).statusBarsPadding().padding(horizontal = 16.dp)) {
@@ -117,10 +125,18 @@ private fun QuantumHistoryContent(wallet: WalletEntity, visible: Boolean, coinDe
         TextButton(onClick = onPayment, modifier = Modifier.testTag("quantum.payment.open")) {
             Text("Pending payment / review", color = UIKit.colorScheme.text.accent)
         }
+        TextButton(onClick = onReceive, modifier = Modifier.testTag("quantum.receive.open")) {
+            Text("Receive TOS", color = UIKit.colorScheme.text.accent)
+        }
         Text(if (coinDetails) "TOS" else "History", style = UIKit.typography.h2, color = UIKit.colorScheme.text.primary)
         if (coinDetails) Text(balance ?: if (loading) "Verifying balance…" else "Balance unavailable", color = UIKit.colorScheme.text.primary)
         Text(status, color = UIKit.colorScheme.text.secondary,
             modifier = Modifier.testTag("quantum.history.status").semantics { contentDescription = status })
+        if (historyUnavailable && !loading) {
+            TextButton(onClick = onConfigureRpc, modifier = Modifier.testTag("quantum.history.configureRpc")) {
+                Text("Configure TOS node", color = UIKit.colorScheme.text.accent)
+            }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(enabled = !loading, onClick = { request = PageRequest(0, null, true, request.serial + 1) },
                 modifier = Modifier.testTag("quantum.history.newest")) { Text("Refresh", color = UIKit.colorScheme.text.accent) }

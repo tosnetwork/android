@@ -16,11 +16,14 @@ EXPECTED = {
         'sameCellRootsWithDifferentRequestOrMessageBytesRejectOldCapability',
         'malformedJournalAndUncertainPendingCannotBecomeExpiryAuthority',
     )
-} | {(PREFIX + 'QuantumPaymentOutboxTest', 'unsignedCancelAndSigningFailurePreserveSingleDurableAuthorization')}
+} | {(PREFIX + 'QuantumPaymentOutboxTest', name) for name in (
+    'unsignedCancelAndSigningFailurePreserveSingleDurableAuthorization',
+    'cancellationInsideCustodySigningKeepsDurableSlotAndNeverBroadcasts',
+)}
 
 
 def check(output):
-    assert '\nOK (9 tests)\n' in '\n' + output + '\n', 'Expected exactly nine tests'
+    assert '\nOK (10 tests)\n' in '\n' + output + '\n', 'Expected exactly ten tests'
     assert not any(marker in output for marker in (
         'FAILURES!!!', 'INSTRUMENTATION_FAILED', 'initializationError',
         'Process crashed', 'INSTRUMENTATION_ABORTED',
@@ -36,7 +39,7 @@ def check(output):
         elif line.startswith('INSTRUMENTATION_STATUS_CODE: '):
             code = int(line.partition(': ')[2])
             assert code in (0, 1), 'Skipped, assumed, failed or unknown test status'
-            assert fields.get('numtests') == '9' and fields.get('current') in {str(i) for i in range(1, 10)}
+            assert fields.get('numtests') == '10' and fields.get('current') in {str(i) for i in range(1, 11)}
             key = fields.get('class'), fields.get('test')
             assert key in EXPECTED, 'Unexpected or missing test identity'
             (starts if code == 1 else finishes)[key] += 1
@@ -52,4 +55,4 @@ if __name__ == '__main__':
         check(Path(sys.argv[1]).read_text())
     except (AssertionError, ValueError) as error:
         sys.exit(f'quantum-expiry-device: FAILED: {error}')
-    print('quantum-expiry-device: PASS (8 expiry + 1 outbox; no skips)')
+    print('quantum-expiry-device: PASS (8 expiry + 2 outbox; no skips)')

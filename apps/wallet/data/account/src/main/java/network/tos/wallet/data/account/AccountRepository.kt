@@ -1,6 +1,7 @@
 package network.tos.wallet.data.account
 
 import network.tos.blockchain.TosV1Mnemonic
+import network.tos.blockchain.TosQuantumMnemonic
 import network.tos.wallet.data.account.entities.WalletIdentity
 import network.tos.wallet.data.account.pq.QuantumCreationCustody
 import network.tos.wallet.data.account.pq.QuantumWalletCreation
@@ -16,6 +17,10 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import network.tos.wallet.data.account.pq.QuantumCreationRecord
+import network.tos.wallet.data.account.pq.sameProfile
+import network.tos.security.pq.QuantumCrypto
+import network.tos.security.pq.QuantumKdf
+import network.tos.security.pq.QuantumRole
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 
@@ -31,6 +36,7 @@ import network.tos.blockchain.ton.extensions.toAccountId
 import network.tos.blockchain.tron.KeychainTrxAccountsProvider
 import network.tos.ledger.ton.LedgerAccount
 import network.tos.wallet.api.API
+import network.tos.wallet.api.tos.TosRpcEndpoint
 import network.tos.wallet.api.entity.value.Blockchain
 import network.tos.wallet.api.entity.value.BlockchainAddress
 import network.tos.wallet.data.account.entities.MessageBodyEntity
@@ -66,6 +72,10 @@ class AccountRepository(
     private val api: API,
     private val rnLegacy: RNLegacy,
 ) {
+
+    class PendingQuantumPhraseIdentityMismatch : IllegalStateException(
+        "Saved recovery phrase does not match the pending wallet identity"
+    )
 
     companion object {
         fun newWalletId(): String {
@@ -234,6 +244,23 @@ class AccountRepository(
             else wallet.classicalPublicKey?.let(vaultSource::getMnemonic)
     }
 
+    /** Mnemonic for an unpublished Quantum creation, shown only inside the authenticated creation flow. */
+    suspend fun pendingQuantumMnemonic(id: String): Array<String>? = withContext(Dispatchers.IO) {
+        val walletId = UUID.fromString(id)
+        quantumCreationMutex.withLock {
+            val record = QuantumCreationRecord.load(context, walletId)
+            val words = quantumCustody.mnemonic(walletId)?.toList() ?: return@withLock null
+            if (record.identity !in phraseMatchingIdentities(words, listOf(record.identity))) {
+                throw PendingQuantumPhraseIdentityMismatch()
+            }
+            words.toTypedArray()
+        }
+    }
+
+    suspend fun pendingQuantumProfile(id: String): QuantumNetworkProfile = withContext(Dispatchers.IO) {
+        QuantumCreationRecord.load(context, UUID.fromString(id)).profile
+    }
+
     suspend fun getPrivateKey(id: String): PrivateKeyEd25519? {
         val wallet = database.getAccount(id) ?: return null
         return wallet.classicalPublicKey?.let { vaultSource.getPrivateKey(it) }
@@ -392,16 +419,136 @@ class AccountRepository(
         quantumCreationMutex.withLock { quantumCustody.pendingIds().map { QuantumCreationRecord.load(context, it) } }
     }
 
-    suspend fun addNewWallet(label: Wallet.NewLabel, mnemonic: List<String>,
+    /** Authenticate the configured node against the local anchor before exposing a new recovery phrase. */
+    suspend fun preflightQuantumNetwork(
+        creationId: String? = null,
+        confirmedProfile: QuantumNetworkProfile? = null
+    ) {
+        require(creationId == null || confirmedProfile == null) { "Choose either a pending creation or a confirmed recovery profile" }
+        val profile = confirmedProfile ?: if (creationId == null) {
+            QuantumNetworkProfile.effective(context)
+        } else {
+            pendingQuantumProfile(creationId)
+        }
+        val id = UUID.randomUUID()
+        val session = QuantumProofSession(context, id, profile.anchor())
+        var failure: Throwable? = null
+        try {
+            val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
+            val transport = QuantumProofHttpTransport(endpoint, quantumHttpClient)
+            val now = System.currentTimeMillis() / 1000
+            val proof = runInterruptible(Dispatchers.IO) {
+                session.enrollBound(QuantumSelfPayNetwork.request(300), now, transport)
+            }
+            val verifiedAt = System.currentTimeMillis() / 1000
+            QuantumSelfPayNetwork.bind(proof, profile.globalId, verifiedAt, 300).requireFresh(verifiedAt)
+        } catch (error: Throwable) {
+            failure = error
+            throw error
+        } finally {
+            try { session.removeCheckpoint() }
+            catch (cleanupError: Throwable) {
+                if (failure != null) failure.addSuppressed(cleanupError) else throw cleanupError
+            }
+        }
+    }
+
+    suspend fun addNewWallet(label: Wallet.NewLabel, mnemonic: List<String>, profile: QuantumNetworkProfile,
+                             backupConfirmed: Boolean,
                              onEnrollment: (UUID) -> Unit = {}): WalletEntity = withContext(Dispatchers.IO) {
+        require(backupConfirmed) { "Save and confirm the recovery phrase before creating the wallet" }
         quantumCreationMutex.withLock {
-            val profile = requireNotNull(QuantumNetworkProfile.selected(context)) { "Configure a trusted Quantum network before creating a wallet" }
             quantumCreator(false, onEnrollment).create(mnemonic, profile) { finishQuantumRegistration(it, label) }
         }
     }
 
+    /** Restore a native phrase into its deterministic Quantum identity, reusing an existing
+     * enrollment UUID when the same identity is already present on this device. */
+    suspend fun restoreQuantumWallet(
+        label: Wallet.NewLabel,
+        mnemonic: List<String>,
+        confirmedProfile: QuantumNetworkProfile
+    ): WalletEntity = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            require(mnemonic.size == 24 && TosV1Mnemonic.isValid(mnemonic)) { "A valid 24-word native TOS phrase is required" }
+            // Restore on the exact trust profile the user reviewed before
+            // entering the passcode and account details.
+            val selected = confirmedProfile
+            val wallets = database.getAccounts().filter { it.version == WalletVersion.QUANTUM_SELF_PAY }
+            val records = linkedMapOf<UUID, QuantumCreationRecord>()
+            for (wallet in wallets) {
+                val id = runCatching { UUID.fromString(wallet.id) }.getOrNull()
+                    ?: throw IllegalStateException("Existing Quantum wallet has an invalid identifier")
+                val record = runCatching { QuantumCreationRecord.load(context, id) }.getOrNull()
+                if (record != null) records[id] = record
+            }
+            for (id in quantumCustody.pendingIds()) {
+                records.putIfAbsent(id, QuantumCreationRecord.load(context, id))
+            }
+
+            val identities = (records.values.map { it.identity } + wallets.mapNotNull { it.quantumIdentity }).distinct()
+            val matchingIdentities = phraseMatchingIdentities(mnemonic, identities)
+            val matching = records.values.filter { it.identity in matchingIdentities }
+            require(matching.size <= 1) { "Phrase matches multiple local Quantum enrollments; resolve duplicate wallet data first" }
+            val record = matching.singleOrNull()
+            if (record != null) {
+                require(sameProfile(record.profile, selected)) {
+                    "This phrase is enrolled for a different trusted network profile"
+                }
+                val row = wallets.singleOrNull { it.id == record.id.toString() }
+                require(wallets.count { it.quantumIdentity == record.identity } <= 1) {
+                    "Duplicate Quantum wallet identities exist on this device"
+                }
+                if (row != null) require(row.identity == WalletIdentity.Quantum(record.identity) && row.type == Wallet.Type.Default) {
+                    "Existing Quantum wallet row does not match its enrollment"
+                }
+                quantumCreator(true).resume(record, mnemonic) { finishQuantumRegistration(it, label) }
+            } else {
+                require(wallets.none { row ->
+                    val identity = row.quantumIdentity ?: return@none false
+                    identity in matchingIdentities
+                }) { "Matching Quantum wallet has no protected enrollment record; refusing to create a duplicate" }
+                quantumCreator(false).create(mnemonic, selected) { finishQuantumRegistration(it, label) }
+            }
+        }
+    }
+
+    private fun phraseMatchingIdentities(
+        mnemonic: List<String>,
+        identities: List<network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity>
+    ): Set<network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity> {
+        val groups = identities.groupBy { identity ->
+            val authority = identity.wallet.initialAuthority
+            Pair(authority.globalId, authority.namespace.joinToString("") { "%02x".format(it.toInt() and 255) })
+        }
+        val matches = mutableSetOf<network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity>()
+        for (group in groups.values) {
+            val authority = group.first().wallet.initialAuthority
+            val namespace = authority.namespace
+            var master = ByteArray(0)
+            var primary = ByteArray(0)
+            var rescue = ByteArray(0)
+            try {
+                master = TosQuantumMnemonic.masterAndWipePassword(mnemonic, CharArray(0))
+                primary = QuantumKdf.deriveAndWipe(QuantumKdf.Material.PRIMARY, master.copyOf(), namespace, authority.globalId, 0, 0)
+                rescue = QuantumKdf.deriveAndWipe(QuantumKdf.Material.RESCUE, master.copyOf(), namespace, authority.globalId, 0, 0)
+                val primaryKey = QuantumCrypto.publicKey(QuantumRole.PRIMARY, primary)
+                val rescueKey = QuantumCrypto.publicKey(QuantumRole.RESCUE, rescue)
+                for (identity in group) {
+                    val candidate = identity.wallet.initialAuthority
+                    if (primaryKey.contentEquals(candidate.primaryKey) && rescueKey.contentEquals(candidate.rescueKey)) {
+                        matches.add(identity)
+                    }
+                }
+            } finally { master.fill(0); primary.fill(0); rescue.fill(0); namespace.fill(0) }
+        }
+        return matches
+    }
+
     /** The original UUID, anchor and birth identity survive every retry, including a process restart. */
-    suspend fun resumeQuantumCreation(id: UUID, label: Wallet.NewLabel, mnemonic: List<String>? = null): WalletEntity = withContext(Dispatchers.IO) {
+    suspend fun resumeQuantumCreation(id: UUID, label: Wallet.NewLabel, backupConfirmed: Boolean,
+                                     mnemonic: List<String>? = null): WalletEntity = withContext(Dispatchers.IO) {
+        require(backupConfirmed) { "Save and confirm the recovery phrase before resuming the wallet" }
         quantumCreationMutex.withLock {
             val record = QuantumCreationRecord.load(context, id)
             val words = mnemonic ?: requireNotNull(quantumCustody.mnemonic(id)) { "Creation mnemonic is unavailable" }.toList()
@@ -411,8 +558,7 @@ class AccountRepository(
 
     suspend fun readQuantumAccount(wallet: WalletEntity): QuantumSelfPayAccount.Snapshot = runInterruptible(Dispatchers.IO) {
         val identity = requireNotNull(wallet.quantumIdentity) { "Quantum identity required" }
-        val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before reading a wallet" }
-            .trimEnd('/').plus("/jsonRPC").toHttpUrl()
+        val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
         QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
             .read(UUID.fromString(wallet.id), identity)
     }
@@ -421,15 +567,12 @@ class AccountRepository(
     suspend fun readQuantumHistory(wallet: WalletEntity, cursor: QuantumHistoryReader.Cursor? = null,
                                    limit: Int = 20): QuantumHistoryReader.Page {
         val identity = requireNotNull(wallet.quantumIdentity) { "Quantum identity required" }
-        val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before reading a wallet" }
-            .trimEnd('/').plus("/jsonRPC").toHttpUrl()
+        val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
         return QuantumHistoryReader(QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
             QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(UUID.fromString(wallet.id), identity, cursor, limit)
     }
 
-    private fun quantumPaymentEndpoint() = requireNotNull(api.customTosRpcEndpoint) {
-        "Configure the wallet RPC endpoint"
-    }.trimEnd('/').plus("/jsonRPC").toHttpUrl()
+    private fun quantumPaymentEndpoint() = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
 
     private fun quantumPayments(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumPaymentCoordinator {
         val identity = requireNotNull(wallet.quantumIdentity)
@@ -489,9 +632,44 @@ class AccountRepository(
             QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity), cursor)
     }
 
+    /** Validated recovery snapshot; completed housekeeping never touches a canonical authorization. */
+    suspend fun quantumRetirementEntry(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumPaymentOutbox.Entry? = runInterruptible(Dispatchers.IO) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val record = QuantumCreationRecord.load(context, UUID.fromString(wallet.id))
+        check(record.identity == identity)
+        val outbox = network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context)
+        var state = outbox.retirementStatus(identity)
+        if (state.completedCleanupOnly) { outbox.cleanupCompletedRetirement(); state = outbox.retirementStatus(identity) }
+        val entry = if (state.recovering) outbox.retirementSnapshot(identity, state.operationId) else outbox.pending(identity)
+        entry?.also { check(sameProfile(it.profile, record.profile)) }
+    }
+    suspend fun quantumLocalPaymentHistory(wallet: WalletEntity) = runInterruptible(Dispatchers.IO) {
+        network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).localHistory(requireNotNull(wallet.quantumIdentity))
+    }
+    suspend fun quantumRetirementStatus(wallet: WalletEntity) = runInterruptible(Dispatchers.IO) {
+        network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).retirementStatus(requireNotNull(wallet.quantumIdentity))
+    }
+    suspend fun readQuantumRetirementOutcome(wallet: WalletEntity, cursor: network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader.Cursor? = null): network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader.Page {
+        val endpoint = quantumPaymentEndpoint()
+        return network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader(context,
+            QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+            QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).retirementOutcome(UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity), cursor)
+    }
+    /** Explicit user action only: fresh proof beyond original deadline, no signing or broadcasting. */
+    suspend fun endExpiredQuantumAuthorization(wallet: WalletEntity, operation: UUID,
+        receipt: network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader.Receipt? = null): network.tos.wallet.data.account.pq.QuantumAuthorizationRetirement.Summary {
+        val endpoint = quantumPaymentEndpoint()
+        val expiry = network.tos.wallet.data.account.pq.QuantumPaymentOutcomeReader(context,
+            QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+            QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).retirementExpiry(UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity))
+        check(expiry.operationId == operation)
+        return runInterruptible(Dispatchers.IO) {
+            network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).retire(expiry, receipt) { System.currentTimeMillis() / 1000 }
+        }
+    }
+
     private fun quantumCreator(resuming: Boolean, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {
-        val endpoint = requireNotNull(api.customTosRpcEndpoint) { "Configure the RPC node before creating a wallet" }
-            .trimEnd('/').plus("/jsonRPC").toHttpUrl()
+        val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
         return QuantumWalletCreation(
             network = { id, selected ->
                 runInterruptible(Dispatchers.IO) {

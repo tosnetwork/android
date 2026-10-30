@@ -19,7 +19,7 @@ rpc() {
 curl --fail --silent --show-error --max-time 5 "$control/readyz" | jq -e '.ok == true' >/dev/null
 
 for port in "${rpc_ports[@]}"; do
-  rpc "$port" getMasterchainInfo '{}' | jq -e '.ok == true and .result.last.seqno > 0' >/dev/null
+  rpc "$port" getMasterchainInfo '{}' | jq -e '.jsonrpc == "2.0" and .id == 1 and (has("error") | not) and .result.last.seqno > 0' >/dev/null
 done
 
 converged=false

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<uikit.widget.ColumnLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <uikit.widget.HeaderView
+        android:id="@+id/header"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:icon="@drawable/ic_chevron_left_16" />
+
+    <uikit.widget.TextHeaderView
+        android:id="@+id/text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/offsetLarge"
+        android:layout_marginTop="@dimen/offsetMedium"
+        android:title="@string/quantum_backup_check_title" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/offsetMedium"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <uikit.widget.ColumnLayout
+            android:id="@+id/inputs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="@dimen/offsetLarge"
+            android:paddingVertical="@dimen/offsetMedium" />
+    </androidx.core.widget.NestedScrollView>
+
+    <Button
+        android:id="@+id/button"
+        style="@style/Widget.App.Button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/offsetLarge"
+        android:layout_marginTop="@dimen/offsetMedium"
+        android:layout_marginBottom="@dimen/offsetMedium"
+        android:enabled="false"
+        android:text="@string/quantum_backup_check_continue"
+        android:textAppearance="@style/TextAppearance.Label1" />
+</uikit.widget.ColumnLayout>

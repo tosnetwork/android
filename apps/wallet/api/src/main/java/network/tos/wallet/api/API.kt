@@ -117,6 +117,9 @@ class API(
     val customTosRpcEndpoint: String?
         get() = tosRpcSettings.customEndpoint
 
+    val customTosRpcEndpointFlow
+        get() = tosRpcSettings.endpointFlow
+
     fun tosRpcEndpoint(testnet: Boolean): String = customTosRpcEndpoint
         ?: if (testnet) config.tosApiTestnetHost else config.tosApiMainnetHost
 

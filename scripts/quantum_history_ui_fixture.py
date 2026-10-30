@@ -22,8 +22,9 @@ def main():
     p.add_argument('--upstream', required=True)
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--tos-root', type=Path, required=True)
-    p.add_argument('--fixture', type=Path, required=True)
-    p.add_argument('--signer', type=Path, required=True)
+    p.add_argument('--fixture', type=Path)
+    p.add_argument('--signer', type=Path)
+    p.add_argument('--funding-control', help='Loopback localnet faucet instead of a predeployed fixture')
     p.set_defaults(history=True)
     a = p.parse_args()
     endpoint = urllib.parse.urlsplit(a.upstream)
@@ -33,10 +34,22 @@ def main():
     a.out.mkdir(parents=True, exist_ok=False, mode=0o700)
     sys.path.insert(0, str(a.tos_root / 'test/auth-extensions'))
     from cells import Cell, from_boc
-    fixture = json.loads(a.fixture.read_text())
-    if fixture['global_id'] != 1 or fixture['namespace'] != '42' * 32:
-        raise ValueError('requires isolated public self-pay genesis')
-    source = fixture['accounts']['active']
+    fixture = None
+    source = None
+    if a.funding_control:
+        control = urllib.parse.urlsplit(a.funding_control)
+        if (control.scheme != 'http' or control.hostname not in ('127.0.0.1', 'localhost')
+                or control.username or control.password or control.path or control.query or control.fragment
+                or a.fixture or a.signer):
+            raise ValueError('requires an exclusive loopback localnet faucet')
+    else:
+        if not a.fixture or not a.signer:
+            raise ValueError('requires fixture and signer, or localnet faucet')
+        fixture = json.loads(a.fixture.read_text())
+        if fixture['global_id'] != 1 or fixture['namespace'] != '42' * 32:
+            raise ValueError('requires isolated public self-pay genesis')
+        source = fixture['accounts']['active']
+    faucet_attempted = False
     poisoned = False
     corrupt_history = False
     counts = {'proofs': 0, 'ordinary': 0, 'transactions': 0, 'legacy_history': 0}
@@ -64,12 +77,28 @@ def main():
         return {'address': recipient}
 
     def fund():
-        nonlocal funded, funded_boc
+        nonlocal funded, funded_boc, faucet_attempted
         current = snapshot()
         if funded is not None:
             if funded['address'] != current['address']:
                 raise ValueError('recipient changed after funding')
-            rpc('sendBocReturnHash', {'boc': funded_boc})
+            if funded_boc is not None:
+                rpc('sendBocReturnHash', {'boc': funded_boc})
+            return funded
+        if a.funding_control:
+            if faucet_attempted:
+                raise ValueError('previous faucet result is unknown; do not submit another transfer')
+            faucet_attempted = True
+            (a.out / 'faucet-attempt.json').write_text(json.dumps(current) + '\n')
+            request = urllib.request.Request(a.funding_control.rstrip('/') + '/transfer',
+                data=json.dumps({'address': current['address'], 'amount': 10}).encode(),
+                headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(request, timeout=65) as response:
+                reply = json.loads(response.read(65537))
+            if int(reply['after']) - int(reply['before']) != 10_000_000_000:
+                raise ValueError('faucet did not confirm the expected funding delta')
+            funded = dict(current, nanos='10000000000', status='funded')
+            (a.out / 'fund.json').write_text(json.dumps(funded, indent=2) + '\n')
             return funded
         # This seed is already public in the canonical regression vector.
         private = a.out / 'private-public-test-signer'

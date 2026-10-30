@@ -23,7 +23,7 @@ class TosRpcException(val code: Int, message: String) : Exception(message)
 
 class TosRpcClient(
     private val httpClient: OkHttpClient,
-    /** (testnet) -> base url, e.g. https://rpc.tos.network or http://127.0.0.1:18545 */
+    /** (testnet) -> base URL or full supported JSON-RPC URL. */
     private val baseUrlProvider: (Boolean) -> String,
     private val apiKeyProvider: () -> String? = { null },
     private val endpointConfigProvider: ((Boolean) -> Pair<String, String?>)? = null,
@@ -35,7 +35,7 @@ class TosRpcClient(
     fun callRaw(method: String, params: JSONObject = JSONObject(), testnet: Boolean = false): Any {
         val (baseUrl, apiKey) = endpointConfigProvider?.invoke(testnet)
             ?: (baseUrlProvider(testnet) to apiKeyProvider())
-        val endpoint = baseUrl.trimEnd('/') + "/jsonRPC"
+        val endpoint = TosRpcEndpoint.jsonRpcUrl(baseUrl)
         val payload = JSONObject()
             .put("jsonrpc", "2.0")
             .put("id", idCounter.incrementAndGet())

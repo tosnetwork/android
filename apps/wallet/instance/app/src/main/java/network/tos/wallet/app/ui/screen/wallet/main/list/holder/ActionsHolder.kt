@@ -24,7 +24,7 @@ class ActionsHolder(parent: ViewGroup): Holder<Item.Actions>(parent, R.layout.vi
 
     override fun onBind(item: Item.Actions) {
         val isWatchOnly = item.walletType == Wallet.Type.Watch
-        val isSendEnabled = item.wallet.isSendSupported
+        val isSendEnabled = item.wallet.isSendSupported || item.wallet.isQuantumSelfPayAvailable
         val isScanEnabled = item.wallet.isSendSupported
 
         scanView.setOnClickListener {

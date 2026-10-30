@@ -67,11 +67,13 @@ class QRScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet), BaseFragment
     }
 
     private fun share() {
+        if (viewModel.address.isBlank()) return
         val intent = shareIntent(viewModel.address)
         startActivity(Intent.createChooser(intent, getString(Localization.share)))
     }
 
     private fun copy() {
+        if (viewModel.address.isBlank()) return
         val color = when (wallet.type) {
             Wallet.Type.Watch, Wallet.Type.Testnet -> requireContext().accentOrangeColor
             else -> requireContext().backgroundContentTintColor

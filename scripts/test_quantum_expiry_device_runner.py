@@ -15,10 +15,10 @@ def transcript():
         for code in (1, 0):
             lines.extend((f'INSTRUMENTATION_STATUS: class={klass}',
                           f'INSTRUMENTATION_STATUS: current={index}',
-                          'INSTRUMENTATION_STATUS: numtests=9',
+                          'INSTRUMENTATION_STATUS: numtests=10',
                           f'INSTRUMENTATION_STATUS: test={method}',
                           f'INSTRUMENTATION_STATUS_CODE: {code}'))
-    return '\n'.join(lines) + '\nOK (9 tests)\nINSTRUMENTATION_CODE: -1\n'
+    return '\n'.join(lines) + '\nOK (10 tests)\nINSTRUMENTATION_CODE: -1\n'
 
 
 class GateTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class GateTests(unittest.TestCase):
         check(transcript())
 
     def test_partial_count_and_summary_only_rejected(self):
-        for bad in (transcript().replace('OK (9 tests)', 'OK (8 tests)'), 'OK (9 tests)\n', 'OK (0 tests)\n'):
+        for bad in (transcript().replace('OK (10 tests)', 'OK (9 tests)'), 'OK (10 tests)\n', 'OK (0 tests)\n'):
             with self.assertRaises(AssertionError): check(bad)
 
     def test_skip_assumption_and_failure_status_rejected(self):

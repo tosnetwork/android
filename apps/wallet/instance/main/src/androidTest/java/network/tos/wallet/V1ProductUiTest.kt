@@ -151,6 +151,31 @@ class V1ProductUiTest {
                 assertEquals("", instrumentation.targetContext.getWalletBadges(Wallet.Type.Default, version).toString())
             }
             assertTrue(instrumentation.targetContext.getWalletBadges(Wallet.Type.Watch, WalletVersion.V4R2).isNotEmpty())
+            assertTrue(waitText("TOS", 30000))
+            val original = runBlocking { repository.getSelectedWallet() }!!
+            val ordered = versions.map { version -> wallets.single { it.version == version } } + original
+            for (target in ordered) {
+                val selected = runBlocking { repository.getSelectedWallet() }!!
+                clickText(selected.label.name)
+                assertTrue(waitText("Add wallet", 10000))
+                if (!device.hasObject(By.text(target.label.name))) {
+                    androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true))
+                        .setMaxSearchSwipes(8).scrollIntoView(androidx.test.uiautomator.UiSelector().text(target.label.name))
+                }
+                clickText(target.label.name)
+                val selectionDeadline = SystemClock.elapsedRealtime() + 10000
+                while (runBlocking { repository.getSelectedWallet() }?.id != target.id && SystemClock.elapsedRealtime() < selectionDeadline) {
+                    SystemClock.sleep(100)
+                }
+                assertEquals(target.id, runBlocking { repository.getSelectedWallet() }?.id)
+                assertTrue(waitText("Receive", 15000))
+                clickText("Receive")
+                assertTrue(waitText("Receive TOS", 10000))
+                assertTrue("Selected classic account must expose its own receive address", waitText(target.address, 10000))
+                device.pressBack()
+                assertTrue(waitText("TOS", 15000))
+            }
+            assertEquals(original.id, runBlocking { repository.getSelectedWallet() }?.id)
             runBlocking { repository.logout(); GlobalContext.get().get<PasscodeManager>().reset() }
         }
     }
@@ -431,15 +456,15 @@ class V1ProductUiTest {
     }
 
     private fun restoreAmbiguousPhrase(choice: String, version: WalletVersion, publicKey: String, address: String) {
+        GlobalContext.get().get<API>().setCustomTosRpcEndpoint("http://10.0.2.2:18545")
         launchImport()
         setPhrase(AMBIGUOUS_MNEMONIC)
         clickText("Continue")
         assertTrue(waitText("Choose wallet format", 30_000))
         assertTrue(hasText("Restore TOS Wallet", ignoreCase = true))
         assertTrue(hasText("Restore Legacy Wallet", ignoreCase = true))
-        // AlertDialog applies all-caps to its button labels on current Android.
-        val button = if (choice == "Restore TOS Wallet") "button1" else "button3"
-        device.wait(Until.findObject(By.res("android", button)), 10_000)!!.click()
+        assertTrue(hasText("Restore Quantum Wallet", ignoreCase = true))
+        clickText(choice)
         assertTrue(waitText("Create passcode", 30_000))
         enterPin("1234")
         assertTrue(waitText("Re-enter passcode"))
@@ -449,7 +474,21 @@ class V1ProductUiTest {
         assertTrue(waitText("TOS", 60_000))
         val repository = GlobalContext.get().get<AccountRepository>()
         runBlocking {
-            val wallet = repository.getWallets().single()
+            val restored = repository.getWallets()
+            val allowed = if (version == WalletVersion.TOSV5R1) setOf(version) else setOf(
+                WalletVersion.V5R1, WalletVersion.V5BETA, WalletVersion.V4R2,
+                WalletVersion.V4R1, WalletVersion.V3R2, WalletVersion.V3R1)
+            assertTrue(restored.isNotEmpty() && restored.size <= allowed.size)
+            assertEquals(restored.size, restored.map { it.accountId }.distinct().size)
+            for (candidate in restored) {
+                assertFalse(candidate.isQuantum)
+                assertTrue(candidate.version in allowed)
+                assertEquals(publicKey, candidate.publicKey.hex())
+                clearCachedPrivateKey(candidate)
+                assertEquals(publicKey, repository.getPrivateKey(candidate.id)!!.publicKey().hex())
+            }
+            // Unknown asset discovery deliberately retains additional classic versions.
+            val wallet = restored.single { it.version == version }
             assertEquals(version, wallet.version)
             assertEquals(address, wallet.accountId)
             assertEquals(publicKey, wallet.publicKey.hex())
@@ -583,6 +622,7 @@ class V1ProductUiTest {
 
     @Test
     fun deterministicFundedWalletFixtureReachesHomeAndPersists() {
+        GlobalContext.get().get<API>().setCustomTosRpcEndpoint("http://10.0.2.2:18545")
         val accountRepository = GlobalContext.get().get<AccountRepository>()
         val passcodeManager = GlobalContext.get().get<PasscodeManager>()
         val wallet = runBlocking {
@@ -741,18 +781,19 @@ class V1ProductUiTest {
     @Test
     fun offlineHistoryShowsErrorAndRetryReconnects() {
         val api = GlobalContext.get().get<API>()
+        val originalEndpoint = api.tosRpcEndpoint(false)
         api.setCustomTosRpcEndpoint("http://10.0.2.2:1")
         try {
             launch()
             clickText("History")
             assertTrue("Offline history did not expose a recoverable error", waitText("Unknown error", 30_000))
             assertTrue(waitText("Retry", 5_000))
-            api.resetCustomTosRpcEndpoint()
+            api.setCustomTosRpcEndpoint(originalEndpoint)
             clickText("Retry")
             assertTrue("History did not recover after reconnect", waitText("Today", 30_000))
             assertFalse(hasText("Unknown error"))
         } finally {
-            api.resetCustomTosRpcEndpoint()
+            api.setCustomTosRpcEndpoint(originalEndpoint)
         }
         assertNoFatalCrash()
     }

@@ -23,7 +23,7 @@ object QuantumNetworkDialog {
     }
 
     fun show(context: Context) {
-        val current = runCatching { QuantumNetworkProfile.selected(context) }.getOrNull()
+        val current = runCatching { QuantumNetworkProfile.effective(context) }.getOrNull()
         fun field(hintId: Int, value: String?, signedNumber: Boolean = false) = AppCompatEditText(context).apply {
             hint = context.getString(hintId)
             contentDescription = hint
@@ -42,7 +42,9 @@ object QuantumNetworkDialog {
         val dialog = AlertDialog.Builder(context).setTitle(R.string.quantum_trusted_network)
             .setMessage(R.string.quantum_trusted_network_hint)
             .setView(ScrollView(context).apply { addView(fields) })
-            .setPositiveButton(R.string.rpc_node_save, null).setNegativeButton(android.R.string.cancel, null).create()
+            .setPositiveButton(R.string.rpc_node_save, null)
+            .setNeutralButton(R.string.quantum_use_official_mainnet, null)
+            .setNegativeButton(android.R.string.cancel, null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
@@ -50,6 +52,12 @@ object QuantumNetworkDialog {
                     QuantumNetworkProfile(globalId, root.text.toString(), file.text.toString()).save(context)
                     dialog.dismiss()
                 } catch (_: Exception) { id.error = context.getString(R.string.quantum_network_invalid) }
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                val profile = QuantumNetworkProfile.officialMainnet()
+                id.setText(profile.globalId.toString())
+                root.setText(profile.rootHash)
+                file.setText(profile.fileHash)
             }
         }
         dialog.show()

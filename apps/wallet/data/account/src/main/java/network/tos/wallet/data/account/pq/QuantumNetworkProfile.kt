@@ -21,6 +21,13 @@ class QuantumNetworkProfile(val globalId: Int, rootHash: String, fileHash: Strin
     }
 
     companion object {
+        /** Mainnet zerostate from tosnetwork/tos main at 245ac393a9b13400929857bb21faa61cfc2b4998. */
+        fun officialMainnet() = QuantumNetworkProfile(
+            1,
+            "17a3a92992aabea785a7a090985a265cd31f323d849da51239737e321fb05569",
+            "5e994fcf4d425c0a6ce6a792594b7173205f740a39cd56f537defd28b48a0f6e"
+        )
+
         private const val KEY = "trusted_network_v1"
         private fun preferences(context: Context) = context.getSharedPreferences("tos_quantum_network", Context.MODE_PRIVATE)
         private fun hash(value: String): String {
@@ -41,5 +48,9 @@ class QuantumNetworkProfile(val globalId: Int, rootHash: String, fileHash: Strin
             require(value.length <= 1024) { "Invalid network configuration" }
             return parse(JSONObject(value))
         }
+
+        /** Fresh installs use the source-pinned official mainnet profile.
+         * Invalid persisted selections still fail closed instead of falling back. */
+        fun effective(context: Context): QuantumNetworkProfile = selected(context) ?: officialMainnet()
     }
 }

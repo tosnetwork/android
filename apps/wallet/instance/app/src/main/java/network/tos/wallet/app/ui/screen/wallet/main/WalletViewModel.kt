@@ -6,6 +6,7 @@ import network.tos.icu.Coins
 import network.tos.network.NetworkMonitor
 import network.tos.wallet.app.Environment
 import network.tos.wallet.app.RemoteConfig
+import network.tos.wallet.app.R
 import network.tos.wallet.app.core.DevSettings
 import network.tos.wallet.app.core.entities.AssetsEntity.Companion.sort
 import network.tos.wallet.app.extensions.hasPushPermission
@@ -123,6 +124,14 @@ class WalletViewModel(
     ) { _, _, _, lastLt -> lastLt }
 
     init {
+        var previousCustomRpcEndpoint = api.customTosRpcEndpoint
+        collectFlow(api.customTosRpcEndpointFlow) { endpoint ->
+            if (endpoint != previousCustomRpcEndpoint) {
+                previousCustomRpcEndpoint = endpoint
+                if (wallet.isQuantum) refresh()
+            }
+        }
+
         viewModelScope.launch {
             val cached = if (wallet.isQuantum) listOf(Item.Skeleton(true)) else
                 screenCacheSource.getWalletScreen(wallet) ?: listOf(Item.Skeleton(true))
@@ -379,7 +388,12 @@ class WalletViewModel(
     }
 
     private fun unavailableBalanceItems(): List<Item> = listOf(
-        Item.Alert("Balance unavailable", "The wallet balance could not be verified. Pull down to retry.", null, null),
+        Item.Alert(
+            "Balance unavailable",
+            "The wallet balance could not be verified. Configure a TOS node or pull down to retry.",
+            getString(R.string.quantum_configure_node),
+            "tos://settings"
+        ),
         Item.Actions(wallet, network.tos.wallet.api.entity.TokenEntity.TON, api.config.swapUri,
             tronEnabled = false, isSwapDisabled = true, isStakingDisabled = true)
     )

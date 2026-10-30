@@ -63,6 +63,14 @@ class InitModelState(private val savedStateHandle: SavedStateHandle) {
         get() = savedStateHandle["quantum_creation_id"]
         set(value) = savedStateHandle.set("quantum_creation_id", value)
 
+    var quantumRecovery: Boolean
+        get() = savedStateHandle["quantum_recovery"] ?: false
+        set(value) = savedStateHandle.set("quantum_recovery", value)
+
+    var quantumRecoveryPhraseConfirmed: Boolean
+        get() = savedStateHandle["quantum_recovery_phrase_confirmed"] ?: false
+        set(value) = savedStateHandle.set("quantum_recovery_phrase_confirmed", value)
+
     var passcode: String?
         get() = savedStateHandle[PASSCODE_KEY]
         set(value) = savedStateHandle.set(PASSCODE_KEY, value)

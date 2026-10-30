@@ -42,6 +42,7 @@ import network.tos.wallet.data.account.AccountRepository
 import network.tos.wallet.data.account.Wallet
 import network.tos.wallet.data.account.WalletColor
 import network.tos.wallet.data.account.entities.WalletEntity
+import network.tos.wallet.data.account.pq.QuantumNetworkProfile
 import network.tos.wallet.data.backup.BackupRepository
 import network.tos.wallet.data.passcode.PasscodeManager
 import network.tos.wallet.data.rn.RNLegacy
@@ -142,6 +143,15 @@ class InitViewModel(
     private val isPinSet = AtomicBoolean(false)
     private val executing = AtomicBoolean(false)
     private var generatedMnemonic: List<String>? = null
+    // Keep Quantum recovery phrases process-local; SavedStateHandle can be
+    // serialized with activity state. An interrupted recovery can be re-entered.
+    private var quantumRecoveryMnemonic: List<String>? = null
+    private var quantumRecoveryProfile: QuantumNetworkProfile? = null
+    private var newWalletNetworkProfile: QuantumNetworkProfile? = null
+    private var hadPinAtFlowStart = false
+    private var recoveryPhraseAuthorized = false
+    private var recoveryPhraseWasRevealed = false
+    private var recoveryChallengeIndices: List<Int> = emptyList()
 
     private val requestSetPinCode: Boolean
         get() = (type == InitArgs.Type.New || type == InitArgs.Type.Import || type == InitArgs.Type.Testnet) && !isPinSet.get()
@@ -164,6 +174,8 @@ class InitViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             setLoading(true)
             isPinSet.set(passcodeManager.hasPinCode())
+            hadPinAtFlowStart = isPinSet.get()
+            if (type == InitArgs.Type.New) savedState.quantumRecoveryPhraseConfirmed = false
 
             args.labelName?.let(::setInitName)
 
@@ -177,7 +189,14 @@ class InitViewModel(
                 if (savedState.quantumCreationId != null) check(isPinSet.get()) { "Existing creation requires its PIN" }
                 start()
             } catch (error: kotlinx.coroutines.CancellationException) { throw error }
-            catch (_: Exception) { setLoading(false); _eventFlow.tryEmit(InitEvent.CreationFailed) }
+            catch (error: Exception) {
+                setLoading(false)
+                if (error is AccountRepository.PendingQuantumPhraseIdentityMismatch) {
+                    _eventFlow.tryEmit(InitEvent.PendingPhraseIdentityMismatch)
+                } else {
+                    _eventFlow.tryEmit(InitEvent.CreationFailed)
+                }
+            }
         }
     }
 
@@ -203,14 +222,22 @@ class InitViewModel(
             }
 
             InitArgs.Type.New -> {
+                val pendingId = savedState.quantumCreationId
+                if (pendingId == null) {
+                    generateNewWallet()
+                } else {
+                    generatedMnemonic = requireNotNull(accountRepository.pendingQuantumMnemonic(pendingId)) {
+                        "The unfinished wallet recovery phrase is unavailable"
+                    }.toList()
+                    newWalletNetworkProfile = accountRepository.pendingQuantumProfile(pendingId)
+                }
                 if (requestSetPinCode) {
                     routeTo(InitRoute.CreatePasscode)
                 } else if (environment.isGooglePlayServicesAvailable) {
                     routeTo(InitRoute.Push)
                 } else {
-                    routeTo(InitRoute.LabelAccount)
+                    routeAfterSetup()
                 }
-                if (savedState.quantumCreationId == null) generateNewWallet()
             }
         }
     }
@@ -222,7 +249,15 @@ class InitViewModel(
 
     fun enablePush(enable: Boolean) {
         savedState.enablePush = enable
-        routeTo(InitRoute.LabelAccount)
+        routeAfterSetup()
+    }
+
+    private fun routeAfterSetup() {
+        if (type == InitArgs.Type.New && !savedState.quantumRecoveryPhraseConfirmed) {
+            routeTo(InitRoute.QuantumRecoveryPhrase)
+        } else {
+            routeTo(InitRoute.LabelAccount)
+        }
     }
 
     fun toggleAccountSelection(address: String, selected: Boolean): Boolean {
@@ -270,19 +305,97 @@ class InitViewModel(
         } else if (watchRecoveryAccountId != null) {
             execute(context)
         } else {
-            routeTo(if (environment.isGooglePlayServicesAvailable) InitRoute.Push else InitRoute.LabelAccount)
+            if (environment.isGooglePlayServicesAvailable) routeTo(InitRoute.Push) else routeAfterSetup()
         }
+    }
+
+    suspend fun revealNewWalletRecoveryPhrase(context: Context): List<String>? {
+        if (type != InitArgs.Type.New) return null
+        if (newWalletRecoveryProfile() == null) return null
+        if (hadPinAtFlowStart && !recoveryPhraseAuthorized) {
+            if (!passcodeManager.confirmation(context, context.getString(Localization.app_name))) return null
+            recoveryPhraseAuthorized = true
+        }
+        val words = generatedMnemonic ?: return null
+        recoveryPhraseWasRevealed = true
+        return words.toList()
+    }
+
+    suspend fun newWalletRecoveryProfile(): QuantumNetworkProfile? = when (val pendingId = savedState.quantumCreationId) {
+        null -> newWalletNetworkProfile ?: QuantumNetworkProfile.effective(context)
+        else -> accountRepository.pendingQuantumProfile(pendingId)
+    }
+
+    fun beginNewWalletRecoveryCheck() {
+        check(type == InitArgs.Type.New && recoveryPhraseWasRevealed)
+        val words = requireNotNull(generatedMnemonic)
+        recoveryChallengeIndices = words.indices.shuffled().take(3).sorted()
+        routeTo(InitRoute.QuantumRecoveryCheck)
+    }
+
+    fun newWalletRecoveryCheckIndices(): List<Int> = recoveryChallengeIndices.toList().also {
+        check(type == InitArgs.Type.New && it.size == 3)
+    }
+
+    fun newWalletRecoveryWordIsCorrect(index: Int, answer: String): Boolean {
+        val wordIndex = recoveryChallengeIndices.getOrNull(index) ?: return false
+        val expected = generatedMnemonic?.getOrNull(wordIndex) ?: return false
+        val actual = TosV1Mnemonic.normalize(listOf(answer)).singleOrNull() ?: return false
+        return actual == expected
+    }
+
+    fun confirmNewWalletRecoveryPhrase(answers: List<String>): Boolean {
+        val words = generatedMnemonic ?: return false
+        if (!recoveryPhraseWasRevealed || recoveryChallengeIndices.size != 3 || answers.size != 3) return false
+        val normalized = answers.map { TosV1Mnemonic.normalize(listOf(it)).singleOrNull() ?: "" }
+        if (normalized != recoveryChallengeIndices.map(words::get)) return false
+        savedState.quantumRecoveryPhraseConfirmed = true
+        recoveryChallengeIndices = emptyList()
+        routeTo(InitRoute.LabelAccount)
+        return true
     }
 
     suspend fun setMnemonic(words: List<String>, profileOverride: TosV1Mnemonic.Profile? = null): Boolean {
         val normalized = TosV1Mnemonic.normalize(words)
         val profile = profileOverride ?: TosV1Mnemonic.recoveryProfile(normalized) ?: return false
         if (resolveWallets(normalized, profile)) {
+            quantumRecoveryMnemonic = null
+            quantumRecoveryProfile = null
             savedState.mnemonicProfile = profile
             savedState.mnemonic = normalized
+            savedState.quantumRecovery = false
             return true
         }
         return false
+    }
+
+    suspend fun setQuantumMnemonic(words: List<String>, confirmedProfile: QuantumNetworkProfile): Boolean {
+        val normalized = TosV1Mnemonic.normalize(words)
+        if (normalized.size != 24 || !TosV1Mnemonic.isValid(normalized)) return false
+        savedState.mnemonicProfile = TosV1Mnemonic.Profile.TOS
+        quantumRecoveryMnemonic = normalized.toList()
+        quantumRecoveryProfile = confirmedProfile
+        // Remove any phrase retained by an earlier recovery attempt/version.
+        savedState.mnemonic = null
+        savedState.quantumRecovery = true
+        savedState.accounts = null
+        if (requestSetPinCode) {
+            applyAccountName(emptyList())
+            routeTo(InitRoute.CreatePasscode)
+        } else {
+            routeTo(if (environment.isGooglePlayServicesAvailable) InitRoute.Push else InitRoute.LabelAccount)
+        }
+        return true
+    }
+
+    suspend fun preflightQuantumRecovery(profile: QuantumNetworkProfile) {
+        withContext(Dispatchers.IO) {
+            accountRepository.preflightQuantumNetwork(confirmedProfile = profile)
+        }
+    }
+
+    fun quantumRecoveryNetworkUnavailable() {
+        _eventFlow.tryEmit(InitEvent.QuantumRecoveryNetworkUnavailable)
     }
 
     private suspend fun resolveWallets(mnemonic: List<String>, profile: TosV1Mnemonic.Profile): Boolean =
@@ -570,7 +683,7 @@ class InitViewModel(
                     InitArgs.Type.Keystone -> wallets.addAll(keystoneWallet())
                 }
 
-                if (type == InitArgs.Type.Import || type == InitArgs.Type.Testnet) {
+                if (type == InitArgs.Type.Import || type == InitArgs.Type.Testnet || type == InitArgs.Type.New) {
                     backupRepository.addBackups(wallets.map { it.id })
                 }
 
@@ -585,8 +698,15 @@ class InitViewModel(
                 }
 
                 val selectedWallet = wallets.minByOrNull { it.version }!!
-                if (type == InitArgs.Type.New) accountRepository.completeQuantumCreation(selectedWallet.id)
-                else accountRepository.setSelectedWallet(selectedWallet.id)
+                if (type == InitArgs.Type.New || savedState.quantumRecovery) {
+                    accountRepository.completeQuantumCreation(selectedWallet.id)
+                    if (savedState.quantumRecovery) {
+                        quantumRecoveryMnemonic = null
+                        quantumRecoveryProfile = null
+                        savedState.mnemonic = null
+                        savedState.quantumRecovery = false
+                    }
+                } else accountRepository.setSelectedWallet(selectedWallet.id)
 
                 if (type == InitArgs.Type.Watch) {
                     openScreen(WatchInfoScreen.newInstance(selectedWallet))
@@ -642,10 +762,19 @@ class InitViewModel(
     }
 
     private suspend fun generateNewWallet() = withContext(Dispatchers.IO) {
+        val profile = QuantumNetworkProfile.effective(context)
+        // Every new-wallet entry point must authenticate the same profile that
+        // will be displayed with the backup and used when publishing the wallet.
+        accountRepository.preflightQuantumNetwork(confirmedProfile = profile)
+        newWalletNetworkProfile = profile
         AndroidSecureRandom.seed(entropyHelper.getSeed(512))
         val mnemonic = TosV1Mnemonic.generate(random = AndroidSecureRandom)
         // New-wallet secrets remain in the ViewModel, not in saved instance state.
         generatedMnemonic = mnemonic
+        savedState.quantumRecoveryPhraseConfirmed = false
+        recoveryPhraseAuthorized = false
+        recoveryPhraseWasRevealed = false
+        recoveryChallengeIndices = emptyList()
 
         val (emoji, color) = generateLabel()
 
@@ -657,16 +786,25 @@ class InitViewModel(
     }
 
     private suspend fun newWallet(context: Context): WalletEntity {
-        check(passcodeManager.confirmation(context, context.getString(Localization.app_name))) { "Creation authentication cancelled" }
+        check(savedState.quantumRecoveryPhraseConfirmed) { "Save and confirm the recovery phrase before creating the wallet" }
+        if (!recoveryPhraseAuthorized) {
+            check(passcodeManager.confirmation(context, context.getString(Localization.app_name))) { "Creation authentication cancelled" }
+        }
         val label = buildNewLabel(SimpleAccount(version = WalletVersion.QUANTUM_SELF_PAY))
         val pending = savedState.quantumCreationId
         val wallet = if (pending != null) {
-            accountRepository.resumeQuantumCreation(java.util.UUID.fromString(pending), label, generatedMnemonic)
+            accountRepository.resumeQuantumCreation(java.util.UUID.fromString(pending), label,
+                backupConfirmed = savedState.quantumRecoveryPhraseConfirmed, mnemonic = generatedMnemonic)
         } else {
             val mnemonic = requireNotNull(generatedMnemonic) { "Wallet entropy is not ready" }
-            accountRepository.addNewWallet(label, mnemonic) { savedState.quantumCreationId = it.toString() }
+            val profile = requireNotNull(newWalletNetworkProfile) { "Trusted Quantum network profile is unavailable" }
+            accountRepository.addNewWallet(label, mnemonic, profile,
+                backupConfirmed = savedState.quantumRecoveryPhraseConfirmed) {
+                savedState.quantumCreationId = it.toString()
+            }
         }
         generatedMnemonic = null
+        newWalletNetworkProfile = null
 
         analytics.simpleTrackEvent(
             "wallet_generate",
@@ -677,6 +815,20 @@ class InitViewModel(
 
     private suspend fun importWallet(context: Context): List<WalletEntity> =
         withContext(Dispatchers.IO) {
+            if (savedState.quantumRecovery) {
+                val mnemonic = quantumRecoveryMnemonic ?: throw IllegalStateException(
+                    "Recovery phrase is no longer available in memory. Enter it again to continue."
+                )
+                val profile = quantumRecoveryProfile ?: throw IllegalStateException(
+                    "Confirmed recovery network is no longer available. Review the network and enter the phrase again."
+                )
+                require(TosV1Mnemonic.isValid(mnemonic) && mnemonic.size == 24) { "A valid 24-word native TOS phrase is required" }
+                val label = buildNewLabel(SimpleAccount(version = WalletVersion.QUANTUM_SELF_PAY))
+                val wallet = accountRepository.restoreQuantumWallet(label, mnemonic, profile)
+                savedState.quantumCreationId = wallet.id
+                analytics.simpleTrackEvent("wallet_import", hashMapOf("wallet_type" to wallet.version.title))
+                return@withContext listOf(wallet)
+            }
             val accounts = getSelectedAccounts()
             if (accounts.isEmpty()) {
                 throw IllegalStateException("Wallet versions are not set")

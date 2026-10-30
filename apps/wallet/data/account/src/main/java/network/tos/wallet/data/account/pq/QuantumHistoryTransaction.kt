@@ -33,13 +33,28 @@ class QuantumHistoryTransaction private constructor(
     enum class Outcome { Included, Executed, SendSkipped, ExecutionFailed }
 
     internal fun matchesPayment(externalHash: String, intent: network.tos.blockchain.ton.contract.QuantumPaymentIntent): Boolean =
-        successfulExecution && !otherFeeCurrencies && skippedActions == 0L && messagesCreated == 1L &&
-        inbound?.kind == "external_in" && inbound.hash == externalHash && inbound.destination == account &&
-        outbound.size == 1 && outbound.single().let { out ->
-            out.kind == "internal" && out.source == account && out.destination == QuantumAccountReader.rawAddressFor(intent.recipient) &&
-                !out.otherCurrencies && !out.bounced && out.bounce == intent.bounce && out.amountNano == intent.amount.toString() &&
-                out.bodyHash == QuantumPaymentQuote.hex(intent.body.hash().toByteArray())
-        }
+        paymentMismatchReason(externalHash, intent) == null
+
+    /** Classification detail only; no reason asserts that no funds moved. */
+    internal fun paymentMismatchReason(externalHash: String, intent: network.tos.blockchain.ton.contract.QuantumPaymentIntent): String? = when {
+        !successfulExecution -> "execution-phases-not-successful"
+        otherFeeCurrencies -> "other-fee-currencies"
+        skippedActions != 0L -> "actions-skipped"
+        messagesCreated != 1L -> "created-message-count-not-one"
+        inbound?.kind != "external_in" || inbound.hash != externalHash || inbound.destination != account -> "external-message-mismatch"
+        outbound.size != 1 -> "output-count-not-one"
+        else -> outbound.single().let { output -> when {
+            output.kind != "internal" -> "output-kind-not-internal"
+            output.source != account -> "output-source-mismatch"
+            output.destination != QuantumAccountReader.rawAddressFor(intent.recipient) -> "output-recipient-mismatch"
+            output.otherCurrencies -> "output-other-currencies"
+            output.bounced -> "output-bounced"
+            output.bounce != intent.bounce -> "output-bounce-mismatch"
+            output.amountNano != intent.amount.toString() -> "output-amount-mismatch"
+            output.bodyHash != QuantumPaymentQuote.hex(intent.body.hash().toByteArray()) -> "output-body-mismatch"
+            else -> null
+        } }
+    }
 
     companion object {
         private val hashPattern = Regex("[0-9a-f]{64}")

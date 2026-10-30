@@ -95,7 +95,6 @@ class SettingsScreen(
             is Item.Rate -> openRate()
             is Item.Notifications -> navigation?.add(NotificationsManageScreen.newInstance(screenContext.wallet))
             is Item.TronToggle -> viewModel.toggleTron()
-            is Item.PqWallets -> navigation?.add(network.tos.wallet.app.ui.screen.pq.PqWalletsScreen(screenContext.wallet))
             is Item.RpcNode -> showRpcNodeDialog(item)
             else -> return
         }
