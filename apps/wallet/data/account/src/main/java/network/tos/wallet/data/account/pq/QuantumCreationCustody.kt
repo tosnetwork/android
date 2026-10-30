@@ -1,0 +1,105 @@
+package network.tos.wallet.data.account.pq
+
+import android.content.Context
+import android.content.SharedPreferences
+import network.tos.security.Security
+import network.tos.security.pq.QuantumDeviceKey
+import network.tos.security.pq.QuantumCrypto
+import network.tos.security.pq.QuantumRole
+import network.tos.security.pq.QuantumSeedVault
+import network.tos.security.pq.QuantumPurpose
+import java.util.UUID
+import javax.crypto.SecretKey
+
+/** Dedicated encrypted storage keyed by wallet UUID, never by an Ed25519 key.
+ * Callers authenticate creation, backup and deletion. All writes report persistence failure. */
+internal class QuantumCreationCustody internal constructor(
+    private val preferences: SharedPreferences,
+    private val wrappingKey: (Boolean) -> SecretKey,
+) {
+    constructor(context: Context) : this(Security.pref(context,
+        "_network_tos_quantum_creation_key_", "quantum_creation_custody", requireUnlockedDevice = true),
+        { create -> QuantumDeviceKey.get(create) })
+
+    private val roles = QuantumSeedVault(preferences)
+    private fun mnemonicKey(id: UUID) = "quantum.mnemonic.v1.$id"
+
+    fun saveMnemonic(id: UUID, words: List<String>) = synchronized(lock) {
+        require(words.size == 24 && words.all { it.matches(Regex("[a-z]+")) })
+        val key = mnemonicKey(id)
+        check(!preferences.contains(key)) { "Mnemonic is already enrolled" }
+        check(preferences.edit().putString(key, words.joinToString(" ")).commit()) { "Mnemonic persistence uncertain" }
+    }
+
+    fun mnemonic(id: UUID): Array<String>? = synchronized(lock) {
+        val text = preferences.getString(mnemonicKey(id), null) ?: return@synchronized null
+        require(text.length <= 1024)
+        val words = text.split(" ")
+        require(words.size == 24 && words.all { it.matches(Regex("[a-z]+")) }) { "Invalid stored mnemonic" }
+        words.toTypedArray()
+    }
+
+    fun store(id: UUID, role: QuantumRole, context: QuantumSeedVault.Context, seed: ByteArray): ByteArray = synchronized(lock) {
+        // Key lookup may fail before the vault takes ownership of the buffer.
+        try { roles.importAndWipe(id.toString(), role, context, wrappingKey(true), seed) }
+        finally { seed.fill(0) }
+    }
+
+    fun pendingIds(): List<UUID> = synchronized(lock) {
+        preferences.all.keys.filter { it.startsWith("quantum.mnemonic.v1.") }.map { key ->
+            val value = key.removePrefix("quantum.mnemonic.v1.")
+            UUID.fromString(value).also { require(it.toString() == value) }
+        }.filterNot { preferences.getBoolean("quantum.creation.complete.v1.$it", false) }
+    }
+
+    fun ensureMnemonic(id: UUID, words: List<String>) = synchronized(lock) {
+        val existing = mnemonic(id)
+        if (existing == null) saveMnemonic(id, words)
+        else {
+            require(existing.toList() == words) { "Creation mnemonic differs from enrollment" }
+            // A previous failed commit may have changed the in-memory preferences. Require a
+            // successful persistence operation before treating an existing value as committed.
+            check(preferences.edit().putString(mnemonicKey(id), words.joinToString(" ")).commit()) { "Mnemonic persistence uncertain" }
+        }
+    }
+
+    fun ensureRole(id: UUID, role: QuantumRole, context: QuantumSeedVault.Context, seed: ByteArray): ByteArray = synchronized(lock) {
+        try {
+            val name = "quantum.seed.v1.${role.id}.$id"
+            val existing = preferences.getString(name, null)
+            if (existing == null) store(id, role, context, seed)
+            else {
+                val expected = QuantumCrypto.publicKey(role, seed)
+                val actual = roles.publicKey(id.toString(), role, context, wrappingKey(false))
+                require(actual.contentEquals(expected)) { "Creation key differs from enrollment" }
+                check(preferences.edit().putString(name, existing).commit()) { "Key persistence uncertain" }
+                actual
+            }
+        } finally { seed.fill(0) }
+    }
+
+    fun signPayment(id: UUID, context: QuantumSeedVault.Context, expectedPublicKey: ByteArray, digest: ByteArray): ByteArray =
+        roles.sign(id.toString(), QuantumRole.PRIMARY, context, wrappingKey(false), expectedPublicKey, QuantumPurpose.SELF_PAY, digest)
+
+    fun markComplete(id: UUID) = synchronized(lock) {
+        check(preferences.contains(mnemonicKey(id)))
+        for (role in QuantumRole.entries) check(preferences.contains("quantum.seed.v1.${role.id}.$id"))
+        check(preferences.edit().putBoolean("quantum.creation.complete.v1.$id", true).commit()) { "Creation completion persistence uncertain" }
+    }
+
+    fun delete(id: UUID) = synchronized(lock) {
+        val editor = preferences.edit().remove(mnemonicKey(id)).remove("quantum.creation.complete.v1.$id")
+        for (role in QuantumRole.entries) editor.remove("quantum.seed.v1.${role.id}.$id")
+        check(editor.commit()) { "Quantum key deletion uncertain" }
+    }
+
+    fun deleteAll() = synchronized(lock) {
+        // Clear failed enrollment attempts too, without touching other wallet services.
+        val editor = preferences.edit()
+        preferences.all.keys.filter { it.startsWith("quantum.mnemonic.v1.") || it.startsWith("quantum.seed.v1.") || it.startsWith("quantum.creation.complete.v1.") }
+            .forEach(editor::remove)
+        check(editor.commit()) { "Quantum key deletion uncertain" }
+    }
+
+    companion object { private val lock = Any() }
+}

@@ -26,7 +26,8 @@ python3 scripts/tos_rpc_fault_proxy.py &
 fault_proxy_pid=$!
 trap 'kill "$fault_proxy_pid" 2>/dev/null || true' EXIT
 methods=(
-  unavailableNodeCanBeReplacedFromOnboardingBeforeWalletCreation
+  unavailableNodeCanBeReplacedBeforeImport
+  classicRecoveryImportsAssetsWithoutVersionSelectionOrBadges
   legacyV5WalletRetainsAddressAfterStorageRoundTrip
   activeLegacyV5SignsBroadcastsAndPersistsOnLocalTos
   realOldDatabasesMigrateWithoutChangingLegacyWalletOrKey

@@ -18,6 +18,7 @@ import network.tos.wallet.data.token.TokenRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 class QRViewModel(
     app: Application,
@@ -47,10 +48,12 @@ class QRViewModel(
     var token: TokenEntity by mutableStateOf(initialToken)
         private set
 
-    var address: String by mutableStateOf("")
+    // TOS receive must be immediately available. Never show it under a TRON
+    // asset selection while that optional chain address is still loading.
+    var address: String by mutableStateOf(if (initialToken.isTrc20) "" else wallet.address)
         private set
 
-    private lateinit var tronAddress: String
+    private var tronAddress: String = ""
 
     private val tokensFlow = settingsRepository.tokenPrefsChangedFlow.map { _ ->
         tokenRepository.mustGet(settingsRepository.currency, wallet.accountId, wallet.testnet)
@@ -76,11 +79,20 @@ class QRViewModel(
 
     init {
         viewModelScope.launch {
-            tronAddress = accountRepository.getTronAddress(wallet.id) ?: ""
-            address = if (token.isTrc20) {
-                tronAddress
-            } else {
-                wallet.address
+            // Quantum launch receive is TOS-only. Do not derive a TRON account
+            // from the Quantum recovery phrase, even when this screen was
+            // reached through an unrelated TRON token deep link.
+            if (wallet.isQuantum) return@launch
+            try {
+                tronAddress = accountRepository.getTronAddress(wallet.id).orEmpty()
+                if (token.isTrc20) address = tronAddress
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // TOS receiving remains available even if optional TRON data
+                // is absent or its local lookup fails.
+                tronAddress = ""
+                if (token.isTrc20) address = ""
             }
         }
     }

@@ -16,7 +16,7 @@ find_library(log-lib log)
 target_link_libraries(libsodium sodium::sodium-static ${log-lib})
 
 add_subdirectory(pq)
-add_library(tos_mobile_pq SHARED pq_jni.cpp)
+add_library(tos_mobile_pq SHARED pq_jni.cpp local_directory_jni.cpp)
 if(NOT TOS_FEE_STATE_TARGET_DIR)
   message(FATAL_ERROR "The Quantum fee state source build must supply TOS_FEE_STATE_TARGET_DIR")
 endif()

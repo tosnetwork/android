@@ -5,7 +5,7 @@ import java.security.SecureRandom
 enum class QuantumRole(val id: Int, val seedSize: Int, val publicKeySize: Int, val signatureSize: Int, val entropySize: Int) {
     PRIMARY(1, 32, 1312, 2420, 32), RESCUE(2, 48, 32, 7856, 16)
 }
-enum class QuantumPurpose(val id: Int) { AUTH(1), POP(2), PREPARATION(3) }
+enum class QuantumPurpose(val id: Int) { AUTH(1), POP(2), PREPARATION(3), SELF_PAY(4), SELF_PAY_POP(5) }
 internal object QuantumNative {
     init { System.loadLibrary("tos_mobile_pq") }
     external fun publicKey(role: Int, seed: ByteArray): ByteArray?

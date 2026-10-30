@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 # Expanded immutable revision is read from the checked-in pin, never an endpoint.
 
@@ -45,12 +46,32 @@ def build():
     if not (host / 'CMakeCache.txt').exists():
         subprocess.run(['cmake', '-S', str(source), '-B', str(host), '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DTOS_USE_ROCKSDB=OFF', '-DTOS_USE_ABSEIL=OFF'], check=True)
     target = work / args.abi
-    subprocess.run(['python3', str(source / 'scripts/build-embedded-proof-android.py'), '--ndk', str(args.ndk), '--host-build', str(host), '--build-dir', str(target), '--abi', args.abi], check=True)
+    jobs = int(os.environ.get('TOS_PROOF_BUILD_JOBS', '4'))
+    if not 1 <= jobs <= 32: raise RuntimeError('Proof build jobs must be in 1..32')
+    subprocess.run(['python3', str(source / 'scripts/build-embedded-proof-android.py'), '--ndk', str(args.ndk), '--host-build', str(host), '--build-dir', str(target), '--abi', args.abi, '--jobs', str(jobs)], check=True)
     library = target / 'lite-client/proof-verify/libtosproofverify.so'
     destination = args.output.resolve() / args.abi
     destination.mkdir(parents=True, exist_ok=True)
     shutil.copy2(library, destination / library.name)
-    (destination / 'PROVENANCE.json').write_text(json.dumps({'revision': head, 'abi': args.abi, 'sha256': hashlib.sha256(library.read_bytes()).hexdigest()}, indent=2) + '\n')
+    # Client-owned JNI adapter links the pinned portable C ABI directly. No
+    # dynamic symbol lookup or older-code fallback can bypass hash binding.
+    host_tag = 'darwin-x86_64' if sys.platform == 'darwin' else 'linux-x86_64'
+    compiler = args.ndk.resolve() / 'toolchains/llvm/prebuilt' / host_tag / 'bin/clang++'
+    triple = {'arm64-v8a': 'aarch64-linux-android', 'armeabi-v7a': 'armv7a-linux-androideabi',
+              'x86': 'i686-linux-android', 'x86_64': 'x86_64-linux-android'}[args.abi]
+    adapter = destination / 'libtoswalletreceipt.so'
+    subprocess.run([str(compiler), '--target=' + triple + '24', '-std=c++17', '-O2',
+                    '-fPIC', '-shared', '-static-libstdc++', '-fvisibility=hidden',
+                    '-fstack-protector-strong', '-D_FORTIFY_SOURCE=2', '-Wall', '-Wextra', '-Werror',
+                    '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                    '-Wl,--exclude-libs,ALL', '-Wl,--build-id=sha1',
+                    '-Wl,-z,relro,-z,now', '-Wl,-z,noexecstack',
+                    '-Wl,--no-undefined', '-Wl,-z,max-page-size=16384',
+                    '-Wl,-z,common-page-size=16384', '-Wl,-soname,libtoswalletreceipt.so',
+                    '-I' + str(source / 'lite-client/proof-verify'),
+                    str(repository / 'lib/security/src/main/cpp/wallet_receipt_jni.cpp'),
+                    '-L' + str(destination), '-ltosproofverify', '-o', str(adapter)], check=True)
+    (destination / 'PROVENANCE.json').write_text(json.dumps({'revision': head, 'abi': args.abi, 'sha256': hashlib.sha256(library.read_bytes()).hexdigest(), 'receipt_adapter_sha256': hashlib.sha256(adapter.read_bytes()).hexdigest()}, indent=2) + '\n')
 
 def main():
     # Gradle can execute independent Exec tasks concurrently even with project

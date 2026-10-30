@@ -21,6 +21,7 @@ data class InitArgs(
     val accounts: List<AccountItem>?,
     val keystone: WalletEntity.Keystone?,
     val watchRecoveryAccountId: String? = null,
+    val quantumCreationId: String? = null,
 ) : BaseArgs() {
 
     enum class Type {
@@ -28,6 +29,7 @@ data class InitArgs(
     }
 
     private companion object {
+        private const val ARG_QUANTUM_CREATION_ID = "quantum_creation_id"
         private const val ARG_TYPE = "type"
         private const val ARG_PUBLIC_KEY = "pk"
         private const val ARG_NAME = "name"
@@ -58,6 +60,7 @@ data class InitArgs(
         ledgerConnectData = bundle.getParcelableCompat<LedgerConnectData>(ARG_LEDGER_CONNECT_DATA),
         keystone = bundle.getParcelableCompat(ARG_KEYSTONE),
         watchRecoveryAccountId = bundle.getString(ARG_WATCH_RECOVERY_ACCOUNT_ID),
+        quantumCreationId = bundle.getString(ARG_QUANTUM_CREATION_ID),
     )
 
     override fun toBundle(): Bundle = Bundle().apply {
@@ -68,6 +71,7 @@ data class InitArgs(
         ledgerConnectData?.let { putParcelable(ARG_LEDGER_CONNECT_DATA, it) }
         keystone?.let { putParcelable(ARG_KEYSTONE, it) }
         watchRecoveryAccountId?.let { putString(ARG_WATCH_RECOVERY_ACCOUNT_ID, it) }
+        quantumCreationId?.let { putString(ARG_QUANTUM_CREATION_ID, it) }
     }
 
 }

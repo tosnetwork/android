@@ -30,7 +30,6 @@ import network.tos.wallet.app.ui.screen.settings.main.list.Adapter
 import network.tos.wallet.app.ui.screen.settings.main.list.Item
 import network.tos.wallet.app.ui.screen.settings.security.SecurityScreen
 import network.tos.wallet.app.ui.screen.settings.theme.ThemeScreen
-import network.tos.wallet.app.ui.screen.stories.w5.W5StoriesScreen
 import network.tos.wallet.app.R
 import network.tos.uikit.icon.UIKitIcon
 import network.tos.wallet.data.account.entities.WalletEntity
@@ -87,7 +86,6 @@ class SettingsScreen(
             is Item.Widget -> installWidget()
             is Item.Security -> navigation?.add(SecurityScreen.newInstance(screenContext.wallet))
             is Item.Legal -> navigation?.add(LegalScreen.newInstance())
-            is Item.W5 -> navigation?.add(W5StoriesScreen.newInstance(!screenContext.wallet.isW5))
             is Item.Battery -> navigation?.add(BatteryScreen.newInstance(screenContext.wallet, from = "settings"))
             is Item.Logout -> if (item.delete) deleteAccount() else showSignOutDialog()
             is Item.ConnectedApps -> navigation?.add(AppsScreen.newInstance(screenContext.wallet))
@@ -95,10 +93,8 @@ class SettingsScreen(
             is Item.SearchEngine -> searchPicker(item)
             is Item.DeleteWatchAccount -> deleteAccount()
             is Item.Rate -> openRate()
-            is Item.V4R2 -> viewModel.createV4R2Wallet()
             is Item.Notifications -> navigation?.add(NotificationsManageScreen.newInstance(screenContext.wallet))
             is Item.TronToggle -> viewModel.toggleTron()
-            is Item.PqWallets -> navigation?.add(network.tos.wallet.app.ui.screen.pq.PqWalletsScreen(screenContext.wallet))
             is Item.RpcNode -> showRpcNodeDialog(item)
             else -> return
         }
@@ -116,7 +112,7 @@ class SettingsScreen(
         val dialog = AppCompatAlertDialog.Builder(requireContext())
             .setTitle(R.string.rpc_node)
             .setMessage(R.string.rpc_node_hint)
-            .setView(input)
+            .setView(network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.nodeEditor(requireContext(), input))
             .setPositiveButton(R.string.rpc_node_save, null)
             .setNeutralButton(R.string.rpc_node_reset) { _, _ -> viewModel.resetRpcEndpoint() }
             .setNegativeButton(Localization.cancel, null)
@@ -211,9 +207,11 @@ class SettingsScreen(
 
     private fun signOut() {
         navigation?.toastLoading(true)
-        viewModel.signOut {
+        viewModel.signOut(requireContext()) { success ->
             navigation?.toastLoading(false)
-            finish()
+            if (success) finish()
+            else AppCompatAlertDialog.Builder(requireContext()).setTitle(R.string.quantum_delete_failed)
+                .setMessage(R.string.quantum_delete_failed_hint).setPositiveButton(android.R.string.ok, null).show()
         }
     }
 

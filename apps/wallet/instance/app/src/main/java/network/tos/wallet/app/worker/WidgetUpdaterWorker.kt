@@ -145,8 +145,10 @@ class WidgetUpdaterWorker(
     private suspend fun updateBalanceWidget(widget: WidgetEntity) {
         val params = widget.params as WidgetParams.Balance
         val wallet = getWallet(params.walletId) ?: throw IllegalStateException("Wallet not found params=${params}")
-        val balance = assetsManager.requestTotalBalance(wallet, currency, sorted = true, refresh = true) ?: throw IllegalStateException("Balance not found params=${params}; wallet=${wallet}")
-        val balanceFormat = CurrencyFormatter.formatFiat(currency.code, balance)
+        val displayCurrency = if (wallet.isQuantum) WalletCurrency.TON else currency
+        val balance = assetsManager.requestTotalBalance(wallet, displayCurrency, sorted = true, refresh = true)
+        val balanceFormat = balance?.let { CurrencyFormatter.formatFiat(displayCurrency.code, it).withCustomSymbol(context) }
+            ?: if (wallet.isQuantum) "Balance unavailable" else throw IllegalStateException("Balance not found")
         val drawable = context.drawable(R.drawable.ic_widget_logo_24, wallet.label.color)
 
         updateBalanceWidget(

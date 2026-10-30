@@ -9,7 +9,6 @@ import network.tos.wallet.app.ui.screen.token.viewer.list.holder.ChartHolder
 import network.tos.wallet.app.ui.screen.token.viewer.list.holder.EthenaBalanceHolder
 import network.tos.wallet.app.ui.screen.token.viewer.list.holder.EthenaMethodHolder
 import network.tos.wallet.app.ui.screen.token.viewer.list.holder.SpaceHolder
-import network.tos.wallet.app.ui.screen.token.viewer.list.holder.W5BannerHolder
 import network.tos.uikit.list.BaseListAdapter
 import network.tos.uikit.list.BaseListHolder
 import network.tos.uikit.list.BaseListItem
@@ -23,7 +22,6 @@ class TokenAdapter(
             Item.TYPE_BALANCE -> BalanceHolder(parent)
             Item.TYPE_ACTIONS -> ActionsHolder(parent)
             Item.TYPE_CHART -> ChartHolder(parent, chartPeriodCallback)
-            Item.TYPE_W5_BANNER -> W5BannerHolder(parent)
             Item.TYPE_BATTERY_BANNER -> BatteryBannerHolder(parent)
             Item.TYPE_ABOUT_ETHENA -> AboutEthenaHolder(parent)
             Item.TYPE_SPACE -> SpaceHolder(parent)

@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-address="${TOS_TEST_ADDRESS:-UQBtGJyHNQkw8Fq5PlZeUi4sUtyp1N71RgYGxssqkBNVWlJ3}"
+address="${TOS_TEST_ADDRESS:-UQCoPKX1Ak6MiN2TEPojfvZEogTsBH7xQFcsH79MegBo6CJz}"
 control="${TOS_TEST_CONTROL:-http://127.0.0.1:18745}"
 rpc_ports=(18545 18546 18547)
 
@@ -19,7 +19,7 @@ rpc() {
 curl --fail --silent --show-error --max-time 5 "$control/readyz" | jq -e '.ok == true' >/dev/null
 
 for port in "${rpc_ports[@]}"; do
-  rpc "$port" getMasterchainInfo '{}' | jq -e '.ok == true and .result.last.seqno > 0' >/dev/null
+  rpc "$port" getMasterchainInfo '{}' | jq -e '.jsonrpc == "2.0" and .id == 1 and (has("error") | not) and .result.last.seqno > 0' >/dev/null
 done
 
 converged=false

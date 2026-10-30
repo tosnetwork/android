@@ -621,8 +621,9 @@ class RootViewModel(
             showStory(route.id, "deep-link")
         } else if (route is DeepLinkRoute.Tabs) {
             _eventFlow.tryEmit(RootEvent.OpenTab(route.tabUri.toUri(), wallet, route.from))
-        } else if (route is DeepLinkRoute.Send && !wallet.isWatchOnly) {
-            openScreen(SendScreen.newInstance(wallet, type = SendScreen.Companion.Type.Default))
+        } else if (route is DeepLinkRoute.Send && (wallet.isSendSupported || wallet.isQuantum)) {
+            if (wallet.isQuantum) openScreen(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newInstance(wallet))
+            else openScreen(SendScreen.newInstance(wallet, type = SendScreen.Companion.Type.Default))
         } else if (route is DeepLinkRoute.Staking && !wallet.isWatchOnly) {
             openScreen(StakingScreen.newInstance(wallet, from = "deeplink"))
         } else if (route is DeepLinkRoute.StakingPool) {
@@ -633,7 +634,7 @@ class RootViewModel(
             } else {
                 showTransaction(route.address, route.eventId)
             }
-        } else if (route is DeepLinkRoute.Transfer && !wallet.isWatchOnly) {
+        } else if (route is DeepLinkRoute.Transfer && wallet.isSendSupported) {
             processTransferDeepLink(wallet, route)
         } else if (route is DeepLinkRoute.PickWallet) {
             accountRepository.setSelectedWallet(route.walletId)
@@ -725,7 +726,7 @@ class RootViewModel(
             openScreen(SettingsScreen.newInstance(wallet, "deeplink"))
         } else if (route is DeepLinkRoute.EditWalletLabel) {
             openScreen(EditNameScreen.newInstance(wallet))
-        } else if (route is DeepLinkRoute.Camera && !wallet.isWatchOnly) {
+        } else if (route is DeepLinkRoute.Camera && wallet.isSendSupported) {
             openScreen(CameraScreen.newInstance())
         } else if (route is DeepLinkRoute.Receive) {
             openScreen(QRScreen.newInstance(wallet))
@@ -778,6 +779,11 @@ class RootViewModel(
     }
 
     private suspend fun openTokenViewer(wallet: WalletEntity, route: DeepLinkRoute.Jetton) {
+        if (wallet.isQuantum) {
+            // Quantum native balances live on the proof-backed wallet screen.
+            _eventFlow.tryEmit(RootEvent.OpenTab("tos://wallet".toUri(), wallet, "quantum-balance"))
+            return
+        }
         val token =
             tokenRepository.getToken(wallet.accountId, wallet.testnet, route.address) ?: return
         openScreen(TokenScreen.newInstance(wallet, token.address, token.name, token.symbol))
@@ -793,6 +799,10 @@ class RootViewModel(
         wallet: WalletEntity,
         route: DeepLinkRoute.Transfer
     ) {
+        if (!wallet.isSendSupported) {
+            showInvalidLinkToast(route)
+            return
+        }
         if (route.isExpired) {
             toast(Localization.expired_link)
             return

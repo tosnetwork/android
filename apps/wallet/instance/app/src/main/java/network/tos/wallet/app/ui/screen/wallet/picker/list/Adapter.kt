@@ -7,6 +7,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import network.tos.blockchain.ton.extensions.equalsAddress
 import network.tos.icu.CurrencyFormatter
+import network.tos.icu.CurrencyFormatter.withCustomSymbol
 import network.tos.wallet.app.manager.assets.WalletBalanceEntity
 import network.tos.wallet.app.ui.screen.wallet.picker.list.holder.AddHolder
 import network.tos.wallet.app.ui.screen.wallet.picker.list.holder.Holder
@@ -46,10 +47,10 @@ class Adapter(
 
                 val balanceFormat = balance?.balance?.let {
                     CurrencyFormatter.formatFiat(
-                        currency = if (wallet.testnet) WalletCurrency.TON.code else currency.code,
+                        currency = if (wallet.testnet || wallet.isQuantum) WalletCurrency.TON.code else currency.code,
                         value = it
-                    )
-                } ?: context.getString(Localization.loading)
+                    ).withCustomSymbol(context)
+                } ?: if (wallet.isQuantum) "Balance unavailable" else context.getString(Localization.loading)
 
                 val item = Item.Wallet(
                     selected = wallet.id == activeWallet.id,

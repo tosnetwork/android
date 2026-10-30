@@ -117,6 +117,9 @@ class API(
     val customTosRpcEndpoint: String?
         get() = tosRpcSettings.customEndpoint
 
+    val customTosRpcEndpointFlow
+        get() = tosRpcSettings.endpointFlow
+
     fun tosRpcEndpoint(testnet: Boolean): String = customTosRpcEndpoint
         ?: if (testnet) config.tosApiTestnetHost else config.tosApiMainnetHost
 
@@ -510,7 +513,7 @@ class API(
         extensions: List<String>? = null
     ): List<BalanceEntity>? {
         // TOS (W4): the jetton list comes from the TOS in-node wc=0 index
-        // (getAccountJettons -> owner's jetton-wallets); each wallet's balance + master
+        // (getAccountTokens -> owner's jetton-wallets); each wallet's balance + master
         // come from get_wallet_data; TEP-64 metadata (name/symbol/decimals/image) comes
         // from the node's getTokenData(master) (parsed on-chain content).
         val jettonWallets = withRetry { tos.getAccountJettonWallets(accountId, testnet) } ?: emptyList()
