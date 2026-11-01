@@ -24,7 +24,14 @@ class QuantumHistoryReader(
     class Page internal constructor(val transactions: List<QuantumHistoryTransaction>, val next: Cursor?, val checkpointTime: Long,
         val balanceNano: String, internal val observation: QuantumAccountReader.Observation)
 
-    suspend fun read(id: UUID, identity: TosQuantumSelfPayIdentity, cursor: Cursor? = null, limit: Int = 20): Page {
+    suspend fun read(id: UUID, identity: TosQuantumSelfPayIdentity, cursor: Cursor? = null, limit: Int = 20): Page =
+        readPage(id, identity, cursor, limit, recovery = false)
+
+    /** Recovery handoffs must prove VM version and network ID at the history checkpoint. */
+    internal suspend fun readForRecovery(id: UUID, identity: TosQuantumSelfPayIdentity, limit: Int = 20): Page =
+        readPage(id, identity, null, limit, recovery = true)
+
+    private suspend fun readPage(id: UUID, identity: TosQuantumSelfPayIdentity, cursor: Cursor?, limit: Int, recovery: Boolean): Page {
         require(limit in 1..20)
         if (cursor != null) require(cursor.observation.id == id && cursor.observation.identity == identity)
         return runInterruptible(Dispatchers.IO) {
@@ -36,8 +43,10 @@ class QuantumHistoryReader(
                     check(System.nanoTime() - deadline < 0) { "History read expired" }
                 }
                 requireRunning()
-                val observation = cursor?.observation ?: accounts.observe(id, identity)
+                val observation = cursor?.observation ?: accounts.observe(id, identity,
+                    if (recovery) intArrayOf(8, 19) else intArrayOf(19))
                 observation.requireFresh(now())
+                if (recovery) QuantumSelfPayNetwork.requireRecoveryBase(observation.network, observation.profile.globalId, now())
                 val address = QuantumAccountReader.rawAddress(identity)
                 val head = observation.proof.provenTransactionHead(address)
                 var time = cursor?.logicalTime ?: head.logicalTime

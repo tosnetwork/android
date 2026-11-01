@@ -65,7 +65,7 @@ class QuantumProbeFundingOutcomeReader(
                 val submitted = entry.submission(prior, probe)
                 require(submitted.walletId == id && submitted.identity == identity)
                 check(QuantumPaymentOutbox(reader.context).requiresRecovery(identity))
-                val page = reader.history.read(id, identity, limit = 20)
+                val page = reader.history.readForRecovery(id, identity, limit = 20)
                 return runInterruptible(Dispatchers.IO) {
                     val observed = page.observation
                     observed.requireFresh(reader.now())

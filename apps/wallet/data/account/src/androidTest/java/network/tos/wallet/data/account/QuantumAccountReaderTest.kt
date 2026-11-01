@@ -83,6 +83,20 @@ class QuantumAccountReaderTest {
         assertTrue(page.checkpointTime <= f.now)
     }
 
+    @Test fun recoveryHistoryCarriesProvenVmVersionAndNetworkAtTheAccountCheckpoint() = Fixture("active").use { f ->
+        f.enroll()
+        val transport = Transcript(f.readNames.map(f::read))
+        val reader = QuantumHistoryReader(QuantumAccountReader(f.context, transport) { f.now },
+            QuantumHistoryReader.Query { _, _, _ -> error("Empty head must not query transaction relay") }) { f.now }
+        val page = runBlocking { reader.readForRecovery(f.id, f.identity) }
+        assertTrue(page.transactions.isEmpty()); assertEquals(5, transport.calls)
+        val observed = page.observation
+        observed.network.requireSameCheckpoint(observed.proof)
+        QuantumSelfPayNetwork.requireRecoveryBase(observed.network, f.profile.globalId, f.now)
+        assertTrue(observed.network.provenConfigParam(8).isNotEmpty())
+        assertTrue(observed.network.provenConfigParam(19).isNotEmpty())
+    }
+
     @Test fun invalidHistoryPageBoundRefusesBeforeProofOrTransactionIO() = Fixture("active").use { f ->
         val transport = Transcript(emptyList())
         val reader = QuantumHistoryReader(QuantumAccountReader(f.context, transport) { f.now },
