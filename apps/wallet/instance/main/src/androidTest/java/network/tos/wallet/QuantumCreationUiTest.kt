@@ -1208,6 +1208,143 @@ class QuantumCreationUiTest {
         checkFundedSuccessorThroughProduct(false)
     }
 
+    @Test fun fundedSuccessorBackupUsesProductSaveAndOriginalRoots() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val stage = runBlocking { repository.inspectFundedQuantumSuccessorMaterial(wallet) }
+        val funding = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        val backups = GlobalContext.get().get<network.tos.wallet.data.backup.BackupRepository>()
+        val backupCount = runBlocking { backups.stream.first().count { it.walletId == wallet.id } }
+        fun unconfirmed() {
+            val error = assertThrows(IllegalStateException::class.java) {
+                runBlocking { repository.verifiedFundedQuantumSuccessorBackup(wallet) }
+            }
+            assertEquals("Successor backup is not confirmed", error.message)
+        }
+        unconfirmed()
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+        resource("send").click(); pressRecovery("quantum.payment.recovery")
+        recoveryStatus("Saved recovery operation:")
+        pressRecovery("quantum.recovery.successor.backup")
+        assertTrue(device.wait(Until.hasObject(By.desc("quantum.backup.export.password")), 15000))
+        val random = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val password = android.util.Base64.encodeToString(random, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE).toCharArray()
+        random.fill(0)
+        val created = java.util.concurrent.atomic.AtomicReference<String>()
+        val observer = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: Intent?) { created.set(intent?.getStringExtra("documentId")) }
+        }
+        androidx.core.content.ContextCompat.registerReceiver(context, observer,
+            android.content.IntentFilter("network.tos.wallet.test.EXPORT_DOCUMENT_CREATED"), androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
+        fun fill() {
+            instrumentation.runOnMainSync {
+                val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).single { it.packageName == context.packageName }
+                for (identifier in listOf("quantum.backup.export.password", "quantum.backup.export.confirmation")) {
+                    val found = arrayListOf<android.view.View>()
+                    activity.window.decorView.findViewsWithText(found, identifier, android.view.View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION)
+                    found.filterIsInstance<android.widget.EditText>().single { it.contentDescription == identifier }.setText(password, 0, password.size)
+                }
+            }
+            checkNotNull(device.wait(Until.findObject(By.desc("quantum.backup.export.create").enabled(true)), 10000)).click()
+            assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000))
+        }
+        try {
+            fill(); device.pressBack(); device.waitForIdle()
+            unconfirmed()
+            fill(); pin()
+            assertTrue(device.wait(Until.hasObject(By.pkg("com.android.documentsui")), 90000))
+            repeat(3) {
+                if (device.hasObject(By.pkg("com.android.documentsui"))) {
+                    device.pressBack(); device.wait(Until.hasObject(By.desc("quantum.backup.export.create")), 2000)
+                }
+            }
+            assertTrue(device.wait(Until.hasObject(By.desc("quantum.backup.export.create")), 15000))
+            unconfirmed()
+            fill(); pin()
+            assertTrue(device.wait(Until.hasObject(By.pkg("com.android.documentsui")), 90000))
+            if (device.wait(Until.findObject(By.res("android", "title").text("Public TOS backup fixtures")), 1500) == null)
+                checkNotNull(device.wait(Until.findObject(By.desc("Show roots")), 10000)).click()
+            var selected = false
+            repeat(3) {
+                if (!selected) try {
+                    device.waitForIdle(3000)
+                    checkNotNull(device.wait(Until.findObject(By.res("android", "title").text("Public TOS backup fixtures")), 10000)).click()
+                    selected = true
+                } catch (_: androidx.test.uiautomator.StaleObjectException) { /* Re-query the visible system row. */ }
+            }
+            assertTrue(selected)
+            checkNotNull(device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)save")).enabled(true)), 10000)).click()
+            assertTrue(device.wait(Until.hasObject(By.desc("quantum.backup.export.status")
+                .textStartsWith("Replacement-key backup saved, read back and recorded")), 90000))
+            val document = created.get().orEmpty()
+            assertTrue(document.matches(Regex("saved-[0-9a-f-]{36}")))
+            val uri = android.provider.DocumentsContract.buildDocumentUri("network.tos.wallet.test.public.backups", document)
+            val cipher = checkNotNull(context.contentResolver.openInputStream(uri)).use { input ->
+                val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer); if (count < 0) break
+                    check(count > 0 && output.size() + count <= 262201); output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+            try {
+                val profile = checkNotNull(QuantumNetworkProfile.selected(context))
+                fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                val inspected = QuantumBackupInspection.inspect(cipher, password.copyOf(), profile.globalId,
+                    hex(profile.rootHash), hex(profile.fileHash), stage.inspection.snapshot.namespace)
+                assertEquals(stage.inspection.birth, inspected.birth)
+                assertArrayEquals(stage.inspection.snapshot.hash, inspected.snapshot.hash)
+                assertEquals(setOf(QuantumRole.PRIMARY, QuantumRole.RESCUE), inspected.roles.map { it.role }.toSet())
+                assertTrue(inspected.roles.all { it.sourceProfile == 3 })
+                val digest = java.security.MessageDigest.getInstance("SHA-256").digest(cipher).joinToString("") { "%02x".format(it) }
+                assertEquals(digest, runBlocking { repository.verifiedFundedQuantumSuccessorBackup(wallet) })
+                val after = runBlocking { repository.readQuantumAccount(wallet) }
+                assertEquals(before.balance, after.balance)
+                assertEquals((before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash(),
+                    (after.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash())
+                assertEquals(funding, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+                assertEquals(backupCount, runBlocking { backups.stream.first().count { it.walletId == wallet.id } })
+                assertTrue(File(context.noBackupFilesDir, "quantum-backup-export").listFiles()!!.isEmpty())
+                assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+                File(context.cacheDir, "quantum-successor-backup-public.json").writeText(org.json.JSONObject()
+                    .put("operation", funding.operation.toString()).put("cipher_sha256", digest)
+                    .put("authority_hash", inspected.snapshot.hash.joinToString("") { "%02x".format(it) })
+                    .put("material_digest", stage.inspection.encryptedDigest.joinToString("") { "%02x".format(it) })
+                    .put("pin_cancelled", true).put("picker_cancelled", true).put("saved_and_read_back", true)
+                    .put("original_roots_verified", true).put("isolation_retained", true).put("state_and_balance_unchanged", true)
+                    .put("current_backup_flag_unchanged", true).toString())
+            } finally { cipher.fill(0) }
+        } finally { password.fill('\u0000'); context.unregisterReceiver(observer) }
+    }
+
+    @Test fun fundedSuccessorBackupConfirmationSurvivesRestart() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val expected = org.json.JSONObject(File(context.cacheDir, "quantum-successor-backup-public.json").readText())
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+        resource("send").click(); pressRecovery("quantum.payment.recovery")
+        recoveryStatus("Saved recovery operation:")
+        pressRecovery("quantum.recovery.successor.backup.verify")
+        assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000)); pin()
+        recoveryStatus("Saved replacement-key backup record verified.")
+        assertTrue(checkNotNull(device.findObject(By.desc("quantum.recovery.status"))).text.contains(expected.getString("cipher_sha256")))
+        assertEquals(expected.getString("cipher_sha256"), runBlocking { repository.verifiedFundedQuantumSuccessorBackup(wallet) })
+        val stage = runBlocking { repository.inspectFundedQuantumSuccessorMaterial(wallet) }
+        assertEquals(expected.getString("authority_hash"), stage.inspection.snapshot.hash.joinToString("") { "%02x".format(it) })
+        assertEquals(expected.getString("material_digest"), stage.inspection.encryptedDigest.joinToString("") { "%02x".format(it) })
+        assertEquals(expected.getString("operation"), checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) }).operation.toString())
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+        File(context.cacheDir, "quantum-successor-backup-restart-public.json").writeText(org.json.JSONObject()
+            .put("operation", expected.getString("operation")).put("cipher_sha256", expected.getString("cipher_sha256"))
+            .put("pin_confirmed", true).put("original_roots_verified", true).put("isolation_retained", true).put("restart", true).toString())
+    }
+
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
         localNetworkCreatesWithMandatoryBackupAndProtectedKeys()
         val original = runBlocking { repository.getWallets() }.single()
