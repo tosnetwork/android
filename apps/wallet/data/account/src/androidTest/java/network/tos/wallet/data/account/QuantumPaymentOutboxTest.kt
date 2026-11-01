@@ -515,6 +515,84 @@ class QuantumPaymentOutboxTest {
                     importFile.writeBytes(publicJournal)
                     Os.chmod(importFile.absolutePath, 0x180)
                     assertEquals(durable.id, reopened.prepareBackupImport(backup, profile).id)
+                    runBlocking {
+                        val transport = QuantumProofTransport { query, maximum ->
+                            val name = when (query.size) {
+                                4 -> "policy/material/masterchain-info.tl"
+                                168 -> "policy/material/chain-0000.tl"
+                                120 -> "active/material/account.tl"
+                                88, 96, 104 -> "policy/material/config.tl"
+                                else -> error("Unexpected public fixture query size ${query.size}")
+                            }
+                            bytes(name).also { check(it.size <= maximum) }
+                        }
+                        val reader = QuantumAccountReader(context, transport) { clock }
+                        val fresh = reader.observeRecoveryImport(durable, backup, profile)
+                        assertEquals(durable.id, fresh.id)
+                        assertThrows(Exception::class.java) { QuantumCreationRecord.load(context, durable.id) }
+                        var callbacks = 0
+                        try {
+                            reopened.publishBackupImport(backup, observation, { clock }) { callbacks += 1 }
+                            fail("Another UUID's observation reached publication")
+                        } catch (_: IllegalStateException) { }
+                        assertEquals(0, callbacks)
+                        val registryDir = File(context.cacheDir, "public-recovery-registry-${durable.id}").apply { check(mkdirs()) }
+                        val registryContext = object : android.content.ContextWrapper(context) {
+                            override fun getDatabasePath(name: String) = File(registryDir, name)
+                            override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?) =
+                                android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name), factory)
+                            override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?, handler: android.database.DatabaseErrorHandler?) =
+                                android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).path, factory, handler)
+                        }
+                        val database = network.tos.wallet.data.account.source.DatabaseSource(registryContext)
+                        val mirrorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                        val mirror = network.tos.wallet.data.rn.RNLegacy(registryContext, mirrorScope)
+                        val label = Wallet.Label("Public recovered fixture", "custom_wallet", 0xff293342.toInt())
+                        suspend fun publish(record: QuantumRecoveryRecord): network.tos.wallet.data.account.entities.WalletEntity {
+                            val wallet = database.registerQuantumAccount(network.tos.wallet.data.account.entities.WalletEntity(
+                                record.id.toString(), network.tos.wallet.data.account.entities.WalletIdentity.Quantum(record.identity),
+                                Wallet.Type.Default, label, initialized = false))
+                            mirror.addBoundQuantumWallet(wallet)
+                            return wallet
+                        }
+                        try {
+                            try {
+                                reopened.publishBackupImport(backup, fresh, { clock }) { record ->
+                                    database.registerQuantumAccount(network.tos.wallet.data.account.entities.WalletEntity(
+                                        record.id.toString(), network.tos.wallet.data.account.entities.WalletIdentity.Quantum(record.identity),
+                                        Wallet.Type.Default, label, initialized = false))
+                                    throw IOException("Mirror unavailable after database commit")
+                                }
+                                fail("Mirror failure advanced journal")
+                            } catch (_: IOException) { }
+                            assertEquals(1, database.getAccounts().size)
+                            assertTrue(mirror.getWallets().wallets.isEmpty())
+                            assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLIC_RECORD_DURABLE, reopened.prepareBackupImport(backup, profile).phase)
+                            try {
+                                reopened.publishBackupImport(backup, fresh, { clock }) { record ->
+                                    publish(record).also { clock += 301 }
+                                }
+                                fail("Expired post-publication proof advanced journal")
+                            } catch (_: Exception) { }
+                            assertEquals(1, mirror.getWallets().wallets.size)
+                            assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLIC_RECORD_DURABLE, reopened.prepareBackupImport(backup, profile).phase)
+                            clock = now
+                            repeat(2) {
+                                val wallet = reopened.publishBackupImport(backup, fresh, { clock }) { publish(it) }
+                                assertEquals(durable.id.toString(), wallet.id)
+                                assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLISHED_RECOVERY_ONLY, reopened.prepareBackupImport(backup, profile).phase)
+                            }
+                            assertEquals(1, database.getAccounts().size)
+                            assertEquals(1, mirror.getWallets().wallets.size)
+                            assertEquals(observation.snapshot.balance, reader.read(durable.id, identity).balance)
+                            assertThrows(IllegalArgumentException::class.java) { reader.read(UUID.randomUUID(), identity) }
+                            assertTrue(reopened.requiresRecovery(identity))
+                            assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
+                        } finally {
+                            database.close(); mirrorScope.cancel(); registryDir.deleteRecursively()
+                            File(context.noBackupFilesDir, "quantum-proof-checkpoints/${durable.id}").deleteRecursively()
+                        }
+                    }
                 } finally { publicPath.delete() }
                 assertTrue(reopened.requiresRecovery(identity))
                 val marker = File(journal.parentFile, journal.nameWithoutExtension + ".recovery")

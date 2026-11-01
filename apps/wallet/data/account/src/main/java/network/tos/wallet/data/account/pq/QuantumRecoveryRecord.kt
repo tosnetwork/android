@@ -61,18 +61,23 @@ internal class QuantumRecoveryRecord(
     companion object {
         private val lock = Any()
         /** A surviving public recovery-only enrollment is itself an isolation obligation. */
-        fun containsIdentity(context: Context, identity: TosQuantumSelfPayIdentity): Boolean = synchronized(lock) {
+        fun containsIdentity(context: Context, identity: TosQuantumSelfPayIdentity): Boolean = findIdentity(context, identity) != null
+        fun findIdentity(context: Context, identity: TosQuantumSelfPayIdentity): QuantumRecoveryRecord? = synchronized(lock) {
             val path = File(context.noBackupFilesDir, "quantum-recovery-records")
             try { Os.lstat(path.absolutePath) }
-            catch (error: ErrnoException) { if (error.errno == OsConstants.ENOENT) return@synchronized false else throw error }
+            catch (error: ErrnoException) { if (error.errno == OsConstants.ENOENT) return@synchronized null else throw error }
             val names = checkNotNull(directory(context).list())
             check(names.size <= 64) { "Recovery enrollment capacity" }
-            var found = false
+            var found: QuantumRecoveryRecord? = null
             for (name in names) {
                 check(name.endsWith(".json"))
                 val id = UUID.fromString(name.removeSuffix(".json"))
                 check(name == "$id.json")
-                if (load(context, id).identity == identity) found = true
+                val record = load(context, id)
+                if (record.identity == identity) {
+                    check(found == null) { "Ambiguous recovery enrollment" }
+                    found = record
+                }
             }
             found
         }

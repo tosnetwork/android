@@ -344,7 +344,8 @@ class RNLegacy(
     suspend fun clear() = updateWallets { it.copy(wallets = emptyList(), selectedIdentifier = "") }
 
     /** Same enrollment is idempotent. Reusing an identifier for a different wallet is an error. */
-    suspend fun addWallet(wallet: RNWallet) = updateWallets { state ->
+    suspend fun addWallet(wallet: RNWallet, validate: (List<RNWallet>) -> Unit = {}) = updateWallets { state ->
+        validate(state.wallets)
         val existing = state.wallets.singleOrNull { it.identifier == wallet.identifier }
         if (existing != null) {
             require(existing.copy(name = wallet.name, color = wallet.color, emoji = wallet.emoji) == wallet) { "Wallet mirror identifier collision" }

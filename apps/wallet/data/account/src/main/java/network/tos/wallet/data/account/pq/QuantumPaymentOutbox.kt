@@ -16,6 +16,9 @@ import java.io.*
 import java.nio.channels.OverlappingFileLockException
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
 
 /** Private no-backup authorization journal. Unknown writes never permit replacement signing. */
 class QuantumPaymentOutbox internal constructor(context: Context, private val fault: ((String) -> Unit)?) {
@@ -91,8 +94,48 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         } || QuantumRecoveryRecord.containsIdentity(custodyContext, identity)
     }
 
-    internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES, PROTECTED_STORED, PUBLIC_RECORD_DURABLE }
+    internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES, PROTECTED_STORED, PUBLIC_RECORD_DURABLE, PUBLISHED_RECOVERY_ONLY }
     internal class ImportCheckpoint(val id: UUID, val phase: ImportPhase)
+
+    internal suspend fun <T> publishBackupImport(backup: QuantumBackupInspection,
+        observation: QuantumAccountReader.Observation, now: () -> Long,
+        publish: suspend (QuantumRecoveryRecord) -> T): T {
+        check(importPublication.tryLock()) { "Another recovery publication is in progress" }
+        try {
+            fun verified(): Pair<ImportCheckpoint, QuantumRecoveryRecord> {
+                QuantumBackupRoleObservation.classify(backup, observation, now())
+                val namespace = QuantumSelfPayNetwork.recoveryNamespace(observation.network, observation.profile.globalId, now())
+                check(namespace.contentEquals(backup.snapshot.namespace))
+                return locked {
+                    check(recoveryIsolated(backup.birth))
+                    val value = checkNotNull(readImport(importPath(backup.birth), backup, observation.profile))
+                    val id = UUID.fromString(value.getString("id"))
+                    check(id == observation.id && importPhase(value).ordinal >= ImportPhase.PUBLIC_RECORD_DURABLE.ordinal)
+                    val record = QuantumRecoveryRecord.load(custodyContext, id)
+                    check(record.identity == backup.birth && sameProfile(record.profile, observation.profile) &&
+                        record.encryptedDigest.contentEquals(backup.encryptedDigest))
+                    ImportCheckpoint(id, importPhase(value)) to record
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            val (before, record) = verified()
+            val result = publish(record)
+            currentCoroutineContext().ensureActive()
+            val (after, _) = verified()
+            check(before.id == after.id)
+            locked {
+                check(recoveryIsolated(backup.birth))
+                val value = checkNotNull(readImport(importPath(backup.birth), backup, observation.profile))
+                check(value.getString("id") == before.id.toString() && importPhase(value) == after.phase)
+                observation.requireFresh(now())
+                if (importPhase(value) == ImportPhase.PUBLIC_RECORD_DURABLE) {
+                    value.put("phase", ImportPhase.PUBLISHED_RECOVERY_ONLY.ordinal)
+                    writeImport(backup.birth, value)
+                }
+            }
+            return result
+        } finally { importPublication.unlock() }
+    }
 
     /** Retry journal only; the same original encrypted file is required again after restart. */
     internal fun prepareBackupImport(backup: QuantumBackupInspection, profile: QuantumNetworkProfile): ImportCheckpoint {
@@ -532,6 +575,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     }
     private fun sync(file: File) { val fd = Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0); try { Os.fsync(fd) } finally { Os.close(fd) } }
     companion object {
+        private val importPublication = Mutex()
         private val mutex = Any()
         private val recoveryMutex = Any()
         private const val MAX_FILE = 2 * 1024 * 1024

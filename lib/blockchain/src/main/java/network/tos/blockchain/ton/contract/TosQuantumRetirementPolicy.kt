@@ -8,7 +8,15 @@ object TosQuantumRetirementPolicy {
     private val spec = "5e4380aedc95f8cb72de55f7506de0269b47c03ad1d1ed0e5184c332544262c0"
         .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     fun requirePrimary(cell: Cell, network: ByteArray, now: Long) {
-        require(network.size == 32 && now in 0..0xffffffffL)
+        require(now in 0..0xffffffffL)
+        val (retired, deadline) = parse(cell, network)
+        require(retired and 2 == 0 && (deadline == 0L || now < deadline)) { "Primary suite retired" }
+    }
+    /** Strict authenticated network-policy schema only; never grants PRIMARY admission. */
+    fun requireNetwork(cell: Cell, network: ByteArray) { parse(cell, network) }
+
+    private fun parse(cell: Cell, network: ByteArray): Pair<Int, Long> {
+        require(network.size == 32)
         require(cell.type == CellType.ORDINARY && cell.levelMask.level == 0) { "Ordinary retirement policy required" }
         val s = cell.beginParse()
         require(s.loadUInt(8).toInt() == 0xa1) { "Retirement policy version" }
@@ -37,6 +45,6 @@ object TosQuantumRetirementPolicy {
             deadline = d.loadUInt(32).toLong()
             require(deadline > 0) { "Zero retirement deadline" }
         }
-        require(retired and 2 == 0 && (deadline == 0L || now < deadline)) { "Primary suite retired" }
+        return retired to deadline
     }
 }

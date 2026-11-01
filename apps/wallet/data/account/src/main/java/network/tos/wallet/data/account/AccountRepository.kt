@@ -17,6 +17,11 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import network.tos.wallet.data.account.pq.QuantumCreationRecord
+import network.tos.wallet.data.account.pq.QuantumRecoveryRecord
+import network.tos.wallet.data.account.pq.QuantumPaymentOutbox
+import network.tos.security.pq.QuantumBackupInspection
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import network.tos.wallet.data.account.pq.sameProfile
 import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumKdf
@@ -78,6 +83,7 @@ class AccountRepository(
     )
 
     companion object {
+        private val quantumBackupImport = Mutex()
         fun newWalletId(): String {
             return UUID.randomUUID().toString()
         }
@@ -170,7 +176,8 @@ class AccountRepository(
     }
 
     private suspend fun addWalletToRN(wallet: WalletEntity) {
-        rnLegacy.addWallet(wallet.toRNWallet())
+        if (wallet.isQuantum) rnLegacy.addBoundQuantumWallet(wallet)
+        else rnLegacy.addWallet(wallet.toRNWallet())
     }
 
     fun editLabel(
@@ -692,19 +699,58 @@ class AccountRepository(
     }
 
     private suspend fun finishQuantumRegistration(record: QuantumCreationRecord, label: Wallet.NewLabel): WalletEntity {
-        val identity = WalletIdentity.Quantum(record.identity)
-        val existing = database.getAccount(record.id.toString())
-        val wallet = if (existing != null) {
-            require(existing.identity == identity && existing.type == Wallet.Type.Default) { "Creation identifier collision" }
-            existing
-        } else {
-            WalletEntity(id = record.id.toString(), identity = identity, type = Wallet.Type.Default,
-                label = label.create(0), initialized = false).also { database.insertAccounts(listOf(it)) }
-        }
+        val wallet = database.registerQuantumAccount(WalletEntity(id = record.id.toString(),
+            identity = WalletIdentity.Quantum(record.identity), type = Wallet.Type.Default,
+            label = label.create(0), initialized = false))
         // A main-row commit followed by a mirror failure is resumed with the same UUID.
         // Do not delete custody or attempt an unsafe rollback of a possibly committed row.
         addWalletToRN(wallet)
         return wallet
+    }
+
+    /** Encrypted-file recovery preserves the birth identity and publishes with ordinary payment isolated. */
+    suspend fun importQuantumBackup(encrypted: ByteArray, password: CharArray, profile: QuantumNetworkProfile,
+        expectedNamespace: ByteArray, label: Wallet.NewLabel): WalletEntity {
+        var ownedPassword = CharArray(0)
+        var acquired = false
+        try {
+            require(encrypted.size in 58..262201 && expectedNamespace.size == 32 && password.size in 12..1024)
+            check(quantumBackupImport.tryLock()) { "Another backup import is in progress" }
+            acquired = true
+            val input = encrypted.copyOf(); val namespace = expectedNamespace.copyOf()
+            ownedPassword = password.copyOf()
+            return withContext(Dispatchers.IO) {
+                quantumCreationMutex.withLock {
+                    currentCoroutineContext().ensureActive()
+                    fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                    val backup = QuantumBackupInspection.inspect(input, ownedPassword.copyOf(), profile.globalId,
+                        hex(profile.rootHash), hex(profile.fileHash), namespace)
+                    val matches = database.getAccounts().filter { it.quantumIdentity == backup.birth }
+                    check(matches.size <= 1) { "Ambiguous existing wallet" }
+                    matches.singleOrNull()?.let { existing ->
+                        val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, backup.birth))
+                        check(record.id.toString() == existing.id && sameProfile(record.profile, profile) &&
+                            record.encryptedDigest.contentEquals(backup.encryptedDigest)) { "Existing wallet cannot be replaced" }
+                    }
+                    val outbox = QuantumPaymentOutbox(context)
+                    val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
+                    val checkpoint = outbox.prepareBackupImport(backup, profile)
+                    val observed = reader.observeRecoveryImport(checkpoint, backup, profile)
+                    outbox.storeBackupImport(input, ownedPassword.copyOf(), profile, namespace, observed) { System.currentTimeMillis() / 1000 }
+                    val durable = outbox.retainBackupImportRecord(backup, profile)
+                    val fresh = reader.observeRecoveryImport(durable, backup, profile)
+                    outbox.publishBackupImport(backup, fresh, { System.currentTimeMillis() / 1000 }) { record ->
+                        val wallet = database.registerQuantumAccount(WalletEntity(record.id.toString(),
+                            WalletIdentity.Quantum(record.identity), Wallet.Type.Default, label.create(0), initialized = false))
+                        addWalletToRN(wallet)
+                        wallet
+                    }
+                }
+            }
+        } finally {
+            ownedPassword.fill('\u0000'); password.fill('\u0000')
+            if (acquired) quantumBackupImport.unlock()
+        }
     }
 
     private suspend fun addWallet(

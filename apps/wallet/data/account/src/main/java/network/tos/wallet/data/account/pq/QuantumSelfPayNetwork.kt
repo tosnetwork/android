@@ -58,6 +58,19 @@ class QuantumSelfPayNetwork private constructor(
 
         // Schema validation alone never produces an authenticated capability.
         internal fun validate(version: Cell, identity: Cell, policy: Cell, expectedGlobalId: Int, now: Long): ByteArray {
+            return validateRecovery(version, identity, policy, expectedGlobalId).also {
+                TosQuantumRetirementPolicy.requirePrimary(policy, it, now)
+            }
+        }
+
+        internal fun recoveryNamespace(proof: QuantumVerifiedRead, expectedGlobalId: Int, now: Long): ByteArray {
+            proof.requireLive(now, 300)
+            fun cell(index: Int) = BagOfCells(proof.provenConfigParam(index)).roots.single()
+            return validateRecovery(cell(8), cell(19), cell(48), expectedGlobalId)
+        }
+
+        /** Recovery identifies the network even when PRIMARY admission has ended. */
+        internal fun validateRecovery(version: Cell, identity: Cell, policy: Cell, expectedGlobalId: Int): ByteArray {
             fun ordinary(cell: Cell) {
                 require(cell.type == CellType.ORDINARY && cell.levelMask.level == 0)
             }
@@ -74,7 +87,7 @@ class QuantumSelfPayNetwork private constructor(
             val p = policy.beginParse()
             require(p.loadUInt(8).toInt() == 0xa1)
             val namespace = p.loadBits(256).toByteArray()
-            TosQuantumRetirementPolicy.requirePrimary(policy, namespace, now)
+            TosQuantumRetirementPolicy.requireNetwork(policy, namespace)
             return namespace
         }
 

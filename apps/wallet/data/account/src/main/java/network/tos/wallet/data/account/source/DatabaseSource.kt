@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 
 internal class DatabaseSource(
     context: Context,
-): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
+): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION), java.io.Closeable {
 
     private companion object {
         private const val DATABASE_NAME = "account"
@@ -158,6 +158,34 @@ internal class DatabaseSource(
         try {
             for (wallet in wallets) db.insertOrThrow(WALLET_TABLE_NAME, null, wallet.toValues())
             db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    /** Check the current disk rows within the write transaction; never replace an alias on retry. */
+    suspend fun registerQuantumAccount(wallet: WalletEntity): WalletEntity = withContext(Dispatchers.IO) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        require(java.util.UUID.fromString(wallet.id).toString() == wallet.id && wallet.type == Wallet.Type.Default)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val rows = db.rawQuery("SELECT $walletFields FROM $WALLET_TABLE_NAME LIMIT 1001;", null).use { cursor ->
+                check(cursor.count <= 1000) { "Account registry capacity" }
+                readAccountRows(cursor).also { check(it.size == cursor.count) { "Unreadable account registry" } }
+            }
+            val matches = rows.filter { it.id == wallet.id || it.quantumIdentity == identity }
+            val result = if (matches.isEmpty()) {
+                check(rows.size < 1000) { "Account registry capacity" }
+                db.insertOrThrow(WALLET_TABLE_NAME, null, wallet.toValues())
+                wallet
+            } else {
+                check(matches.size == 1 && matches.single().id == wallet.id &&
+                    matches.single().identity == wallet.identity && matches.single().type == wallet.type) {
+                    "Quantum enrollment conflicts with existing account"
+                }
+                matches.single()
+            }
+            db.setTransactionSuccessful()
+            result
         } finally { db.endTransaction() }
     }
 

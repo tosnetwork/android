@@ -33,6 +33,16 @@ internal fun WalletEntity.toRNWallet(): RNWallet = RNWallet(
     quantumIdentity = (identity as? WalletIdentity.Quantum)?.toBase64(),
 )
 
+internal suspend fun network.tos.wallet.data.rn.RNLegacy.addBoundQuantumWallet(wallet: WalletEntity) {
+    val birth = requireNotNull(wallet.quantumIdentity)
+    addWallet(wallet.toRNWallet()) { existing ->
+        for (candidate in existing.filter { it.type == RNWallet.Type.Quantum }) {
+            val parsed = requireNotNull(candidate.toWalletEntity())
+            require(parsed.quantumIdentity != birth || parsed.id == wallet.id) { "Wallet mirror birth identity collision" }
+        }
+    }
+}
+
 internal fun RNWallet.toWalletEntity(): WalletEntity? {
     val revision = walletVersion(version)
     if (revision == WalletVersion.UNKNOWN) return null

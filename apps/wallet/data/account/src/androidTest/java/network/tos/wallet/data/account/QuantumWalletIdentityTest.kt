@@ -9,6 +9,7 @@ import android.os.Parcel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.blockchain.ton.extensions.hex
 import network.tos.extensions.toByteArray
@@ -30,6 +31,31 @@ import java.util.UUID
 /** Exercises Android SQLite/Parcel, including the real database upgrade and RN migration mapper. */
 @RunWith(AndroidJUnit4::class)
 class QuantumWalletIdentityTest {
+    @Test fun quantumRegistrationSerializesIdentityConflictsAndPreservesRetryMetadata() = runBlocking {
+        val first = quantum().copy(id = UUID.randomUUID().toString())
+        val second = quantum().copy(id = UUID.randomUUID().toString())
+        val one = DatabaseSource(context); val two = DatabaseSource(context)
+        try {
+            val a = async(kotlinx.coroutines.Dispatchers.IO) { runCatching { one.registerQuantumAccount(first) }.isSuccess }
+            val b = async(kotlinx.coroutines.Dispatchers.IO) { runCatching { two.registerQuantumAccount(second) }.isSuccess }
+            assertEquals(1, listOf(a.await(), b.await()).count { it })
+            val winner = one.getAccounts().single()
+            val loser = if (winner.id == first.id) second else first
+            try { two.registerQuantumAccount(loser); fail("Another UUID replaced a birth identity") }
+            catch (_: IllegalStateException) { }
+            val retry = one.registerQuantumAccount(winner.copy(label = label.copy(accountName = "Changed retry"), initialized = false))
+            assertEquals(winner.label, retry.label)
+            assertEquals(winner.initialized, retry.initialized)
+            val mirrorScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+            try {
+                val mirror = network.tos.wallet.data.rn.RNLegacy(context, mirrorScope)
+                mirror.addBoundQuantumWallet(winner)
+                try { mirror.addBoundQuantumWallet(loser); fail("Mirror accepted another UUID for birth identity") }
+                catch (_: IllegalArgumentException) { }
+                assertEquals(listOf(winner.id), mirror.getWallets().wallets.map { it.identifier })
+            } finally { mirrorScope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
+        } finally { one.close(); two.close() }
+    }
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val directory = File(instrumentation.targetContext.cacheDir, "quantum-model-${UUID.randomUUID()}").apply { mkdirs() }
     private val context = object : ContextWrapper(instrumentation.targetContext) {

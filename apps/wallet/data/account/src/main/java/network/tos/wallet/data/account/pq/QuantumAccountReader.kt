@@ -37,9 +37,32 @@ class QuantumAccountReader(
     fun read(id: UUID, identity: TosQuantumSelfPayIdentity): QuantumSelfPayAccount.Snapshot = observe(id, identity).snapshot
 
     internal fun observe(id: UUID, identity: TosQuantumSelfPayIdentity, configIndices: IntArray = intArrayOf(19)): Observation {
+        QuantumRecoveryRecord.findIdentity(context, identity)?.let { recovery ->
+            require(recovery.id == id) { "Recovery enrollment identifier mismatch" }
+            return observeEnrolled(id, identity, recovery.profile, configIndices)
+        }
         val record = QuantumCreationRecord.load(context, id)
         require(record.id == id && record.identity == identity) { "Wallet birth identity mismatch" }
         return observeEnrolled(id, identity, record.profile, configIndices)
+    }
+
+    internal fun observeRecoveryImport(checkpoint: QuantumPaymentOutbox.ImportCheckpoint,
+                                        backup: network.tos.security.pq.QuantumBackupInspection,
+                                        profile: QuantumNetworkProfile): Observation {
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        backup.requireProfile(profile.globalId, hex(profile.rootHash), hex(profile.fileHash), backup.snapshot.namespace)
+        val session = QuantumProofSession(context, checkpoint.id, profile.anchor())
+        val request = QuantumSelfPayNetwork.request(MAXIMUM_AGE)
+        try { session.enrollBound(request, now(), transport) }
+        catch (error: Exception) {
+            // Native initialization refuses existing state; resume without deleting or resetting it.
+            session.readBound(request, now(), transport)
+        }
+        val observed = observeEnrolled(checkpoint.id, backup.birth, profile, intArrayOf(8, 19, 48))
+        val namespace = QuantumSelfPayNetwork.recoveryNamespace(observed.network, profile.globalId, now())
+        require(namespace.contentEquals(backup.snapshot.namespace)) { "Recovery network namespace mismatch" }
+        observed.requireFresh(now())
+        return observed
     }
 
     internal fun readEnrolled(id: UUID, identity: TosQuantumSelfPayIdentity, profile: QuantumNetworkProfile): QuantumSelfPayAccount.Snapshot =
