@@ -201,6 +201,14 @@ def main():
             subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=True)
         log = (a.out / (method + '.log')).read_text()
         if 'OK (1 test)' not in log or 'FAILURES' in log:
+            if a.prepare_probe_funding:
+                try:
+                    public_checkpoint = run(['shell', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-proof-failure-public.json'])
+                    if len(public_checkpoint) <= 2097152:
+                        json.loads(public_checkpoint)
+                        (a.out / 'quantum-proof-failure-public.json').write_bytes(public_checkpoint)
+                except (subprocess.SubprocessError, ValueError):
+                    pass
             raise RuntimeError(method + ' did not pass; inspect its log')
     try:
         install()

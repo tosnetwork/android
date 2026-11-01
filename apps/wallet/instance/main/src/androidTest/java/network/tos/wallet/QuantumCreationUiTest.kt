@@ -45,6 +45,17 @@ class QuantumCreationUiTest {
     private val revisitBackupChallenge get() = InstrumentationRegistry.getArguments().getString("quantumBackupBackNavigation") == "true"
     @get:Rule val failureEvidence = object : TestWatcher() {
         override fun failed(error: Throwable, description: Description) {
+            if (InstrumentationRegistry.getArguments().getString("quantumPrepareProbeFunding") == "true") runCatching {
+                // Proof-session state contains only public chain trust/checkpoint data, never custody material.
+                val wallet = runBlocking { repository.getWallets() }.single()
+                val id = java.util.UUID.fromString(wallet.id)
+                require(id.toString() == wallet.id)
+                val checkpoint = File(context.noBackupFilesDir, "quantum-proof-checkpoints/$id/checkpoint.json")
+                check(checkpoint.length() in 1..1048576)
+                File(context.cacheDir, "quantum-proof-failure-public.json").writeText(org.json.JSONObject()
+                    .put("wallet_id", id.toString()).put("observed_at", System.currentTimeMillis() / 1000)
+                    .put("checkpoint_text", checkpoint.readText()).toString())
+            }
             // Capture before runner cleanup closes the failed product screen.
             runCatching { captureActualPaymentStatus() }
             val secretScreen = privateBackupExport || coldRecovery || revisitBackupChallenge || device.hasObject(By.text("Back up your recovery phrase")) ||
