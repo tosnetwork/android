@@ -148,7 +148,7 @@ class TosLegacyWalletCompatibilityTest {
             MockWebServer().use { server ->
                 server.start(); enqueue(server, vector.getJSONObject("wallet_information"))
                 assertThrows(Exception::class.java) { source(server).getSeqno(wallet.address.toAccountId(), false, native) }
-                assertEquals("A native caller must not fetch legacy account data", 1, server.requestCount)
+                assertEquals("Mismatched native metadata must not make an RPC request", 0, server.requestCount)
             }
         }
     }

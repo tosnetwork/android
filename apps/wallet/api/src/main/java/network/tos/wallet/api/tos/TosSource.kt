@@ -9,6 +9,8 @@ import network.tos.blockchain.ton.extensions.toAccountId
 import network.tos.blockchain.ton.extensions.toRawAddress
 import network.tos.blockchain.ton.contract.BaseWalletContract
 import network.tos.blockchain.ton.contract.LegacyWalletCompatibility
+import network.tos.blockchain.ton.contract.NativeWalletCompatibility
+import network.tos.blockchain.ton.contract.TosWalletV5R1Contract
 import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
@@ -91,6 +93,9 @@ class TosSource(
      * Transport/authentication failures must never become a first-deployment request. */
     fun getSeqno(address: String, testnet: Boolean = false, walletContract: BaseWalletContract? = null): Int {
         val node = snapshot(testnet)
+        if (walletContract is TosWalletV5R1Contract) {
+            return node.readNativeWalletSeqno(address, testnet, walletContract)
+        }
         if (walletContract != null && LegacyWalletCompatibility.isSupported(walletContract)) {
             return node.readLegacyWalletState(address, testnet, walletContract, allowUninitialized = true).seqno
         }
@@ -100,7 +105,7 @@ class TosSource(
         if (raw.opt("wallet") == false && raw.opt("account_state") == "active" &&
             raw.has("seqno") && raw.isNull("seqno")) {
             require(walletContract == null) { "Account does not match this wallet contract" }
-            return node.readLegacyWalletState(address, testnet, null, allowUninitialized = false).seqno
+            return node.readUnrecognizedWalletSeqno(address, testnet)
         }
         val info = TosWalletInfo.fromJson(raw)
         require(info.seqno >= 0) { "Invalid wallet sequence number" }
@@ -108,6 +113,38 @@ class TosSource(
             "Account is not a supported wallet"
         }
         return info.seqno
+    }
+
+    private fun activeWalletCells(state: JSONObject): Pair<Cell, Cell> {
+        require(state.get("state") == "active") { "Wallet account is not active" }
+        val code = state.get("code") as? String ?: error("Missing wallet code")
+        val data = state.get("data") as? String ?: error("Missing wallet data")
+        require(code.isNotBlank() && data.isNotBlank()) { "Incomplete wallet state" }
+        return code.bocFromBase64().roots.single() to data.bocFromBase64().roots.single()
+    }
+
+    private fun readNativeWalletSeqno(address: String, testnet: Boolean,
+        expected: TosWalletV5R1Contract): Int {
+        val requested = AddrStd.parse(address)
+        require(expected.address == requested) { "Native wallet address mismatch" }
+        val state = rpc.callObject("getAddressInformation", JSONObject().put("address", address), testnet)
+        if (state.get("state") in setOf("uninit", "uninitialized")) {
+            require(state.get("code") == "" && state.get("data") == "") { "Invalid native deployment state" }
+            return 0
+        }
+        val (code, data) = activeWalletCells(state)
+        return NativeWalletCompatibility.verifiedSeqno(requested, code, data)
+    }
+
+    private fun readUnrecognizedWalletSeqno(address: String, testnet: Boolean): Int {
+        val state = rpc.callObject("getAddressInformation", JSONObject().put("address", address), testnet)
+        val (code, data) = activeWalletCells(state)
+        val requested = AddrStd.parse(address)
+        return if (NativeWalletCompatibility.matchesCode(code)) {
+            NativeWalletCompatibility.verifiedSeqno(requested, code, data)
+        } else {
+            LegacyWalletCompatibility.verifiedSeqno(requested, code, data)
+        }
     }
 
     fun getLegacyWalletState(address: String, walletContract: BaseWalletContract,
