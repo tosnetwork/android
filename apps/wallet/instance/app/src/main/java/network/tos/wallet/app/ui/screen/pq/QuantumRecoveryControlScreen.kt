@@ -37,6 +37,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     private var quote: QuantumRecoveryControlQuote? = null
     private var fundingPlan: QuantumPreparedProbeFunding? = null
     private var fundingOperation: java.util.UUID? = null
+    private var fundingQuote: QuantumProbeFundingQuote? = null
     private var confirmation: AlertDialog? = null
     // Test diagnostics only: class/frames, never exception messages or input values.
     private var diagnosticFailureStack: String? = null
@@ -87,6 +88,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         }
         button("Review 0.01 TOS key-check funding", "quantum.recovery.funding.review") { reviewFunding() }
         button("Authenticate and sign funding", "quantum.recovery.funding.sign") { signFunding() }
+        button("Estimate saved funding", "quantum.recovery.funding.estimate") { estimateFunding() }
         button("Reload funding message", "quantum.recovery.funding.reload") {
             run { fundingPlan = null; fundingOperation = null; showFunding(accounts.pendingQuantumProbeFunding(wallet)) }
         }
@@ -107,12 +109,13 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         if (operation?.isActive == true) return
         operation = viewLifecycleOwner.lifecycleScope.launch {
             diagnosticFailureStack = null
+            fundingQuote = null
             actions.forEach { it.isEnabled = false }
             try { action() } catch (cancel: CancellationException) { throw cancel }
             catch (error: Exception) {
                 if (BuildConfig.DEBUG) diagnosticFailureStack =
                     (error.javaClass.name + "\n" + error.stackTrace.take(16).joinToString("\n")).take(8192)
-                plan = null; quote = null; fundingPlan = null; fundingOperation = null
+                plan = null; quote = null; fundingPlan = null; fundingOperation = null; fundingQuote = null
                 status.text = if (error is QuantumPriorControlNotExpired)
                     "The previous authorization has not yet expired at the proven chain time. Wait, then review funding again. Nothing was signed or sent."
                 else "Unable to complete this step. Reload the saved operation before continuing. Recovery controls currently require an imported encrypted backup with matching rescue material. Nothing was unlocked."
@@ -236,13 +239,31 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         accounts.signQuantumProbeFunding(wallet, operationId, prepared.request.digest)
         showFunding(accounts.pendingQuantumProbeFunding(wallet))
     }
+    private fun estimateFunding() = run {
+        fundingPlan = null; fundingOperation = null
+        val saved = accounts.pendingQuantumProbeFunding(wallet)
+        if (saved?.phase != "SIGNED") { showFunding(saved); return@run }
+        val estimate = accounts.estimateQuantumProbeFunding(wallet, saved.operation, BigInteger("100000000"))
+        fundingQuote = estimate
+        fun tos(value: BigInteger) = java.math.BigDecimal(value, 9).stripTrailingZeros().toPlainString()
+        status.text = "Key-check funding estimate ready." +
+            "\nFrom wallet: ${wallet.address}\nProbe: ${estimate.address}" +
+            "\nSend value: ${tos(estimate.amount)} TOS\nEstimated fee: ${tos(estimate.estimatedFee)} TOS" +
+            "\nEstimated total debit: ${tos(estimate.estimatedDebit)} TOS" +
+            "\nExpires: ${java.util.Date(estimate.expiresAt * 1000)}" +
+            "\nThis is a local estimate. Nothing has been sent or approved. Recovery and payments remain restricted."
+    }
     override fun onPause() {
+        if (fundingQuote != null) {
+            fundingQuote = null
+            status.text = "Funding estimate cleared. Estimate the saved funding again before continuing."
+        }
         if (!authenticating) { operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null }
         super.onPause()
     }
     override fun onDestroyView() {
         diagnosticFailureStack = null
-        operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null; actions.clear()
+        operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null; fundingQuote = null; actions.clear()
         super.onDestroyView()
     }
 }
