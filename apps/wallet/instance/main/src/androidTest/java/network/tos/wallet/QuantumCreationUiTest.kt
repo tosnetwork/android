@@ -12,6 +12,7 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import network.tos.security.Security
 import network.tos.security.pq.*
 import network.tos.wallet.api.API
@@ -39,13 +40,14 @@ class QuantumCreationUiTest {
     private val context = instrumentation.targetContext
     private val device = UiDevice.getInstance(instrumentation)
     private var coldRecovery = false
+    private var privateBackupExport = false
     private var displayedBackup: List<String>? = null
     private val revisitBackupChallenge get() = InstrumentationRegistry.getArguments().getString("quantumBackupBackNavigation") == "true"
     @get:Rule val failureEvidence = object : TestWatcher() {
         override fun failed(error: Throwable, description: Description) {
             // Capture before runner cleanup closes the failed product screen.
             runCatching { captureActualPaymentStatus() }
-            val secretScreen = coldRecovery || revisitBackupChallenge || device.hasObject(By.text("Back up your recovery phrase")) ||
+            val secretScreen = privateBackupExport || coldRecovery || revisitBackupChallenge || device.hasObject(By.text("Back up your recovery phrase")) ||
                 device.hasObject(By.text("Confirm your recovery phrase"))
             if (!secretScreen) runCatching { device.dumpWindowHierarchy(File(context.cacheDir, "quantum-ui-failure.xml")) }
             if (!secretScreen) runCatching { device.takeScreenshot(File(context.cacheDir, "quantum-ui-failure.png")) }
@@ -285,6 +287,118 @@ class QuantumCreationUiTest {
                 .put("public", publicRecoveryIdentity(record)))
             displayedBackup = null
         }
+    }
+
+    /** Actual App entropy, authentication, system document grant, write/readback and production inspection. */
+    @Test fun createdWalletExportsEncryptedFileThroughSystemPicker() {
+        privateBackupExport = true // Never dump an App hierarchy/screenshot on this test's failure.
+        localNetworkCreatesWithMandatoryBackupAndProtectedKeys()
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val record = QuantumCreationRecord.decode(File(context.noBackupFilesDir, "quantum-creation/${wallet.id}.json").readBytes())
+        val backups = GlobalContext.get().get<network.tos.wallet.data.backup.BackupRepository>()
+        fun backupCount() = runBlocking { backups.stream.first().count { it.walletId == wallet.id } }
+        val initialCount = backupCount()
+        instrumentation.runOnMainSync {
+            val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                .filterIsInstance<network.tos.wallet.app.ui.screen.root.RootActivity>().single()
+            // Navigation only; all export business actions use the real visible controls.
+            activity.add(network.tos.wallet.app.ui.screen.backup.main.BackupScreen.newInstance(wallet))
+        }
+        checkNotNull(device.wait(Until.findObject(By.desc("quantum.backup.export")), 15000)).click()
+        assertTrue(device.wait(Until.hasObject(By.desc("quantum.backup.export.password")), 15000))
+        val random = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val password = android.util.Base64.encodeToString(random, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE).toCharArray()
+        random.fill(0)
+        fun fillPasswords() {
+            instrumentation.runOnMainSync {
+                val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).single { it.packageName == context.packageName }
+                for (identifier in listOf("quantum.backup.export.password", "quantum.backup.export.confirmation")) {
+                    val found = arrayListOf<android.view.View>()
+                    activity.window.decorView.findViewsWithText(found, identifier, android.view.View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION)
+                    val field = found.filterIsInstance<android.widget.EditText>().single { it.contentDescription == identifier }
+                    // Do not put the secret in Espresso action descriptions or failure assertions.
+                    field.setText(password, 0, password.size)
+                }
+            }
+        }
+        fun startSave() {
+            fillPasswords()
+            val button = checkNotNull(device.wait(Until.findObject(By.desc("quantum.backup.export.create").enabled(true)), 10000))
+            button.click(); pin()
+            assertTrue("Expected real system CreateDocument", device.wait(Until.hasObject(By.pkg("com.android.documentsui")), 90000))
+        }
+        val createdDocument = java.util.concurrent.atomic.AtomicReference<String>()
+        val documentObserver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                createdDocument.set(intent?.getStringExtra("documentId"))
+            }
+        }
+        androidx.core.content.ContextCompat.registerReceiver(context, documentObserver,
+            android.content.IntentFilter("network.tos.wallet.test.EXPORT_DOCUMENT_CREATED"),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
+        try {
+            startSave()
+            // API24 Back first dismisses the filename keyboard or roots drawer.
+            repeat(3) {
+                if (device.hasObject(By.pkg("com.android.documentsui"))) {
+                    device.pressBack()
+                    device.wait(Until.hasObject(By.desc("quantum.backup.export.create")), 2000)
+                }
+            }
+            assertTrue(device.wait(Until.hasObject(By.desc("quantum.backup.export.create")), 15000))
+            assertEquals(initialCount, backupCount())
+            assertTrue(File(context.noBackupFilesDir, "quantum-backup-export").listFiles()!!.isEmpty())
+            startSave()
+            if (device.wait(Until.findObject(By.res("android", "title").text("Public TOS backup fixtures")), 1500) == null) {
+                checkNotNull(device.wait(Until.findObject(By.desc("Show roots")), 10000)).click()
+            }
+            var selectedRoot = false
+            repeat(3) {
+                if (!selectedRoot) {
+                    device.waitForIdle(3000)
+                    try {
+                        checkNotNull(device.wait(Until.findObject(By.res("android", "title").text("Public TOS backup fixtures")), 10000)).click()
+                        selectedRoot = true
+                    } catch (_: androidx.test.uiautomator.StaleObjectException) {
+                        // Re-query only the real system row after its drawer animation.
+                    }
+                }
+            }
+            assertTrue("System destination root must be selected", selectedRoot)
+            checkNotNull(device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)save")).enabled(true)), 10000)).click()
+            assertTrue("Export must confirm successful readback", device.wait(Until.hasObject(By.desc("quantum.backup.export.status")
+                .textStartsWith("Encrypted backup saved and read back successfully.")), 45000))
+            assertEquals(initialCount + 1, backupCount())
+            assertTrue(File(context.noBackupFilesDir, "quantum-backup-export").listFiles()!!.isEmpty())
+            val id = createdDocument.get().orEmpty()
+            assertTrue("Expected only a public document identifier", id.matches(Regex("saved-[0-9a-f-]{36}")))
+            val uri = android.provider.DocumentsContract.buildDocumentUri("network.tos.wallet.test.public.backups", id)
+            val cipher = checkNotNull(context.contentResolver.openInputStream(uri)).use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    check(count > 0 && output.size() + count <= 262201)
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+            try {
+                fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                val inspection = QuantumBackupInspection.inspect(cipher, password.copyOf(), record.profile.globalId,
+                    hex(record.profile.rootHash), hex(record.profile.fileHash), record.identity.wallet.initialAuthority.namespace)
+                assertEquals(record.identity, inspection.birth)
+                assertEquals(setOf(QuantumRole.PRIMARY, QuantumRole.RESCUE), inspection.roles.map { it.role }.toSet())
+                assertTrue(inspection.roles.all { it.account == 0L && it.generation == 0L && it.sourceProfile == 2 })
+                File(context.cacheDir, "quantum-created-export-public.json").writeText(org.json.JSONObject()
+                    .put("cipherBytes", cipher.size).put("cancelDidNotRegister", true).put("savedAndReadBack", true)
+                    .put("cipherSha256", java.security.MessageDigest.getInstance("SHA-256").digest(cipher).joinToString("") { "%02x".format(it) })
+                    .toString())
+            } finally { cipher.fill(0) }
+        } finally { password.fill('\u0000'); context.unregisterReceiver(documentObserver) }
     }
 
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {

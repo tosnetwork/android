@@ -123,6 +123,7 @@ dependencies {
     androidTestImplementation(libs.zxing)
     androidTestImplementation(project(ProjectModules.UIKit.core))
     androidTestImplementation(project(ProjectModules.Wallet.Data.account))
+    androidTestImplementation(project(ProjectModules.Wallet.Data.backup))
     androidTestImplementation(project(ProjectModules.Wallet.Data.core))
     androidTestImplementation(project(ProjectModules.Wallet.Data.tokens))
     androidTestImplementation(project(ProjectModules.Wallet.Data.rn))
