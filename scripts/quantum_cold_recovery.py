@@ -20,7 +20,8 @@ def validate_migration_signing_evidence(signed, restarted=None):
             and all(re.fullmatch(r'[0-9a-f]{64}', signed.get(key, '')) for key in ('request_hash', 'signature_digest'))
             and type(signed.get('deadline')) is int and 1 <= signed['deadline'] <= 0xffffffff
             and all(signed.get(key) is True for key in ('pin_cancelled_without_reservation', 'background_cleared_review',
-                'signature_verified', 'duplicate_rejected', 'isolation_retained', 'state_and_balance_unchanged'))):
+                'signature_verified', 'duplicate_rejected', 'isolation_retained', 'state_and_balance_unchanged',
+                'estimate_verified', 'estimate_ui_verified'))):
         raise ValueError('Migration signing product evidence missing')
     if restarted is not None and not (type(restarted.get('deadline')) is int and all(restarted.get(key) == signed[key]
             for key in ('operation', 'request_hash', 'signature_digest', 'deadline'))

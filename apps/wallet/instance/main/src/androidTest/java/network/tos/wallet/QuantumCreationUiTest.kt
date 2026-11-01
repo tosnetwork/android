@@ -1418,6 +1418,18 @@ class QuantumCreationUiTest {
         }
         assertEquals("Migration signing already started or uncertain", error.message)
         assertEquals(saved, runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        val feeError = assertThrows(IllegalStateException::class.java) {
+            runBlocking { repository.estimateFundedQuantumSuccessorMigration(wallet, BigInteger.ONE) }
+        }
+        assertEquals("Migration estimate exceeds approved limit", feeError.message)
+        val estimate = runBlocking { repository.estimateFundedQuantumSuccessorMigration(wallet, BigInteger("100000000")) }
+        assertEquals(saved.operation, estimate.operation); assertEquals(saved.requestHash, estimate.requestHash)
+        assertTrue(estimate.estimatedFee.signum() > 0)
+        assertEquals(estimate.observedBalance - estimate.estimatedBalance, estimate.estimatedFee)
+        pressRecovery("quantum.recovery.migration.estimate")
+        recoveryStatus("Key replacement estimate ready.")
+        assertTrue(checkNotNull(device.findObject(By.desc("quantum.recovery.status"))).text.contains(saved.requestHash))
+        assertEquals(saved, runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
         val after = runBlocking { repository.readQuantumAccount(wallet) }
         assertEquals(before.balance, after.balance)
         assertEquals((before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash(),
@@ -1429,6 +1441,7 @@ class QuantumCreationUiTest {
             .put("signature_digest", saved.signatureDigest).put("deadline", saved.deadline)
             .put("pin_cancelled_without_reservation", true).put("background_cleared_review", true)
             .put("signature_verified", true).put("duplicate_rejected", true).put("isolation_retained", true)
+            .put("estimate_verified", true).put("estimate_ui_verified", true)
             .put("state_and_balance_unchanged", true).toString())
     }
 

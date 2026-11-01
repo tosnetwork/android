@@ -15,7 +15,7 @@ class MigrationSigningEvidenceTest(unittest.TestCase):
         return dict(operation='12345678-1234-1234-1234-123456789abc', request_hash='ab' * 32,
             signature_digest='cd' * 32, deadline=1120, pin_cancelled_without_reservation=True,
             background_cleared_review=True, signature_verified=True, duplicate_rejected=True,
-            isolation_retained=True, state_and_balance_unchanged=True)
+            isolation_retained=True, state_and_balance_unchanged=True, estimate_verified=True, estimate_ui_verified=True)
 
     def restart(self, signed):
         return {**{key: signed[key] for key in ('operation', 'request_hash', 'signature_digest', 'deadline')},

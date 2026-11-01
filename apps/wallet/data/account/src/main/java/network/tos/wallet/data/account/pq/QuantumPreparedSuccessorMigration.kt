@@ -97,6 +97,12 @@ class QuantumPreparedSuccessorMigration internal constructor(
             request.digest, signature)) { "Migration signature mismatch" }
     }
 
+    internal fun signedMessage(signature: ByteArray, now: Long): ByteArray {
+        requireFresh(now)
+        requireSignature(signature)
+        return BagOfCells(identity.wallet.external(request.submission(signature), false)).toByteArray()
+    }
+
     /** Account service calls only after durable SIGNING. Does not install replacement material. */
     internal fun signProtected(custody: QuantumCreationCustody,
         inspection: network.tos.security.pq.QuantumBackupInspection, now: Long): ByteArray {

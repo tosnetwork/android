@@ -37,6 +37,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     private var quote: QuantumRecoveryControlQuote? = null
     private var fundingPlan: QuantumPreparedProbeFunding? = null
     private var migrationPlan: QuantumPreparedSuccessorMigration? = null
+    private var migrationQuote: QuantumMigrationQuote? = null
     private var fundingOperation: java.util.UUID? = null
     private var fundingQuote: QuantumProbeFundingQuote? = null
     private var confirmation: AlertDialog? = null
@@ -100,6 +101,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Review same-address key replacement", "quantum.recovery.migration.review") {
             run {
                 migrationPlan = null
+                migrationQuote = null
                 authenticating = true
                 val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Review key replacement") }
                     finally { authenticating = false }
@@ -118,6 +120,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Authenticate and sign key replacement", "quantum.recovery.migration.sign") {
             run {
                 val reviewed = checkNotNull(migrationPlan) { "Review key replacement first" }
+                migrationQuote = null
                 authenticating = true
                 val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Sign reviewed key replacement") }
                     finally { authenticating = false }
@@ -132,7 +135,19 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Reload saved key replacement", "quantum.recovery.migration.reload") {
             run {
                 migrationPlan = null
+                migrationQuote = null
                 showMigration(accounts.pendingFundedQuantumSuccessorMigration(wallet))
+            }
+        }
+        button("Estimate saved key replacement", "quantum.recovery.migration.estimate") {
+            run {
+                migrationQuote = null
+                val estimate = accounts.estimateFundedQuantumSuccessorMigration(wallet, BigInteger("100000000"))
+                migrationQuote = estimate
+                status.text = "Key replacement estimate ready.\nRequest: ${estimate.requestHash}" +
+                    "\nReplacement authority: ${estimate.replacementAuthorityHash}\nEstimated fee: ${estimate.estimatedFee} nanoTOS" +
+                    "\nExpires: ${java.util.Date(estimate.expiresAt * 1000)}" +
+                    "\nThis is a local estimate. Nothing has been sent. Replacement keys are not installed; payments remain restricted."
             }
         }
         button("Prepare possession challenge", "quantum.recovery.probe.prepare") { prepareProbe() }
@@ -382,6 +397,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             "\nThis checks the saved record, not current chain state or execution."
     }
     override fun onPause() {
+        migrationQuote = null
         if (fundingQuote != null) {
             fundingQuote = null
             status.text = "Funding estimate cleared. Estimate the saved funding again before continuing."
@@ -392,6 +408,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     override fun onDestroyView() {
         diagnosticFailureStack = null
         migrationPlan = null
+        migrationQuote = null
         operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null; fundingQuote = null; actions.clear()
         super.onDestroyView()
     }

@@ -835,7 +835,8 @@ class AccountRepository(
     }
 
     private suspend fun fundedQuantumSuccessorMigration(wallet: WalletEntity,
-        reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration?, sign: Boolean = false):
+        reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration?, sign: Boolean = false,
+        readSigned: Boolean = false):
         network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration = withContext(Dispatchers.IO) {
         val stage = inspectFundedQuantumSuccessorMaterial(wallet)
         val operation = checkNotNull(pendingQuantumProbeFunding(wallet)).operation
@@ -857,6 +858,7 @@ class AccountRepository(
                     network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO(context, key))
                 val journal = network.tos.wallet.data.account.pq.QuantumMigrationSigningJournal(store)
                 val retained = store.load()
+                if (readSigned) checkNotNull(retained) { "Migration signature missing" }
                 val plan = if (reviewed == null && retained == null) result.prepareMigration(entry, prior, probe, backup, now, 120) else {
                     reviewed?.requireRecords(entry, prior, probe, backup)
                     reviewed?.requireFresh(now)
@@ -869,8 +871,14 @@ class AccountRepository(
                     }
                     val (saved, restored) = journal.restore(entry, prior, probe, result, backup,
                         System.currentTimeMillis() / 1000)
-                    check(saved.phase == network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.RESERVED) {
+                    val requiredPhase = if (readSigned) network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.SIGNED
+                        else network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.RESERVED
+                    check(saved.phase == requiredPhase) {
                         "Migration signing already started or uncertain"
+                    }
+                    if (readSigned) {
+                        val signature = saved.signature()
+                        try { restored.requireSignature(signature) } finally { signature.fill(0) }
                     }
                     if (reviewed != null) check(restored.request.request.hash() == reviewed.request.request.hash()) { "Reviewed migration differs from reservation" }
                     if (sign) {
@@ -896,6 +904,47 @@ class AccountRepository(
                     it.requireFresh(System.currentTimeMillis() / 1000)
                     coroutine.ensureActive()
                 }
+            }
+        }
+    }
+
+    /** Fresh local simulation of the original signed message only. Caller confirms fees separately. */
+    suspend fun estimateFundedQuantumSuccessorMigration(wallet: WalletEntity, maximumEstimatedFee: BigInteger):
+        network.tos.wallet.data.account.pq.QuantumMigrationQuote = withContext(Dispatchers.IO) {
+        require(maximumEstimatedFee.signum() > 0 && maximumEstimatedFee.bitLength() <= 120)
+        val plan = fundedQuantumSuccessorMigration(wallet, reviewed = null, readSigned = true)
+        val coroutine = currentCoroutineContext()
+        quantumCreationMutex.withLock {
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            QuantumPaymentOutbox(context).withRecoveryControlIsolation(plan.identity) {
+                coroutine.ensureActive()
+                val transport = QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient)
+                val fresh = QuantumAccountReader(context, transport).observe(plan.walletId, plan.identity, intArrayOf(8, 19))
+                plan.requireRevalidated(fresh, System.currentTimeMillis() / 1000)
+                val key = plan.identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
+                val store = network.tos.wallet.data.account.pq.QuantumMigrationSigningStore(
+                    network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO(context, key))
+                val saved = checkNotNull(store.load())
+                check(saved.phase == network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.SIGNED)
+                val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).pending(plan.identity))
+                val prior = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(plan.identity))
+                val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(plan.identity))
+                val snapshot = network.tos.wallet.data.account.pq.QuantumMigrationSigningSnapshot.create(plan, entry, prior, probe,
+                    System.currentTimeMillis() / 1000)
+                check(saved.binding.contentEquals(snapshot.encode())) { "Migration estimate binding changed" }
+                val signature = saved.signature()
+                val message = try { plan.signedMessage(signature, System.currentTimeMillis() / 1000) }
+                    finally { signature.fill(0) }
+                val request = org.json.JSONObject().put("mode", "live").put("account", QuantumAccountReader.rawAddress(plan.identity))
+                    .put("max_age_seconds", 300).toString().toByteArray()
+                val simulation = network.tos.security.pq.QuantumProofSession(context, plan.walletId, plan.profile.anchor())
+                    .simulate(request, System.currentTimeMillis() / 1000, message, transport)
+                coroutine.ensureActive()
+                val quote = network.tos.wallet.data.account.pq.QuantumMigrationQuote(plan, saved, message, request,
+                    simulation, System.currentTimeMillis() / 1000, maximumEstimatedFee)
+                quote.requireFresh(checkNotNull(store.load()), System.currentTimeMillis() / 1000)
+                quote
             }
         }
     }
