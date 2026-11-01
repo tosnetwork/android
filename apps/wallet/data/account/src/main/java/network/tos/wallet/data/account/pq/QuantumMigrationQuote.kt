@@ -44,4 +44,8 @@ class QuantumMigrationQuote internal constructor(
         simulation.requireBinding(plan.profile.anchor(), requestBytes, messageBytes, now, 30)
         check(now < expiresAt) { "Migration estimate expired" }
     }
+
+    internal fun approvalRecord(): ByteArray = QuantumMigrationApproval.record(operation,
+        QuantumPaymentOutbox.digest(messageBytes), plan.request.digest, quotedAt, expiresAt,
+        observedBalance, estimatedBalance, maximumEstimatedFee)
 }
