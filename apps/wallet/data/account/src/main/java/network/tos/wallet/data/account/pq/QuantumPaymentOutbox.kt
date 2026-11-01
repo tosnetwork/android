@@ -62,6 +62,57 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFDIR && st.st_uid == Os.getuid() && st.st_mode and 0x3f == 0)
         sync(directory); sync(directory.parentFile!!)
     }
+    /** Must complete durably before the first imported secret is stored. No unverified reset API. */
+    fun isolateRecoveredIdentity(identity: TosQuantumSelfPayIdentity) = recoveryGate {
+        locked {
+            val file = recoveryPath(identity)
+            if (recoveryIsolated(identity)) { sync(file); sync(directory) }
+            else {
+                check(names().size < 240) { "Recovery isolation capacity exceeded" }
+                val fd = Os.open(file.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or
+                    OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
+                FileOutputStream(fd).use { stream ->
+                    stream.write(recoveryMarker(identity))
+                    fault?.invoke("recovery_guard_before_file_sync")
+                    stream.fd.sync()
+                }
+                fault?.invoke("recovery_guard_before_directory_sync")
+                sync(directory)
+            }
+        }
+    }
+    fun requiresRecovery(identity: TosQuantumSelfPayIdentity): Boolean = locked { recoveryIsolated(identity) }
+    private fun recoveryPath(identity: TosQuantumSelfPayIdentity) = File(directory, path(identity).nameWithoutExtension + ".recovery")
+    private fun recoveryMarker(identity: TosQuantumSelfPayIdentity) = "TOSQRG01".toByteArray(Charsets.US_ASCII) + identity.cell.hash().toByteArray()
+    private fun recoveryIsolated(identity: TosQuantumSelfPayIdentity): Boolean {
+        val fd = try { Os.open(recoveryPath(identity).absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
+        catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return false else throw e }
+        FileInputStream(fd).use { stream ->
+            val st = Os.fstat(fd)
+            check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() &&
+                st.st_mode and 0x3f == 0 && st.st_nlink == 1L && st.st_size == 40L)
+            val bytes = ByteArray(40)
+            DataInputStream(stream).readFully(bytes)
+            check(stream.read() == -1 && bytes.contentEquals(recoveryMarker(identity))) { "Invalid recovery isolation marker" }
+        }
+        return true
+    }
+    private fun requireKnownHistory(identity: TosQuantumSelfPayIdentity) {
+        check(!recoveryIsolated(identity)) { "Recovered wallet authorization history is unknown" }
+    }
+    /** Separate lease allows pending-state reads while serializing import isolation with key access. */
+    private fun <T> recoveryGate(body: () -> T): T = synchronized(recoveryMutex) {
+        val fd = Os.open(File(directory, ".custody-lock").absolutePath,
+            OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
+        FileOutputStream(fd).use { stream ->
+            val st = Os.fstat(fd)
+            check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() &&
+                st.st_mode and 0x3f == 0 && st.st_nlink == 1L)
+            val lease = try { stream.channel.tryLock() } catch (_: OverlappingFileLockException) { null }
+            check(lease != null) { "Custody operation is busy" }
+            lease.use { body() }
+        }
+    }
     fun pending(identity: TosQuantumSelfPayIdentity): Entry? {
         reconcilePendingWriteRecovery()
         return locked { read(identity) }
@@ -156,6 +207,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     internal fun reserve(payment: QuantumPreparedPayment, now: Long): Entry {
         reconcilePendingWriteRecovery()
         return locked {
+            requireKnownHistory(payment.identity)
             payment.requireFresh(now)
             check(read(payment.identity) == null) { "An authorization is already pending" }
             check(names().count { it.endsWith(".json") } < 64) { "Outbox capacity exceeded" }
@@ -171,7 +223,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
             write(entry); entry
         }
     }
-    internal fun sign(entry: Entry, signer: (Entry) -> ByteArray) {
+    internal fun sign(entry: Entry, signer: (Entry) -> ByteArray): Unit = recoveryGate {
         val signing = update(entry, setOf(Phase.RESERVED)) { it.put("phase", Phase.SIGNING.name) }
         val signature = signer(signing)
         check(QuantumCrypto.verify(QuantumRole.PRIMARY, QuantumPurpose.SELF_PAY, signing.signingPublicKey, signing.requestHash, signature))
@@ -196,6 +248,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         Os.remove(path(entry.identity).absolutePath); sync(directory)
     }
     private fun update(entry: Entry, phases: Set<Phase>, body: (JSONObject) -> Unit): Entry = locked {
+        requireKnownHistory(entry.identity)
         val current = checkNotNull(read(entry.identity))
         check(current.id == entry.id && current.phase in phases) { "Authorization transition refused" }
         val value = current.json(); body(value)
@@ -260,8 +313,8 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     }
     internal fun names(): List<String> = QuantumLocalDirectory.names(directory.absolutePath, 256).also { names ->
         check(names.count { it.endsWith(".json") } <= 64)
-        check(names.all { it == ".lock" || it == ".retirement-history" || it.startsWith(".retiring-") ||
-            it.endsWith(".pending") || it.matches(Regex("[0-9a-f]{64}\\.json")) }) { "Unexpected outbox storage entry" }
+        check(names.all { it == ".lock" || it == ".custody-lock" || it == ".retirement-history" || it.startsWith(".retiring-") ||
+            it.endsWith(".pending") || it.matches(Regex("[0-9a-f]{64}\\.(json|recovery)")) }) { "Unexpected outbox storage entry" }
     }
     private fun <T> locked(recovery: Boolean = false, allowPending: Boolean = false, body: () -> T): T = synchronized(mutex) {
         val fd = Os.open(File(directory, ".lock").absolutePath, OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
@@ -278,6 +331,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     private fun sync(file: File) { val fd = Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0); try { Os.fsync(fd) } finally { Os.close(fd) } }
     companion object {
         private val mutex = Any()
+        private val recoveryMutex = Any()
         private const val MAX_FILE = 2 * 1024 * 1024
         private const val MAX_MESSAGE = 1024 * 1024
         private fun sameOperation(a: Entry, b: Entry): Boolean =
