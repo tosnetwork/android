@@ -94,10 +94,11 @@ class QuantumCreationUiTest {
             var visited = 0
             while (fragments.isNotEmpty() && visited++ < 128) {
                 val fragment = fragments.removeFirst()
-                if (fragment.javaClass.name == "network.tos.wallet.app.ui.screen.pq.QuantumRecoveryControlScreen") {
+                if (fragment.javaClass.name in setOf("network.tos.wallet.app.ui.screen.pq.QuantumRecoveryControlScreen",
+                        "network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen")) {
                     runCatching {
                         val field = fragment.javaClass.getDeclaredField("diagnosticFailureStack").apply { isAccessible = true }
-                        (field.get(fragment) as? String)?.let { text += "\nRecovery debug frames: " + it }
+                        (field.get(fragment) as? String)?.let { text += "\n${fragment.javaClass.simpleName} debug frames: " + it }
                     }
                 }
                 if (fragment.isAdded) fragments.addAll(fragment.childFragmentManager.fragments)

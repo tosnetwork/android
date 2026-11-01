@@ -18,6 +18,7 @@ import kotlinx.coroutines.ensureActive
 import network.tos.blockchain.ton.TonAddressTags
 import network.tos.blockchain.ton.contract.QuantumPaymentIntent
 import network.tos.wallet.app.R
+import network.tos.wallet.app.BuildConfig
 import network.tos.wallet.app.ui.base.BaseWalletVM
 import network.tos.wallet.app.ui.base.WalletContextScreen
 import network.tos.wallet.data.account.AccountRepository
@@ -60,6 +61,8 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
     private lateinit var newPayment: Button
     private lateinit var localHistory: TextView
     private var operation: Job? = null
+    // Debug-only class/frames for bounded test diagnostics; never messages or input values.
+    private var diagnosticFailureStack: String? = null
     private var authenticating = false
     private var prepared: QuantumPreparedPayment? = null
     private var quote: QuantumPaymentQuote? = null
@@ -131,7 +134,7 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
         }
         super.onHiddenChanged(hidden)
     }
-    override fun onDestroyView() { serial++; operation?.cancel(); operation = null; super.onDestroyView() }
+    override fun onDestroyView() { diagnosticFailureStack = null; serial++; operation?.cancel(); operation = null; super.onDestroyView() }
     private fun label(text: String, id: String? = null): TextView = TextView(requireContext()).apply {
         this.text = text; textSize = 17f; setPadding(0, 12, 0, 12); contentDescription = id
         this@QuantumPaymentScreen.layout.addView(this)
@@ -147,11 +150,14 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
     private fun run(message: String, body: suspend () -> Unit) {
         if (operation?.isActive == true) return
         val tag = ++serial
+        diagnosticFailureStack = null
         status.text = message
         operation = viewLifecycleOwner.lifecycleScope.launch {
             try { body() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
+                if (BuildConfig.DEBUG) diagnosticFailureStack =
+                    (error.javaClass.name + "\n" + error.stackTrace.take(16).joinToString("\n")).take(8192)
                 if (isAdded && serial == tag) {
                     status.text = if (error.message == "Original authorization is not proven strictly expired")
                         "The original authorization has not been proven expired. Quote expiry and the local clock cannot end it. Reload and verify again after fresh shard time passes its original deadline."
