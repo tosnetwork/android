@@ -53,9 +53,28 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             }
         }
     }
-    private val directory = File(context.noBackupFilesDir, "quantum-probe-funding")
-    private fun file(identity: TosQuantumSelfPayIdentity) = File(directory,
-        identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) } + ".qpf")
+    private val store = QuantumProbeFundingStore(context.noBackupFilesDir, fault)
+    private fun key(identity: TosQuantumSelfPayIdentity) = identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
+    fun pending(identity: TosQuantumSelfPayIdentity): Reservation? = store.pending(key(identity))?.let(Reservation::decode)
+    fun reserve(plan: QuantumPreparedProbeFunding, now: Long): Reservation =
+        QuantumPaymentOutbox(context).withRecoveryControlIsolation(plan.identity) {
+            // Read originals under the shared recovery custody lease; do not trust caller copies.
+            val prior = checkNotNull(QuantumRecoveryControlJournal(context).pending(plan.identity))
+            val probe = checkNotNull(QuantumRecoveryProbeJournal(context).pending(plan.identity))
+            val entry = Reservation.create(plan, prior, probe, now)
+            store.reserve(key(plan.identity), entry.encode())
+            entry
+        }
+    companion object { private const val MAX_FILE = 262144 }
+}
+
+/** Storage only: bytes read here establish no proof, signature or release authority. */
+internal class QuantumProbeFundingStore(private val parent: File, private val fault: ((String) -> Unit)? = null) {
+    private val directory = File(parent, "quantum-probe-funding")
+    private fun file(key: String): File {
+        require(key.matches(Regex("[0-9a-f]{64}")))
+        return File(directory, "$key.qpf")
+    }
     private fun sync(file: File) {
         val fd = Os.open(file.path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
         try { Os.fsync(fd) } finally { Os.close(fd) }
@@ -69,7 +88,7 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
         try { Os.mkdir(directory.path, 0x1c0) } catch (e: ErrnoException) { if (e.errno != OsConstants.EEXIST) throw e }
         val st = Os.lstat(directory.path)
         check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFDIR && st.st_uid == Os.getuid() && st.st_mode and 0x3f == 0)
-        sync(directory); sync(context.noBackupFilesDir)
+        sync(directory); sync(parent)
         val fd = Os.open(File(directory, ".lock").path, OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
         FileOutputStream(fd).use { stream ->
             validate(fd)
@@ -82,32 +101,27 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             }
         }
     }
-    private fun read(identity: TosQuantumSelfPayIdentity): Reservation? {
-        val fd = try { Os.open(file(identity).path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
+    private fun read(key: String): ByteArray? {
+        val fd = try { Os.open(file(key).path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
             catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return null else throw e }
         return FileInputStream(fd).use { input ->
             validate(fd); val size = Os.fstat(fd).st_size; check(size in 1..MAX_FILE.toLong())
             val bytes = ByteArray(size.toInt()); DataInputStream(input).readFully(bytes); check(input.read() == -1)
-            Reservation.decode(bytes)
+            bytes
         }
     }
-    fun pending(identity: TosQuantumSelfPayIdentity): Reservation? = locked { read(identity) }
-    fun reserve(plan: QuantumPreparedProbeFunding, now: Long): Reservation =
-        QuantumPaymentOutbox(context).withRecoveryControlIsolation(plan.identity) {
-            locked {
-                // Read originals under the shared recovery custody lease; do not trust caller copies.
-                val prior = checkNotNull(QuantumRecoveryControlJournal(context).pending(plan.identity))
-                val probe = checkNotNull(QuantumRecoveryProbeJournal(context).pending(plan.identity))
-                val entry = Reservation.create(plan, prior, probe, now)
-                check(read(plan.identity) == null) { "Probe funding already reserved" }
+    fun pending(key: String): ByteArray? = locked { read(key) }
+    fun reserve(key: String, bytes: ByteArray) {
+        require(bytes.size in 1..MAX_FILE)
+        locked {
+                check(read(key) == null) { "Probe funding already reserved" }
                 check(checkNotNull(directory.list()).count { it.endsWith(".qpf") } < 64)
-                val target = file(plan.identity); val next = File(target.path + ".next")
+                val target = file(key); val next = File(target.path + ".next")
                 val fd = Os.open(next.path, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-                FileOutputStream(fd).use { out -> validate(fd); out.write(entry.encode()); fault?.invoke("before_file_sync"); out.fd.sync() }
+                FileOutputStream(fd).use { out -> validate(fd); out.write(bytes); fault?.invoke("before_file_sync"); out.fd.sync() }
                 fault?.invoke("before_rename"); Os.rename(next.path, target.path)
                 fault?.invoke("before_directory_sync"); sync(directory)
-                entry
-            }
         }
+    }
     companion object { private val mutex = Any(); private const val MAX_FILE = 262144 }
 }

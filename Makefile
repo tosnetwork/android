@@ -43,6 +43,10 @@ test_quantum_proof_device:
 test_quantum_history_transport_device:
 	$(GRADLE) :apps:wallet:data:account:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=network.tos.wallet.data.account.QuantumHistoryHttpTransportTest
 
+.PHONY: test_quantum_funding_storage_device
+test_quantum_funding_storage_device:
+	$(GRADLE) :apps:wallet:data:account:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=network.tos.wallet.data.account.QuantumProbeFundingStoreTest
+
 test_quantum_model:
 	$(GRADLE) :apps:wallet:data:account:connectedDebugAndroidTest
 
