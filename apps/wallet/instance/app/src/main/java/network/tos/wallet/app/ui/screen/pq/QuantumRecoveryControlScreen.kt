@@ -47,7 +47,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         text("Secure recovered wallet")
         text("${wallet.label.name}\n${wallet.address}")
         text("Locking disables the current primary key. It does not replace your keys or finish recovery. Payments stay restricted until recovery and a new backup are complete.")
-        status = text("Loading saved recovery operation…")
+        status = text("Loading saved recovery operation…").apply { contentDescription = "quantum.recovery.status" }
         button("Review primary-key lock", "quantum.recovery.review") {
             run {
                 check(accounts.pendingQuantumRecoveryControl(wallet) == null) { "A recovery operation is already saved" }
@@ -104,7 +104,8 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             ?: "No saved recovery control. Review the lock before authenticating."
     }
     private fun sign() {
-        val prepared = plan ?: return
+        val prepared = plan
+        if (prepared == null) { status.text = "Review the lock before authenticating."; return }
         run {
             authenticating = true
             val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Lock recovered wallet primary key") }
@@ -117,7 +118,8 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         }
     }
     private fun confirmSend() {
-        val estimate = quote ?: return
+        val estimate = quote
+        if (estimate == null) { status.text = "Estimate the saved lock before confirming its fee."; return }
         confirmation = AlertDialog.Builder(requireContext()).setTitle("Send primary-key lock?")
             .setMessage("Wallet: ${wallet.address}\nEstimated fee: ${estimate.estimatedFee} nanoTOS. Actual fees can change. This disables the current primary key. Recovery remains restricted.")
             .setNegativeButton("Cancel", null).setPositiveButton("Send lock") { _, _ ->
