@@ -21,21 +21,23 @@ internal class QuantumRecoveryControlJournal(
     private val context: Context,
     private val fault: ((String) -> Unit)? = null,
 ) {
-    enum class Phase { RESERVED, SIGNING, SIGNED, SUBMITTING, UNKNOWN }
+    enum class Phase { RESERVED, SIGNING, SIGNED, SUBMITTING, UNKNOWN, COMPLETED }
     class Entry internal constructor(val operation: UUID, val walletId: UUID,
         val identity: TosQuantumSelfPayIdentity, val profile: QuantumNetworkProfile,
         stateBOC: ByteArray, request: ByteArray, val phase: Phase, signature: ByteArray, approval: ByteArray = ByteArray(0),
+        completion: ByteArray = ByteArray(0),
     ) {
         private val stateBytes = stateBOC.copyOf()
         private val requestBytes = request.copyOf()
         private val signatureBytes = signature.copyOf()
         private val approvalBytes = approval.copyOf()
+        private val completionBytes = completion.copyOf()
         val requestHash: ByteArray get() = authorization.cell.hash().toByteArray()
         val deadline: Long get() = authorization.deadline
         val kind: QuantumPreparedRecoveryControl.Kind get() = if (authorization.kind == 3)
             QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY else QuantumPreparedRecoveryControl.Kind.REQUIRE_RESCUE
         internal fun signedMessage(): ByteArray {
-            check(phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN))
+            check(phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN, Phase.COMPLETED))
             val body = buildCell { storeRef(authorization.cell); storeRef(TosPqWallet.byteChain(signatureBytes)) }
             return BagOfCells(identity.wallet.external(body, false)).toByteArray()
         }
@@ -72,19 +74,29 @@ internal class QuantumRecoveryControlJournal(
                 if (decoded.kind == 1) QuantumSelfPayAction.ConfigureRequired else QuantumSelfPayAction.LockPrimary,
                 decoded.deadline - 1)
             require(rebuilt.request.hash() == decoded.cell.hash())
-            if (phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN)) {
+            if (phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN, Phase.COMPLETED)) {
                 check(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY,
                     state.authority.rescueKey, requestHash, signatureBytes)) { "Stored recovery signature mismatch" }
             } else require(signatureBytes.isEmpty())
-            if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN)) QuantumRecoveryControlApproval.decode(approvalBytes).requireBound(this)
+            if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN, Phase.COMPLETED)) QuantumRecoveryControlApproval.decode(approvalBytes).requireBound(this)
             else require(approvalBytes.isEmpty())
+            if (phase == Phase.COMPLETED) {
+                require(completionBytes.size == 88)
+                val input = java.nio.ByteBuffer.wrap(completionBytes)
+                val tx = ByteArray(32).also(input::get); require(tx.any { it != 0.toByte() })
+                val stateHash = ByteArray(32).also(input::get)
+                require(stateHash.contentEquals(expectedControlState().cell.hash().toByteArray()))
+                require(input.long in 1..0xffffffffL)
+                require(java.math.BigInteger(1, ByteArray(16).also(input::get)).bitLength() <= 120)
+            } else require(completionBytes.isEmpty())
         }
         internal fun requirePlan(plan: QuantumPreparedRecoveryControl) {
             require(walletId == plan.walletId && identity == plan.identity && sameProfile(profile, plan.profile))
             require(requestHash.contentEquals(plan.request.digest) && stateBytes.contentEquals(plan.boundStateBOC))
         }
-        internal fun next(phase: Phase, signature: ByteArray = signatureBytes, approval: ByteArray = approvalBytes) =
-            Entry(operation, walletId, identity, profile, stateBytes, requestBytes, phase, signature, approval)
+        internal fun next(phase: Phase, signature: ByteArray = signatureBytes, approval: ByteArray = approvalBytes,
+                          completion: ByteArray = completionBytes) =
+            Entry(operation, walletId, identity, profile, stateBytes, requestBytes, phase, signature, approval, completion)
         internal fun encode(): ByteArray = ByteArrayOutputStream().also { buffer ->
             DataOutputStream(buffer).use { out ->
                 out.writeInt(0x51524331); out.writeByte(phase.ordinal)
@@ -94,7 +106,8 @@ internal class QuantumRecoveryControlJournal(
                 for (bytes in listOf(identity.toBoc(), stateBytes, requestBytes, signatureBytes)) {
                     require(bytes.size <= 32768); out.writeInt(bytes.size); out.write(bytes)
                 }
-                if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN)) { out.writeInt(approvalBytes.size); out.write(approvalBytes) }
+                if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN, Phase.COMPLETED)) { out.writeInt(approvalBytes.size); out.write(approvalBytes) }
+                if (phase == Phase.COMPLETED) { out.writeInt(completionBytes.size); out.write(completionBytes) }
             }
         }.toByteArray().also { require(it.size <= MAX_FILE) }
         companion object {
@@ -108,8 +121,9 @@ internal class QuantumRecoveryControlJournal(
                 val profile = QuantumNetworkProfile(globalId, hex(), hex())
                 fun field(): ByteArray { val size = input.readInt(); require(size in 0..32768 && size <= input.available()); return fixed(size) }
                 val identity = TosQuantumSelfPayIdentity.fromBoc(field()); val state = field(); val request = field(); val signature = field()
-                val approval = if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN)) field() else ByteArray(0)
-                val entry = Entry(operation, walletId, identity, profile, state, request, phase, signature, approval)
+                val approval = if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN, Phase.COMPLETED)) field() else ByteArray(0)
+                val completion = if (phase == Phase.COMPLETED) field() else ByteArray(0)
+                val entry = Entry(operation, walletId, identity, profile, state, request, phase, signature, approval, completion)
                 require(input.read() == -1) { "Recovery journal tail" }; entry
             }
         }
@@ -197,8 +211,26 @@ internal class QuantumRecoveryControlJournal(
     }
     fun unknown(identity: TosQuantumSelfPayIdentity, operation: UUID) = locked {
         val current = checkNotNull(read(identity))
+        if (current.operation == operation && current.phase == Phase.COMPLETED) return@locked
         check(current.operation == operation && current.phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN))
         write(current.next(Phase.UNKNOWN))
     }
+    /** Records authenticated success, retaining the slot and recovery isolation. No unlink/reset. */
+    fun complete(identity: TosQuantumSelfPayIdentity, result: QuantumRecoveryControlOutcomeReader.Result, now: Long) =
+        outbox.withRecoveryControlIsolation(identity) {
+            locked {
+                val current = checkNotNull(read(identity))
+                check(current.phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN))
+                result.requireCompletion(current, now)
+                val fee = java.math.BigInteger(checkNotNull(result.feesNano))
+                require(fee.signum() >= 0 && fee.bitLength() <= 120)
+                val feeBytes = fee.toByteArray().takeLast(16).toByteArray()
+                val completion = java.nio.ByteBuffer.allocate(88)
+                    .put(QuantumHistoryTransaction.hex(checkNotNull(result.transactionHash)))
+                    .put(current.expectedControlState().cell.hash().toByteArray()).putLong(result.checkpointTime)
+                    .put(ByteArray(16 - feeBytes.size)).put(feeBytes).array()
+                write(current.next(Phase.COMPLETED, completion = completion))
+            }
+        }
     companion object { private val mutex = Any(); private const val MAX_FILE = 131072 }
 }

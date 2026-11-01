@@ -628,9 +628,19 @@ class AccountRepository(
                 entry.requestHash.joinToString("") { "%02x".format(it) }, entry.deadline,
                 if (entry.phase in setOf(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.SIGNED,
                         network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.SUBMITTING,
-                        network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.UNKNOWN))
+                        network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.UNKNOWN,
+                        network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.COMPLETED))
                     BagOfCells(entry.signedMessage()).roots.single().hash().toByteArray().joinToString("") { "%02x".format(it) } else null)
         }
+    }
+
+    suspend fun completeQuantumRecoveryControl(wallet: WalletEntity,
+        result: network.tos.wallet.data.account.pq.QuantumRecoveryControlOutcomeReader.Result,
+    ) = runInterruptible(Dispatchers.IO) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val journal = network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context)
+        require(checkNotNull(journal.pending(identity)).walletId.toString() == wallet.id)
+        journal.complete(identity, result, System.currentTimeMillis() / 1000)
     }
 
     suspend fun reserveQuantumRecoveryControl(plan: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl): UUID =

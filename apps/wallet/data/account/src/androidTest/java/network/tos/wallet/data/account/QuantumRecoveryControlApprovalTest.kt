@@ -90,6 +90,23 @@ class QuantumRecoveryControlApprovalTest {
                 assertEquals(phase, restored.phase); assertArrayEquals(message, restored.signedMessage())
                 QuantumRecoveryControlApproval.decode(approval).requireBound(restored)
             }
+            val completion = ByteBuffer.allocate(88).put(ByteArray(32) { 7 })
+                .put(signed.expectedControlState().cell.hash().toByteArray()).putLong(1000)
+                .put(ByteArray(15)).put(10.toByte()).array()
+            val completed = signed.next(QuantumRecoveryControlJournal.Phase.COMPLETED, approval = approval, completion = completion)
+            val restoredCompletion = QuantumRecoveryControlJournal.Entry.decode(completed.encode())
+            assertEquals(QuantumRecoveryControlJournal.Phase.COMPLETED, restoredCompletion.phase)
+            assertArrayEquals(message, restoredCompletion.signedMessage())
+            assertThrows(IllegalArgumentException::class.java) {
+                signed.next(QuantumRecoveryControlJournal.Phase.COMPLETED, approval = approval)
+            }
+            for (bad in listOf(completion.copyOf().also { it[32] = (it[32].toInt() xor 1).toByte() },
+                completion.copyOf().also { ByteBuffer.wrap(it).putLong(64, 0) },
+                completion.copyOf().also { it[72] = 1 })) {
+                assertThrows(IllegalArgumentException::class.java) {
+                    signed.next(QuantumRecoveryControlJournal.Phase.COMPLETED, approval = approval, completion = bad)
+                }
+            }
             assertThrows(IllegalArgumentException::class.java) { signed.next(QuantumRecoveryControlJournal.Phase.SUBMITTING) }
             val wrongOperation = approval.copyOf().also { it[4] = (it[4].toInt() xor 1).toByte() }
             assertThrows(IllegalArgumentException::class.java) { signed.next(QuantumRecoveryControlJournal.Phase.SUBMITTING, approval = wrongOperation) }
