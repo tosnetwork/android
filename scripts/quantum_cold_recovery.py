@@ -296,7 +296,8 @@ def main():
             if a.sign_probe_funding_ui and not (status.get('successor', {}).get('probe', {}).get('funding_phase') == 'SIGNED'
                     and status.get('successor', {}).get('probe', {}).get('funding_pin_cancelled')):
                 raise ValueError('Funding PIN/signing product evidence missing')
-            if a.estimate_probe_funding and not status.get('successor', {}).get('probe', {}).get('funding_quote_verified'):
+            if a.estimate_probe_funding and not all(status.get('successor', {}).get('probe', {}).get(key)
+                    for key in ('funding_quote_verified', 'funding_quote_ui_verified', 'funding_quote_background_cleared')):
                 raise ValueError('Native funding estimate service evidence missing')
             if status['phase'] != expected_phase or not status['cancelled_before_signing']:
                 raise ValueError('Recovery signing evidence missing')
@@ -367,7 +368,8 @@ def main():
             'successor_probe_signed_and_restart_verified': a.sign_successor_probe,
             'probe_funding_prepared_after_authenticated_expiry': a.prepare_probe_funding,
             'probe_funding_signed_product_and_restart_verified': a.sign_probe_funding_ui,
-            'probe_funding_native_estimate_service_verified': a.estimate_probe_funding, **journey}, indent=2))
+            'probe_funding_native_estimate_service_verified': a.estimate_probe_funding,
+            'probe_funding_estimate_product_and_background_verified': a.estimate_probe_funding, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

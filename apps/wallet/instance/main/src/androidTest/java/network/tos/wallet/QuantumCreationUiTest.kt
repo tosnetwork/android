@@ -835,9 +835,26 @@ class QuantumCreationUiTest {
                                 runBlocking { repository.estimateQuantumProbeFunding(wallet, funded.operation, BigInteger.ONE) }
                             }
                             assertEquals("Probe funding estimate exceeds approved limit", refused.message)
+                            press("quantum.recovery.funding.estimate")
+                            val displayed = status("Key-check funding estimate ready.")
+                            assertTrue(displayed.contains(resumedFunding.probeAddressText))
+                            fun displayedNano(label: String): BigInteger = java.math.BigDecimal(
+                                Regex("$label: ([0-9]+(?:\\.[0-9]+)?) TOS").find(displayed)!!.groupValues[1])
+                                .movePointRight(9).toBigIntegerExact()
+                            assertEquals(resumedFunding.amount, displayedNano("Send value"))
+                            assertEquals(displayedNano("Send value") + displayedNano("Estimated fee"), displayedNano("Estimated total debit"))
+                            device.pressHome()
+                            context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            })
+                            device.waitForIdle(3000)
+                            if (device.hasObject(By.res(context.packageName, "num_pad"))) pin()
+                            status("Funding estimate cleared.")
+                            press("quantum.recovery.funding.estimate"); status("Key-check funding estimate ready.")
                             assertEquals(funded, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
                             assertEquals(fundingBalance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
-                            probePublic.put("funding_quote_verified", true).put("funding_quote_fee", quote.estimatedFee.toString())
+                            probePublic.put("funding_quote_verified", true).put("funding_quote_ui_verified", true)
+                                .put("funding_quote_background_cleared", true).put("funding_quote_fee", quote.estimatedFee.toString())
                                 .put("funding_quote_debit", quote.estimatedDebit.toString()).put("funding_quote_deadline", quote.expiresAt)
                         }
                     }
