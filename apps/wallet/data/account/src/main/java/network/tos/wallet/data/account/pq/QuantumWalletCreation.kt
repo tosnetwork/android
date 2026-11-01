@@ -45,9 +45,10 @@ internal class QuantumWalletCreation(
             val context = QuantumSeedVault.Context(bound.namespace, bound.globalId, 0, 0)
             currentCoroutineContext().ensureActive()
             if (enrollment != null) require(identity == enrollment.identity) { "Derived wallet differs from original enrollment" }
-            // Restores must establish durable isolation before storing any secret.
-            // A local enrollment alone does not prove the authorization history.
+            // The caller's restore policy runs before any secret write. This never
+            // clears existing guards or journals, nor authenticates a chain by itself.
             beforeStore(record)
+            currentCoroutineContext().ensureActive()
             if (enrollment == null) saveRecord(record)
             saveMnemonic(id, words)
             currentCoroutineContext().ensureActive()

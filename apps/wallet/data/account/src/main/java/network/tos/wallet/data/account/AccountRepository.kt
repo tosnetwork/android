@@ -524,13 +524,13 @@ class AccountRepository(
                 if (row != null) require(row.identity == WalletIdentity.Quantum(record.identity) && row.type == Wallet.Type.Default) {
                     "Existing Quantum wallet row does not match its enrollment"
                 }
-                quantumCreator(true, recovering = true).resume(record, mnemonic) { finishQuantumRegistration(it, label) }
+                quantumCreator(true, ordinaryRestore = true).resume(record, mnemonic) { finishQuantumRegistration(it, label) }
             } else {
                 require(wallets.none { row ->
                     val identity = row.quantumIdentity ?: return@none false
                     identity in matchingIdentities
                 }) { "Matching Quantum wallet has no protected enrollment record; refusing to create a duplicate" }
-                quantumCreator(false, recovering = true).create(mnemonic, selected) { finishQuantumRegistration(it, label) }
+                quantumCreator(false, ordinaryRestore = true).create(mnemonic, selected) { finishQuantumRegistration(it, label) }
             }
         }
     }
@@ -1551,12 +1551,22 @@ class AccountRepository(
         }
     }
 
-    private fun quantumCreator(resuming: Boolean, recovering: Boolean = false, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {
+    private fun quantumCreator(resuming: Boolean, ordinaryRestore: Boolean = false,
+        onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {
         val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
         return QuantumWalletCreation(
             beforeStore = { record ->
-                if (recovering) network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context)
-                    .isolateRecoveredIdentity(record.identity)
+                if (ordinaryRestore) {
+                    val outbox = QuantumPaymentOutbox(context)
+                    check(!outbox.requiresRecovery(record.identity)) { "An existing recovery operation must be completed; its saved state cannot be replaced" }
+                    val observed = QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
+                        .observeEnrolled(record.id, record.identity, record.profile, intArrayOf(8, 19, 48))
+                    val time = System.currentTimeMillis() / 1000
+                    observed.requireFresh(time)
+                    QuantumSelfPayNetwork.bind(observed.network, record.profile.globalId, time, 300)
+                        .requireSameCheckpoint(observed.proof, time)
+                    network.tos.wallet.data.account.pq.QuantumOrdinaryRestore.requireUsable(record.identity, observed.snapshot.status)
+                }
             },
             network = { id, selected ->
                 runInterruptible(Dispatchers.IO) {

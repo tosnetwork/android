@@ -6,6 +6,9 @@ import android.content.SharedPreferences
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import network.tos.security.pq.*
 import network.tos.wallet.data.account.pq.*
 import org.json.JSONObject
@@ -62,6 +65,26 @@ class QuantumWalletCreationTest {
             assertTrue(isolated)
             assertEquals(0, writes)
         } finally { id?.let { clean(it) } }
+    }
+
+    @Test fun cancellationDuringRestorePolicyPreventsSecretStorageAndPublication() = runBlocking {
+        var id: UUID? = null
+        var writes = 0
+        val operation = Job()
+        val creation = QuantumWalletCreation(
+            network = { uuid, selected -> id = uuid; prove(uuid, selected) },
+            saveRecord = { writes++ }, saveMnemonic = { _, _ -> writes++ },
+            storeRole = { _, _, _, _ -> writes++; error("Unexpected secret write") },
+            now = { fixtureNow },
+            beforeStore = { operation.cancel() },
+        )
+        try {
+            val failure = runCatching {
+                withContext(operation) { creation.create(words, profile()) { writes++ } }
+            }.exceptionOrNull()
+            assertTrue(failure is CancellationException)
+            assertEquals(0, writes)
+        } finally { operation.cancel(); id?.let { clean(it) } }
     }
 
     @Test fun durableRestoreIsolationPrecedesStorageAndRemainsOnResume() = runBlocking {
