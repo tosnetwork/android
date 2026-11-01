@@ -2,6 +2,7 @@ package network.tos.security.pq
 
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
+import java.security.MessageDigest
 
 /** Wire structure only, never a signing context or an authenticated current-role capability. */
 internal class QuantumBackupPayload private constructor(
@@ -23,6 +24,24 @@ internal class QuantumBackupPayload private constructor(
     }
 
     override fun close() { roles.forEach { it.wipe() } }
+
+    /** Snapshot identity, provenance and fresh chain-role checks are still required separately. */
+    fun validateSnapshotKeys(primary: ByteArray, rescue: ByteArray) {
+        require(primary.size == QuantumRole.PRIMARY.publicKeySize && rescue.size == QuantumRole.RESCUE.publicKeySize)
+        for (entry in roles) {
+            val role = when (entry.role) {
+                1 -> QuantumRole.PRIMARY
+                2 -> QuantumRole.RESCUE
+                else -> throw IllegalArgumentException("Unsupported backup role")
+            }
+            val derived = QuantumCrypto.publicKey(role, entry.seed)
+            val expected = if (role == QuantumRole.PRIMARY) primary else rescue
+            require(MessageDigest.isEqual(derived, expected) &&
+                MessageDigest.isEqual(MessageDigest.getInstance("SHA-256").digest(derived), entry.publicKeyHash)) {
+                "Backup seed does not match snapshot key"
+            }
+        }
+    }
 
     companion object {
         /** Wire encoding only. The custody layer must first verify identity and role provenance. */
