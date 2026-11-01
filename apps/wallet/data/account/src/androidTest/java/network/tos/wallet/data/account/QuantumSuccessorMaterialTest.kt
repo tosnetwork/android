@@ -10,6 +10,8 @@ import network.tos.security.pq.QuantumSuccessorMaterialVault
 import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumRole
 import network.tos.security.pq.QuantumPurpose
+import network.tos.security.pq.QuantumBackupInspection
+import network.tos.security.pq.QuantumRecoveryMaterialVault
 import network.tos.wallet.data.account.pq.QuantumCreationCustody
 import org.junit.Assert.*
 import org.junit.Test
@@ -20,6 +22,58 @@ import javax.crypto.KeyGenerator
 /** Public local identities and software AES only, not Keystore or live migration acceptance. */
 @RunWith(AndroidJUnit4::class)
 class QuantumSuccessorMaterialTest {
+    @Test fun encryptedSuccessorBackupSurvivesLossAndRejectsSubstitution() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "successor-export-${UUID.randomUUID()}"
+        val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val old = QuantumSelfPayAuthority(3, ByteArray(32) { 43 }, ByteArray(1312) { 1 }, ByteArray(32) { 2 })
+        val birth = TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(old))
+        val state = QuantumSelfPayState(old, retired = 2, epoch = 1u)
+        val id = UUID.randomUUID(); val root = ByteArray(32) { 1 }; val file = ByteArray(32) { 2 }
+        val vault = QuantumSuccessorMaterialVault(prefs)
+        val secret = "successor-backup-test-password".toCharArray()
+        var encrypted = ByteArray(0)
+        try {
+            val stage = vault.generate(id, birth, state, root, file, key)
+            val original = prefs.all.toMap()
+            encrypted = vault.exportEncrypted(id, birth, state, root, file, key,
+                stage.inspection.encryptedDigest, stage.inspection.snapshot, secret)
+            assertTrue(secret.all { it == '\u0000' })
+            assertEquals(original, prefs.all)
+            for (wrongDigest in listOf(ByteArray(31), ByteArray(32) { 9 })) {
+                val password = "successor-backup-test-password".toCharArray()
+                assertThrows(IllegalArgumentException::class.java) {
+                    vault.exportEncrypted(id, birth, state, root, file, key, wrongDigest, stage.inspection.snapshot, password)
+                }
+                assertTrue(password.all { it == '\u0000' })
+            }
+            val password = "successor-backup-test-password".toCharArray()
+            val other = QuantumSelfPayAuthority(old.globalId, old.namespace, old.primaryKey, old.rescueKey, QuantumPolicy.REQUIRED)
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.exportEncrypted(id, birth, state, root, file, key, stage.inspection.encryptedDigest, other, password)
+            }
+            assertTrue(password.all { it == '\u0000' })
+            assertEquals(original, prefs.all)
+            // Simulate complete loss of the original local material and device wrapping key.
+            assertTrue(prefs.edit().clear().commit())
+            val restored = QuantumBackupInspection.inspect(encrypted, "successor-backup-test-password".toCharArray(),
+                old.globalId, root, file, old.namespace)
+            assertEquals(birth, restored.birth)
+            assertArrayEquals(stage.inspection.snapshot.hash, restored.snapshot.hash)
+            assertEquals(2, restored.roles.size)
+            assertTrue(restored.roles.all { it.sourceProfile == 3 })
+            val newKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+            val newId = UUID.randomUUID()
+            QuantumRecoveryMaterialVault(prefs).storeValidated(encrypted, "successor-backup-test-password".toCharArray(), restored, newId, newKey)
+            val reloaded = QuantumRecoveryMaterialVault(prefs).inspectStored(newId, birth, restored.encryptedDigest,
+                newKey, old.globalId, root, file, old.namespace)
+            assertArrayEquals(restored.snapshot.hash, reloaded.snapshot.hash)
+            assertThrows(java.security.GeneralSecurityException::class.java) {
+                QuantumBackupInspection.inspect(encrypted, "wrong-password-valid".toCharArray(), old.globalId, root, file, old.namespace)
+            }
+        } finally { encrypted.fill(0); secret.fill('\u0000'); context.deleteSharedPreferences(name) }
+    }
     @Test fun independentStagingReloadBindingTamperAndDeletion() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "successor-test-${UUID.randomUUID()}"

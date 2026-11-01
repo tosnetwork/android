@@ -78,6 +78,29 @@ class QuantumSuccessorMaterialVault(private val prefs: SharedPreferences) {
                 root: ByteArray, file: ByteArray, key: SecretKey): Stage =
         withStored(id, birth, current, root, file, key) { _, inspection -> Stage(id, inspection) }
 
+    /** Pending-successor backup only, never evidence that the successor is installed or saved.
+     * Service authenticates the retained staging state and current recovery operation separately.
+     * Both independent roots and the original birth identity must survive device loss. */
+    fun exportEncrypted(id: UUID, birth: TosQuantumSelfPayIdentity, stagedState: QuantumSelfPayState,
+        root: ByteArray, file: ByteArray, key: SecretKey, materialDigest: ByteArray,
+        successor: QuantumSelfPayAuthority, password: CharArray,
+    ): ByteArray {
+        try {
+            require(materialDigest.size == 32 && successor.policy == QuantumPolicy.REQUIRED)
+            val expectedDigest = materialDigest.copyOf()
+            return withStored(id, birth, stagedState, root, file, key) { payload, inspection ->
+                require(MessageDigest.isEqual(expectedDigest, inspection.encryptedDigest) &&
+                    MessageDigest.isEqual(successor.hash, inspection.snapshot.hash)) { "Successor backup material mismatch" }
+                val output = QuantumBackupPayload.encodeUnverified(payload.globalId, payload.rootHash, payload.fileHash,
+                    payload.namespace, payload.birthBoc, payload.authorityBoc, payload.roles)
+                try {
+                    inspection.validatePayload(output)
+                    QuantumBackupCipher.encrypt(output, password)
+                } finally { output.fill(0) }
+            }
+        } finally { password.fill('\u0000') }
+    }
+
     /** Caller authenticates the exact funding transaction and fresh current state before/after this read.
      * Retains the original ciphertext/AAD. This returns no signer, installation or payment capability. */
     fun inspectAfterFunding(id: UUID, birth: TosQuantumSelfPayIdentity, stagedState: QuantumSelfPayState,
