@@ -70,6 +70,9 @@ class QuantumPreparedProbeFunding internal constructor(
         require(decoded.role == QuantumAuthRole.RESCUE && decoded.kind == 0 &&
             decoded.cell.hash() == request.request.hash() && decoded.executeActions?.hash() == actions.hash())
     }
+    internal fun requireProbe(stored: QuantumRecoveryProbeJournal.Entry) {
+        check(entry.encode().contentEquals(stored.encode())) { "Saved possession probe changed" }
+    }
     /** Unsigned codec objects alone cannot authorize a new current-key operation. */
     internal fun requireHandoff(prior: QuantumRecoveryControlJournal.Entry, now: Long) {
         requireFresh(now)

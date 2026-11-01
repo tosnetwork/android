@@ -733,6 +733,21 @@ class AccountRepository(
         }
     }
 
+    /** Explicit reservation of the reviewed intent only. No signature, quote, send or unlock. */
+    suspend fun reserveQuantumProbeFunding(plan: network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding): UUID =
+        withContext(Dispatchers.IO) {
+            quantumCreationMutex.withLock {
+                val actual = checkNotNull(database.getAccount(plan.walletId.toString()))
+                require(actual.type == Wallet.Type.Default && actual.quantumIdentity == plan.identity)
+                val observed = observeCompletedRecoveryLock(actual)
+                currentCoroutineContext().ensureActive()
+                plan.requireRevalidated(observed, System.currentTimeMillis() / 1000)
+                currentCoroutineContext().ensureActive()
+                network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context)
+                    .reserve(plan, System.currentTimeMillis() / 1000).operation
+            }
+        }
+
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */
     suspend fun prepareQuantumRecoveryControl(wallet: WalletEntity,
         kind: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind,
