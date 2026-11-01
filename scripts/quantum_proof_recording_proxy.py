@@ -46,6 +46,8 @@ def serve(port, upstream, output):
                                 and set(parsed['params']) == {'query'})
                 request = urllib.request.Request(upstream, data=body,
                                                  headers={'Content-Type': 'application/json'})
+                forward_started_ns = time.time_ns()
+                forward_started_monotonic = time.monotonic_ns()
                 # HTTP errors are responses too; preserve their status and bytes.
                 try:
                     response = urllib.request.urlopen(request, timeout=25)
@@ -55,6 +57,8 @@ def serve(port, upstream, output):
                     status = response.code
                     content_type = response.headers.get('Content-Type', 'application/json')
                     reply = response.read(MAX_RESPONSE + 1)
+                response_finished_ns = time.time_ns()
+                exchange_duration_ns = time.monotonic_ns() - forward_started_monotonic
                 if len(reply) > MAX_RESPONSE:
                     raise ValueError('response size limit')
                 if public_proof:
@@ -71,7 +75,9 @@ def serve(port, upstream, output):
                     retained += len(body) + len(reply)
                 if isinstance(parsed, dict) and parsed.get('method') in ('sendBoc', 'sendBocReturnHash'):
                     # Submission diagnostics retain no request, BOC, response values or error text.
-                    event = {'time_ns': time.time_ns(), 'method': parsed['method'], 'http_status': status}
+                    event = {'time_ns': response_finished_ns, 'forward_started_ns': forward_started_ns,
+                             'exchange_duration_ns': exchange_duration_ns,
+                             'method': parsed['method'], 'http_status': status}
                     try:
                         if len(reply) > 65536:
                             raise ValueError('submission response size')

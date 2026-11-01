@@ -341,6 +341,7 @@ def main():
                 pass
             if a.prepare_probe_funding:
                 for name, limit, is_json in [('quantum-proof-failure-public.json', 2097152, True),
+                                             ('quantum-funding-attempt-public.json', 8192, True),
                                              ('quantum-ui-failure-status.txt', 65536, False)]:
                     try:
                         evidence = run(['shell', 'run-as', 'network.tos.wallet', 'cat', 'cache/' + name])
