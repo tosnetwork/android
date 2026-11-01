@@ -96,6 +96,21 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                 status.text = "Saved replacement-key backup record verified.\nFile SHA-256: $digest\nKeep the file, its password and the old backup. Replacement keys are not installed; payments remain restricted."
             }
         }
+        button("Review same-address key replacement", "quantum.recovery.migration.review") {
+            run {
+                authenticating = true
+                val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Review key replacement") }
+                    finally { authenticating = false }
+                if (!accepted) return@run
+                check(viewLifecycleOwnerLiveData.value?.lifecycle?.currentState == androidx.lifecycle.Lifecycle.State.RESUMED)
+                val migration = accounts.prepareFundedQuantumSuccessorMigration(wallet)
+                fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+                status.text = "Unsigned key replacement prepared.\nOriginal address: ${wallet.accountId}" +
+                    "\nReplacement authority: ${hex(migration.successor.hash)}\nSaved backup SHA-256: ${hex(migration.confirmedBackupDigest)}" +
+                    "\nNew epoch: ${migration.expectedState.epoch}\nExpires: ${java.util.Date(migration.expiresAt * 1000)}" +
+                    "\nNothing has been signed or sent. Replacement keys are not installed; payments remain restricted."
+            }
+        }
         button("Prepare possession challenge", "quantum.recovery.probe.prepare") { prepareProbe() }
         button("Sign possession message", "quantum.recovery.probe.sign") { signProbe() }
         button("Reload possession message", "quantum.recovery.probe.reload") {

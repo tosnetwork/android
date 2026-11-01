@@ -451,7 +451,8 @@ def main():
                 if not (all(backup.get(key) == material[key] for key in ('operation', 'authority_hash', 'material_digest'))
                         and re.fullmatch(r'[0-9a-f]{64}', backup.get('cipher_sha256', ''))
                         and all(backup.get(key) is True for key in ('pin_cancelled', 'picker_cancelled', 'saved_and_read_back',
-                            'original_roots_verified', 'isolation_retained', 'state_and_balance_unchanged', 'current_backup_flag_unchanged'))):
+                            'original_roots_verified', 'isolation_retained', 'state_and_balance_unchanged', 'current_backup_flag_unchanged',
+                            'migration_preparation_verified'))):
                     raise ValueError('Successor backup product save evidence missing')
                 (a.out / 'successor-backup-public.json').write_text(json.dumps(backup, indent=2))
                 run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
@@ -533,7 +534,8 @@ def main():
             'probe_funding_completed_product_and_restart_verified': a.submit_probe_funding,
             'probe_funding_completion_rejections_verified': a.submit_probe_funding,
             'funded_successor_material_product_and_restart_verified': a.submit_probe_funding,
-            'successor_backup_product_and_restart_verified': a.submit_probe_funding, **journey}, indent=2))
+            'successor_backup_product_and_restart_verified': a.submit_probe_funding,
+            'successor_migration_preparation_verified': a.submit_probe_funding, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

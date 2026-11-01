@@ -1222,6 +1222,10 @@ class QuantumCreationUiTest {
                 runBlocking { repository.verifiedFundedQuantumSuccessorBackup(wallet) }
             }
             assertEquals("Successor backup is not confirmed", error.message)
+            val migrationError = assertThrows(IllegalStateException::class.java) {
+                runBlocking { repository.prepareFundedQuantumSuccessorMigration(wallet) }
+            }
+            assertEquals("Successor backup is not confirmed", migrationError.message)
         }
         unconfirmed()
         context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
@@ -1302,6 +1306,31 @@ class QuantumCreationUiTest {
                 assertTrue(inspected.roles.all { it.sourceProfile == 3 })
                 val digest = java.security.MessageDigest.getInstance("SHA-256").digest(cipher).joinToString("") { "%02x".format(it) }
                 assertEquals(digest, runBlocking { repository.verifiedFundedQuantumSuccessorBackup(wallet) })
+                repeat(3) {
+                    if (device.hasObject(By.desc("quantum.backup.export.status"))) {
+                        device.pressBack(); device.waitForIdle()
+                    }
+                }
+                pressRecovery("quantum.recovery.migration.review")
+                assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000)); pin()
+                recoveryStatus("Unsigned key replacement prepared.")
+                val review = checkNotNull(device.findObject(By.desc("quantum.recovery.status"))).text
+                assertTrue(review.contains(digest) && review.contains(inspected.snapshot.hash.joinToString("") { "%02x".format(it) }))
+                val migration = runBlocking { repository.prepareFundedQuantumSuccessorMigration(wallet) }
+                assertEquals(funding.operation, migration.fundingOperation)
+                assertArrayEquals(stage.inspection.encryptedDigest, migration.materialDigest)
+                assertEquals(digest, migration.confirmedBackupDigest.joinToString("") { "%02x".format(it) })
+                assertArrayEquals(inspected.snapshot.hash, migration.successor.hash)
+                val current = (before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+                val decoded = network.tos.blockchain.ton.contract.QuantumStoredSelfPayRequest.parse(org.ton.boc.BagOfCells(migration.request.request).toByteArray())
+                decoded.requireIdentity(requireNotNull(wallet.quantumIdentity))
+                assertEquals(4, decoded.kind)
+                assertEquals(network.tos.blockchain.ton.contract.QuantumAuthRole.RESCUE, decoded.role)
+                assertEquals(current.epoch, decoded.epoch); assertEquals(current.rescueNonce, decoded.nonce)
+                assertEquals(0L, migration.expectedState.seqno)
+                assertEquals(current.epoch + 1u, migration.expectedState.epoch)
+                assertEquals(0uL, migration.expectedState.primaryNonce); assertEquals(0uL, migration.expectedState.rescueNonce)
+                assertEquals(current.retired, migration.expectedState.retired)
                 val after = runBlocking { repository.readQuantumAccount(wallet) }
                 assertEquals(before.balance, after.balance)
                 assertEquals((before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash(),
@@ -1316,7 +1345,7 @@ class QuantumCreationUiTest {
                     .put("material_digest", stage.inspection.encryptedDigest.joinToString("") { "%02x".format(it) })
                     .put("pin_cancelled", true).put("picker_cancelled", true).put("saved_and_read_back", true)
                     .put("original_roots_verified", true).put("isolation_retained", true).put("state_and_balance_unchanged", true)
-                    .put("current_backup_flag_unchanged", true).toString())
+                    .put("current_backup_flag_unchanged", true).put("migration_preparation_verified", true).toString())
             } finally { cipher.fill(0) }
         } finally { password.fill('\u0000'); context.unregisterReceiver(observer) }
     }

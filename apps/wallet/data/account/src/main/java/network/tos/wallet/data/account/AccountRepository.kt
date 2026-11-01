@@ -782,6 +782,33 @@ class AccountRepository(
         }
     }
 
+    /** Caller authenticates. Backup confirmation is mandatory before preparing any new authorization.
+     * This creates no signature, journal slot, network message or installation authority. */
+    suspend fun prepareFundedQuantumSuccessorMigration(wallet: WalletEntity):
+        network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration = withContext(Dispatchers.IO) {
+        val stage = inspectFundedQuantumSuccessorMaterial(wallet)
+        val operation = checkNotNull(pendingQuantumProbeFunding(wallet)).operation
+        val result = readQuantumProbeFundingOutcome(wallet, operation)
+        val coroutine = currentCoroutineContext()
+        quantumCreationMutex.withLock {
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            QuantumPaymentOutbox(context).withRecoveryControlIsolation(requireNotNull(wallet.quantumIdentity)) {
+                coroutine.ensureActive()
+                val (record, prior, binding) = successorBackupBinding(actual, stage)
+                val backup = quantumCustody.requireSuccessorBackup(binding)
+                val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).pending(record.identity))
+                val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(record.identity))
+                check(entry.operation == operation)
+                result.prepareMigration(entry, prior, probe, backup, System.currentTimeMillis() / 1000, 120).also {
+                    it.requireRecords(entry, prior, probe, backup)
+                    it.requireFresh(System.currentTimeMillis() / 1000)
+                    coroutine.ensureActive()
+                }
+            }
+        }
+    }
+
     private fun observeCompletedRecoveryLock(wallet: WalletEntity): QuantumAccountReader.Observation {
         val identity = requireNotNull(wallet.quantumIdentity)
         check(QuantumPaymentOutbox(context).requiresRecovery(identity))

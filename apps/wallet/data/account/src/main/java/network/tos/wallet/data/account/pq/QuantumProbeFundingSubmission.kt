@@ -13,7 +13,7 @@ import java.util.UUID
 /** Strict historical reconstruction only. No proof, fresh authorization, key access or dispatch API. */
 internal class QuantumProbeFundingSubmission private constructor(
     val operation: UUID, val walletId: UUID, val identity: TosQuantumSelfPayIdentity,
-    val profile: QuantumNetworkProfile, val amount: BigInteger, val messageHash: String,
+    val profile: QuantumNetworkProfile, val amount: BigInteger, val messageHash: String, val deadline: Long,
     val probeAddress: String, val probeBodyHash: String, val expectedState: QuantumSelfPayState,
 ) {
     companion object {
@@ -54,7 +54,7 @@ internal class QuantumProbeFundingSubmission private constructor(
                 val after = QuantumSelfPayState(before.authority, before.walletId, before.seqno + 1,
                     before.retired, before.epoch, before.primaryNonce, before.rescueNonce + 1u)
                 QuantumProbeFundingSubmission(operation, id, identity, profile, amount,
-                    QuantumPaymentQuote.hex(BagOfCells(message).roots.single().hash().toByteArray()),
+                    QuantumPaymentQuote.hex(BagOfCells(message).roots.single().hash().toByteArray()), stored.deadline,
                     QuantumAccountReader.rawAddressFor(probe.probe.address),
                     QuantumPaymentQuote.hex(body.hash().toByteArray()), after)
             }
