@@ -8,9 +8,17 @@ class QuantumBackupInspection private constructor(
     val birth: TosQuantumSelfPayIdentity,
     val snapshot: QuantumSelfPayAuthority,
     val roles: List<Role>,
+    private val root: ByteArray,
+    private val file: ByteArray,
 ) {
     class Role internal constructor(val role: QuantumRole, val account: Long,
                                     val generation: Long, val sourceProfile: Int)
+
+    fun requireProfile(globalId: Int, rootHash: ByteArray, fileHash: ByteArray, namespace: ByteArray) {
+        require(globalId == snapshot.globalId && java.security.MessageDigest.isEqual(root, rootHash) &&
+            java.security.MessageDigest.isEqual(file, fileHash) &&
+            java.security.MessageDigest.isEqual(snapshot.namespace, namespace)) { "Backup observation profile mismatch" }
+    }
 
     companion object {
         /** Trust fields must come from an independently approved profile. Password is consumed. */
@@ -27,7 +35,7 @@ class QuantumBackupInspection private constructor(
                     QuantumBackupInspection(identity.birth, identity.snapshot, payload.roles.map {
                         Role(if (it.role == 1) QuantumRole.PRIMARY else QuantumRole.RESCUE,
                             it.account, it.generation, it.sourceProfile)
-                    })
+                    }, payload.rootHash.copyOf(), payload.fileHash.copyOf())
                 }
             } finally { plaintext.fill(0); password.fill('\u0000') }
         }
