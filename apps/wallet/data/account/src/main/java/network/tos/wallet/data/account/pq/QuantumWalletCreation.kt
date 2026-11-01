@@ -17,6 +17,7 @@ internal class QuantumWalletCreation(
     private val saveMnemonic: (UUID, List<String>) -> Unit,
     private val storeRole: (UUID, QuantumRole, QuantumSeedVault.Context, ByteArray) -> ByteArray,
     private val now: () -> Long = { System.currentTimeMillis() / 1000 },
+    private val beforeStore: (QuantumCreationRecord) -> Unit = {},
 ) {
     suspend fun <T> create(words: List<String>, profile: QuantumNetworkProfile, publish: suspend (QuantumCreationRecord) -> T): T =
         prepare(words, profile, UUID.randomUUID(), null, publish)
@@ -43,8 +44,11 @@ internal class QuantumWalletCreation(
             val record = QuantumCreationRecord(id, profile, identity)
             val context = QuantumSeedVault.Context(bound.namespace, bound.globalId, 0, 0)
             currentCoroutineContext().ensureActive()
+            if (enrollment != null) require(identity == enrollment.identity) { "Derived wallet differs from original enrollment" }
+            // Restores must establish durable isolation before storing any secret.
+            // A local enrollment alone does not prove the authorization history.
+            beforeStore(record)
             if (enrollment == null) saveRecord(record)
-            else require(identity == enrollment.identity) { "Derived wallet differs from original enrollment" }
             saveMnemonic(id, words)
             currentCoroutineContext().ensureActive()
             require(storeRole(id, QuantumRole.PRIMARY, context, primary).contentEquals(primaryKey)) { "Stored PRIMARY differs from enrollment" }

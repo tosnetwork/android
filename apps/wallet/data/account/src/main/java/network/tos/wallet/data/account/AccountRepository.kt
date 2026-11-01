@@ -480,7 +480,7 @@ class AccountRepository(
                              onEnrollment: (UUID) -> Unit = {}): WalletEntity = withContext(Dispatchers.IO) {
         require(backupConfirmed) { "Save and confirm the recovery phrase before creating the wallet" }
         quantumCreationMutex.withLock {
-            quantumCreator(false, onEnrollment).create(mnemonic, profile) { finishQuantumRegistration(it, label) }
+            quantumCreator(false, onEnrollment = onEnrollment).create(mnemonic, profile) { finishQuantumRegistration(it, label) }
         }
     }
 
@@ -524,13 +524,13 @@ class AccountRepository(
                 if (row != null) require(row.identity == WalletIdentity.Quantum(record.identity) && row.type == Wallet.Type.Default) {
                     "Existing Quantum wallet row does not match its enrollment"
                 }
-                quantumCreator(true).resume(record, mnemonic) { finishQuantumRegistration(it, label) }
+                quantumCreator(true, recovering = true).resume(record, mnemonic) { finishQuantumRegistration(it, label) }
             } else {
                 require(wallets.none { row ->
                     val identity = row.quantumIdentity ?: return@none false
                     identity in matchingIdentities
                 }) { "Matching Quantum wallet has no protected enrollment record; refusing to create a duplicate" }
-                quantumCreator(false).create(mnemonic, selected) { finishQuantumRegistration(it, label) }
+                quantumCreator(false, recovering = true).create(mnemonic, selected) { finishQuantumRegistration(it, label) }
             }
         }
     }
@@ -799,9 +799,13 @@ class AccountRepository(
         }
     }
 
-    private fun quantumCreator(resuming: Boolean, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {
+    private fun quantumCreator(resuming: Boolean, recovering: Boolean = false, onEnrollment: (UUID) -> Unit = {}): QuantumWalletCreation {
         val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
         return QuantumWalletCreation(
+            beforeStore = { record ->
+                if (recovering) network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context)
+                    .isolateRecoveredIdentity(record.identity)
+            },
             network = { id, selected ->
                 runInterruptible(Dispatchers.IO) {
                     val now = System.currentTimeMillis() / 1000
