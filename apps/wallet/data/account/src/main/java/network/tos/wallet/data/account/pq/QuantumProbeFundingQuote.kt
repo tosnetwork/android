@@ -46,6 +46,9 @@ class QuantumProbeFundingQuote internal constructor(
         simulation.requireBinding(plan.profile.anchor(), requestBytes, messageBytes, now, 30)
         check(now < expiresAt)
     }
+    internal fun approvalRecord(): ByteArray = QuantumProbeFundingApproval.record(operation,
+        QuantumPaymentOutbox.digest(messageBytes), plan.request.digest, quotedAt, expiresAt, amount,
+        observedBalance, estimatedBalance, maximumEstimatedFee)
     companion object {
         /** Codec checks only; callers cannot mint a native simulation capability from JSON. */
         internal fun validateExecution(wire: JSONObject, message: ByteArray, source: String,

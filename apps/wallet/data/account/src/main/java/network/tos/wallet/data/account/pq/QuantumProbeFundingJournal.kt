@@ -12,26 +12,31 @@ import java.nio.channels.OverlappingFileLockException
 import java.util.UUID
 import java.math.BigInteger
 
-/** Durable restricted signing journal. No broadcast/unlock API.
+/** Durable restricted funding journal. No network-dispatch or unlock API.
  * A reservation is never replaced or released, including after its deadline.
  */
 internal class QuantumProbeFundingJournal(private val context: Context, private val fault: ((String) -> Unit)? = null) {
-    enum class Phase { RESERVED, SIGNING, SIGNED }
+    enum class Phase { RESERVED, SIGNING, SIGNED, SUBMITTING, UNKNOWN }
     class Reservation private constructor(val operation: UUID, snapshot: ByteArray,
-        val phase: Phase = Phase.RESERVED, signature: ByteArray = ByteArray(0), originalEncoding: ByteArray? = null) {
+        val phase: Phase = Phase.RESERVED, signature: ByteArray = ByteArray(0),
+        approval: ByteArray = ByteArray(0), originalEncoding: ByteArray? = null) {
         private val bytes = snapshot.copyOf()
         private val signatureBytes = signature.copyOf()
+        private val approvalBytes = approval.copyOf()
         private val original = originalEncoding?.copyOf()
         internal val walletId: UUID get() = DataInputStream(ByteArrayInputStream(bytes)).use {
             UUID(it.readLong(), it.readLong())
         }
-        internal val signatureDigest: String? get() = if (phase == Phase.SIGNED)
+        internal val signatureDigest: String? get() = if (phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN))
             java.security.MessageDigest.getInstance("SHA-256").digest(signatureBytes).joinToString("") { "%02x".format(it) }
             else null
         init {
             require(bytes.size in 1..MAX_FILE - 24)
             if (phase != Phase.RESERVED) require(bytes.size <= MAX_SNAPSHOT)
-            require(if (phase == Phase.SIGNED) signatureBytes.size == 7856 else signatureBytes.isEmpty())
+            require(if (phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN)) signatureBytes.size == 7856 else signatureBytes.isEmpty())
+            if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN)) {
+                require(QuantumProbeFundingApproval.decode(approvalBytes).operation == operation)
+            } else require(approvalBytes.isEmpty())
         }
         internal fun beginSigning(): Reservation {
             check(phase == Phase.RESERVED)
@@ -40,6 +45,14 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
         internal fun finishSigning(signature: ByteArray): Reservation {
             check(phase == Phase.SIGNING)
             return Reservation(operation, bytes, Phase.SIGNED, signature)
+        }
+        internal fun beginSubmission(approval: ByteArray): Reservation {
+            check(phase == Phase.SIGNED) { "Funding dispatch already started or uncertain" }
+            return Reservation(operation, bytes, Phase.SUBMITTING, signatureBytes, approval)
+        }
+        internal fun unknown(): Reservation {
+            check(phase == Phase.SUBMITTING || phase == Phase.UNKNOWN)
+            return Reservation(operation, bytes, Phase.UNKNOWN, signatureBytes, approvalBytes)
         }
         internal fun signedForEstimate(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry,
                                        fresh: QuantumAccountReader.Observation, now: Long): Pair<QuantumPreparedProbeFunding, ByteArray> {
@@ -54,7 +67,7 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
         /** Reconstruct the saved request after fresh authentication; never renew its deadline. */
         internal fun restore(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry,
                              fresh: QuantumAccountReader.Observation, now: Long): QuantumPreparedProbeFunding {
-            check(phase != Phase.SIGNING) { "Prior funding signature may have been produced; retry forbidden" }
+            check(phase == Phase.RESERVED || phase == Phase.SIGNED) { "Prior funding signing or submission is uncertain; retry forbidden" }
             return DataInputStream(ByteArrayInputStream(bytes)).use { input ->
                 val walletId = UUID(input.readLong(), input.readLong())
                 val globalId = input.readInt(); val root = input.readUTF(); val file = input.readUTF()
@@ -83,11 +96,13 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             original?.let { return it.copyOf() }
             return ByteArrayOutputStream().also { buffer ->
             DataOutputStream(buffer).use { out ->
-                out.writeInt(0x51504632)
+                val submitting = phase == Phase.SUBMITTING || phase == Phase.UNKNOWN
+                out.writeInt(if (submitting) 0x51504633 else 0x51504632)
                 out.writeLong(operation.mostSignificantBits); out.writeLong(operation.leastSignificantBits)
                 out.writeByte(phase.ordinal)
                 out.writeInt(bytes.size); out.write(bytes)
                 out.writeInt(signatureBytes.size); out.write(signatureBytes)
+                if (submitting) { out.writeInt(approvalBytes.size); out.write(approvalBytes) }
             }
         }.toByteArray().also { require(it.size <= MAX_FILE) }
         }
@@ -97,18 +112,23 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
                 Reservation(UUID.randomUUID(), snapshot(plan, prior, probe, now))
             internal fun decode(bytes: ByteArray): Reservation = DataInputStream(ByteArrayInputStream(bytes)).use { input ->
                 require(bytes.size in 25..MAX_FILE)
-                val magic = input.readInt(); require(magic == 0x51504631 || magic == 0x51504632)
+                val magic = input.readInt(); require(magic in setOf(0x51504631, 0x51504632, 0x51504633))
                 val operation = UUID(input.readLong(), input.readLong())
                 val phase = if (magic == 0x51504631) Phase.RESERVED else
                     Phase.entries.getOrNull(input.readUnsignedByte()) ?: error("Funding phase")
+                require((magic == 0x51504633) == (phase == Phase.SUBMITTING || phase == Phase.UNKNOWN))
                 val size = input.readInt(); require(size > 0 && size <= input.available())
                 val snapshot = ByteArray(size).also(input::readFully)
                 val signature = if (magic == 0x51504631) ByteArray(0) else {
-                    val count = input.readInt(); require(count in 0..7856 && count == input.available())
+                    val count = input.readInt(); require(count in 0..7856 && count <= input.available())
                     ByteArray(count).also(input::readFully)
                 }
+                val approval = if (magic == 0x51504633) {
+                    val count = input.readInt(); require(count == QuantumProbeFundingApproval.SIZE && count == input.available())
+                    ByteArray(count).also(input::readFully)
+                } else ByteArray(0)
                 require(input.read() == -1)
-                Reservation(operation, snapshot, phase, signature, bytes)
+                Reservation(operation, snapshot, phase, signature, approval, bytes)
             }
             private fun snapshot(plan: QuantumPreparedProbeFunding, prior: QuantumRecoveryControlJournal.Entry,
                                  probe: QuantumRecoveryProbeJournal.Entry, now: Long): ByteArray {
@@ -154,6 +174,28 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             check(saved.operation == operation)
             saved.signedForEstimate(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
                 checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
+        }
+    /** A fresh native quote is consumed before persisting the single initial dispatch transition. */
+    fun beginSubmission(quote: QuantumProbeFundingQuote, fresh: QuantumAccountReader.Observation, now: Long):
+        Pair<QuantumPreparedProbeFunding, ByteArray> = QuantumPaymentOutbox(context).withRecoveryControlIsolation(quote.plan.identity) {
+        val identity = quote.plan.identity
+        require(fresh.identity == identity)
+        val saved = checkNotNull(pending(identity)); check(saved.operation == quote.operation)
+        val (plan, message) = saved.signedForEstimate(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
+            checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
+        quote.requireFresh(saved.operation, plan, message, now)
+        val approval = quote.approvalRecord()
+        QuantumProbeFundingApproval.decode(approval).requireBound(saved.operation, plan, message)
+        val submitting = saved.beginSubmission(approval)
+        store.transition(key(identity), saved.encode(), submitting.encode())
+        plan to message
+    }
+    /** A transport response cannot prove inclusion. Uncertainty never returns to a dispatchable state. */
+    fun unknown(identity: TosQuantumSelfPayIdentity, operation: UUID) =
+        QuantumPaymentOutbox(context).withRecoveryControlIsolation(identity) {
+            val saved = checkNotNull(pending(identity)); check(saved.operation == operation)
+            val uncertain = saved.unknown()
+            if (saved.phase != Phase.UNKNOWN) store.transition(key(identity), saved.encode(), uncertain.encode())
         }
     /** Callback follows authenticated restore and durable SIGNING; failure never returns to RESERVED. */
     fun sign(identity: TosQuantumSelfPayIdentity, operation: UUID, fresh: QuantumAccountReader.Observation,

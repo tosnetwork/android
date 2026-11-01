@@ -330,6 +330,17 @@ class QuantumSelfPayAccountTest {
                         funding.requireSignature(validFundingSignature)
                         val expectedFundingMessage = funding.identity.wallet.external(funding.request.submission(validFundingSignature), false)
                         assertEquals(expectedFundingMessage.hash(), BagOfCells(funding.signedMessage(validFundingSignature, now)).roots.single().hash())
+                        val fundingMessage = funding.signedMessage(validFundingSignature, now)
+                        val fundingOperation = UUID.randomUUID()
+                        val approval = network.tos.wallet.data.account.pq.QuantumProbeFundingApproval.decode(
+                            network.tos.wallet.data.account.pq.QuantumProbeFundingApproval.record(fundingOperation,
+                                QuantumPaymentOutbox.digest(fundingMessage), funding.request.digest, now, minOf(now + 20, funding.expiresAt),
+                                funding.amount, BigInteger("1000000000"), BigInteger("1000000000") - funding.amount - BigInteger.TEN,
+                                BigInteger("100")))
+                        approval.requireBound(fundingOperation, funding, fundingMessage)
+                        assertThrows(IllegalArgumentException::class.java) { approval.requireBound(UUID.randomUUID(), funding, fundingMessage) }
+                        val alteredMessage = fundingMessage.copyOf().apply { this[0] = (this[0].toInt() xor 1).toByte() }
+                        assertThrows(IllegalArgumentException::class.java) { approval.requireBound(fundingOperation, funding, alteredMessage) }
                         assertThrows(IllegalStateException::class.java) { funding.signedMessage(validFundingSignature, funding.expiresAt) }
                         assertThrows(IllegalStateException::class.java) { funding.signedMessage(wrongFundingDomain, now) }
                         assertThrows(IllegalStateException::class.java) { funding.requireSignature(wrongFundingDomain) }
