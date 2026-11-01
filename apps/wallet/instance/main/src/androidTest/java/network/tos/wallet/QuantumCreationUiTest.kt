@@ -777,6 +777,28 @@ class QuantumCreationUiTest {
                     assertEquals(completed, runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
                     probePublic.put("funding_prepared", true).put("handoff_wait_observed", waitingObserved)
                         .put("funding_request_digest", hex(funding.request.digest)).put("funding_deadline", funding.expiresAt)
+                    if (InstrumentationRegistry.getArguments().getString("quantumSignProbeFundingUI") == "true") {
+                        val fundingBalance = runBlocking { repository.readQuantumAccount(wallet) }.balance
+                        assertNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+                        press("quantum.recovery.funding.review"); status("Ready to authenticate key-check funding")
+                        press("quantum.recovery.funding.sign")
+                        assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 15000))
+                        device.pressBack(); status("Ready to authenticate key-check funding")
+                        assertNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+                        press("quantum.recovery.funding.sign"); pin(); status("Funding message: SIGNED")
+                        val funded = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+                        assertEquals("SIGNED", funded.phase); assertEquals(64, funded.signatureDigest!!.length)
+                        val resumedFunding = runBlocking { repository.resumeQuantumProbeFunding(wallet, funded.operation) }
+                        assertArrayEquals(funding.request.digest, resumedFunding.request.digest)
+                        assertEquals(fundingBalance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
+                        assertEquals(proof, runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                        assertEquals(completed, runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
+                        press("quantum.recovery.funding.sign"); status("Funding message: SIGNED")
+                        assertFalse(device.hasObject(By.res(context.packageName, "num_pad")))
+                        assertEquals(funded, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+                        probePublic.put("funding_operation", funded.operation.toString()).put("funding_phase", funded.phase)
+                            .put("funding_signature_digest", funded.signatureDigest).put("funding_pin_cancelled", true)
+                    }
                 }
             }
         }
@@ -825,6 +847,12 @@ class QuantumCreationUiTest {
                 val saved = expected.getJSONObject("successor").getJSONObject("probe")
                 val proof = checkNotNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
                 assertEquals("SIGNED", proof.phase); assertEquals(saved.getString("operation"), proof.operation.toString())
+                if (saved.has("funding_operation")) {
+                    val funding = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+                    assertEquals(saved.getString("funding_operation"), funding.operation.toString())
+                    assertEquals("SIGNED", funding.phase)
+                    assertEquals(saved.getString("funding_signature_digest"), funding.signatureDigest)
+                }
                 assertEquals(saved.getString("address"), proof.address); assertEquals(saved.getString("digest"), proof.digest)
                 assertEquals(saved.getString("material_digest"), proof.materialDigest); assertEquals(saved.getString("body_digest"), proof.bodyDigest)
                 assertEquals(saved.getLong("deadline"), proof.deadline)

@@ -309,6 +309,10 @@ class QuantumSelfPayAccountTest {
                     assertEquals(QuantumAuthRole.RESCUE, funding.request.role)
                     assertTrue(funding.expiresAt <= signed.deadline)
                     funding.requireBound(funding.request.request); funding.requireRevalidated(observation, now)
+                    funding.requireReviewedRequest(funding.request.digest)
+                    assertThrows(IllegalArgumentException::class.java) { funding.requireReviewedRequest(ByteArray(0)) }
+                    val alteredReview = funding.request.digest.copyOf().apply { this[0] = (this[0].toInt() xor 1).toByte() }
+                    assertThrows(IllegalStateException::class.java) { funding.requireReviewedRequest(alteredReview) }
                     // Public unfunded fixture key, not real custody material.
                     val fundingSeed = ByteArray(QuantumRole.RESCUE.seedSize) { 0x22 }
                     val validFundingSignature = QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY,

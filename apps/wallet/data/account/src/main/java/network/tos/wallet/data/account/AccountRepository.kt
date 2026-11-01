@@ -749,6 +749,19 @@ class AccountRepository(
         }
 
     /** Public lookup handle only; the returned UUID establishes no authorization. */
+    data class RecoveryProbeFundingStatus(val operation: UUID, val phase: String, val signatureDigest: String?)
+    /** Saved local phase only, never chain outcome, permission to sign or proof of inclusion. */
+    suspend fun pendingQuantumProbeFunding(wallet: WalletEntity): RecoveryProbeFundingStatus? = withContext(Dispatchers.IO) {
+        val actual = checkNotNull(database.getAccount(wallet.id))
+        require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+        network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context)
+            .pending(requireNotNull(actual.quantumIdentity))?.let {
+                require(it.walletId.toString() == actual.id)
+                RecoveryProbeFundingStatus(it.operation, it.phase.name, it.signatureDigest)
+            }
+    }
+
+    /** Public lookup handle only; the returned UUID establishes no authorization. */
     suspend fun pendingQuantumProbeFundingOperation(wallet: WalletEntity): UUID? = withContext(Dispatchers.IO) {
         val actual = checkNotNull(database.getAccount(wallet.id))
         require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
@@ -771,7 +784,10 @@ class AccountRepository(
     }
 
     /** Caller authenticates this exact operation. No broadcast or recovery unlock. */
-    suspend fun signQuantumProbeFunding(wallet: WalletEntity, operation: UUID) = withContext(Dispatchers.IO) {
+    suspend fun signQuantumProbeFunding(wallet: WalletEntity, operation: UUID, reviewedDigest: ByteArray) {
+        require(reviewedDigest.size == 32)
+        val reviewed = reviewedDigest.copyOf()
+        withContext(Dispatchers.IO) {
         quantumCreationMutex.withLock {
             val coroutine = currentCoroutineContext(); coroutine.ensureActive()
             val actual = checkNotNull(database.getAccount(wallet.id))
@@ -786,7 +802,7 @@ class AccountRepository(
                 .snapshot(now).status as? network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active)?.state
                 ?: error("Probe funding wallet no longer active")
             coroutine.ensureActive()
-            network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).sign(identity, operation, fresh, now) { plan ->
+            network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).sign(identity, operation, fresh, now, reviewed) { plan ->
                 coroutine.ensureActive()
                 require(plan.walletId == record.id && plan.identity == identity && sameProfile(plan.profile, record.profile))
                 plan.requireRevalidated(fresh, System.currentTimeMillis() / 1000)
@@ -795,6 +811,7 @@ class AccountRepository(
                 plan.signProtected(quantumCustody, inspection, state, System.currentTimeMillis() / 1000)
             }
         }
+    }
     }
 
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */

@@ -22,6 +22,7 @@ class QuantumPreparedProbeFunding internal constructor(
     val profile = entry.profile
     val probeOperation = entry.operation
     val probeAddress = entry.probe.address
+    val probeAddressText get() = QuantumAccountReader.rawAddressFor(probeAddress)
     val expiresAt: Long
     val message: Cell
     val actions: Cell
@@ -70,6 +71,10 @@ class QuantumPreparedProbeFunding internal constructor(
     internal fun requireSignature(signature: ByteArray) {
         check(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, rescueKey,
             request.digest, signature)) { "Probe funding signature mismatch" }
+    }
+    internal fun requireReviewedRequest(digest: ByteArray) {
+        require(digest.size == 32)
+        check(digest.contentEquals(request.digest)) { "Funding request changed after review" }
     }
     /** Account service invokes this only from the journal's durable SIGNING callback. */
     internal fun signProtected(custody: QuantumCreationCustody, inspection: network.tos.security.pq.QuantumBackupInspection,

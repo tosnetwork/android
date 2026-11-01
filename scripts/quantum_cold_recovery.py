@@ -51,8 +51,11 @@ def main():
     parser.add_argument('--stage-successor', action='store_true', help='Generate protected successor roots through actual product UI and verify after restart')
     parser.add_argument('--sign-successor-probe', action='store_true', help='Authenticate and durably dual-sign the staged successor probe without funding it')
     parser.add_argument('--prepare-probe-funding', action='store_true', help='Wait for authenticated prior-control expiry and prepare one unsigned probe funding request')
+    parser.add_argument('--sign-probe-funding-ui', action='store_true', help='Review and PIN-sign probe funding in the product UI without broadcasting')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
+    if a.sign_probe_funding_ui and not a.prepare_probe_funding:
+        raise ValueError('Funding product signing requires authenticated preparation mode')
     if a.recovery_control_signing and not a.encrypted_backup:
         raise ValueError('Recovery control signing requires encrypted cold recovery')
     if a.submit_recovery_control and not a.recovery_control_signing:
@@ -214,6 +217,8 @@ def main():
             command[-1:-1] = ['-e', 'quantumSignSuccessorProbe', 'true']
         if a.prepare_probe_funding:
             command[-1:-1] = ['-e', 'quantumPrepareProbeFunding', 'true']
+        if a.sign_probe_funding_ui:
+            command[-1:-1] = ['-e', 'quantumSignProbeFundingUI', 'true']
         def collect_failure():
             if a.prepare_probe_funding:
                 for name, limit, is_json in [('quantum-proof-failure-public.json', 2097152, True),
@@ -283,6 +288,9 @@ def main():
                 raise ValueError('Successor probe signing evidence missing')
             if a.prepare_probe_funding and not status.get('successor', {}).get('probe', {}).get('funding_prepared'):
                 raise ValueError('Authenticated probe funding preparation evidence missing')
+            if a.sign_probe_funding_ui and not (status.get('successor', {}).get('probe', {}).get('funding_phase') == 'SIGNED'
+                    and status.get('successor', {}).get('probe', {}).get('funding_pin_cancelled')):
+                raise ValueError('Funding PIN/signing product evidence missing')
             if status['phase'] != expected_phase or not status['cancelled_before_signing']:
                 raise ValueError('Recovery signing evidence missing')
             (a.out / 'recovery-control-public.json').write_text(json.dumps(status, indent=2))
@@ -350,7 +358,8 @@ def main():
             'recovery_control_product_ui_verified': a.recovery_control_ui,
             'successor_protected_material_and_restart_verified': a.stage_successor,
             'successor_probe_signed_and_restart_verified': a.sign_successor_probe,
-            'probe_funding_prepared_after_authenticated_expiry': a.prepare_probe_funding, **journey}, indent=2))
+            'probe_funding_prepared_after_authenticated_expiry': a.prepare_probe_funding,
+            'probe_funding_signed_product_and_restart_verified': a.sign_probe_funding_ui, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

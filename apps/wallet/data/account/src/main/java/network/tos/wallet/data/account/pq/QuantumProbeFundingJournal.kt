@@ -22,6 +22,12 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
         private val bytes = snapshot.copyOf()
         private val signatureBytes = signature.copyOf()
         private val original = originalEncoding?.copyOf()
+        internal val walletId: UUID get() = DataInputStream(ByteArrayInputStream(bytes)).use {
+            UUID(it.readLong(), it.readLong())
+        }
+        internal val signatureDigest: String? get() = if (phase == Phase.SIGNED)
+            java.security.MessageDigest.getInstance("SHA-256").digest(signatureBytes).joinToString("") { "%02x".format(it) }
+            else null
         init {
             require(bytes.size in 1..MAX_FILE - 24)
             if (phase != Phase.RESERVED) require(bytes.size <= MAX_SNAPSHOT)
@@ -135,13 +141,14 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
     }
     /** Callback follows authenticated restore and durable SIGNING; failure never returns to RESERVED. */
     fun sign(identity: TosQuantumSelfPayIdentity, operation: UUID, fresh: QuantumAccountReader.Observation,
-             now: Long, signer: (QuantumPreparedProbeFunding) -> ByteArray) =
+             now: Long, reviewedDigest: ByteArray, signer: (QuantumPreparedProbeFunding) -> ByteArray) =
         QuantumPaymentOutbox(context).withRecoveryControlIsolation(identity) {
             val reserved = checkNotNull(pending(identity))
             check(reserved.operation == operation && reserved.phase == Phase.RESERVED)
             require(fresh.identity == identity)
             val plan = reserved.restore(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
                 checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
+            plan.requireReviewedRequest(reviewedDigest)
             val signing = reserved.beginSigning()
             store.transition(key(identity), reserved.encode(), signing.encode())
             plan.requireFresh(System.currentTimeMillis() / 1000)

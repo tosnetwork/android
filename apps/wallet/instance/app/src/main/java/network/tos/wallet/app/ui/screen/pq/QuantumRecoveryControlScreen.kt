@@ -35,6 +35,8 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     private var authenticating = false
     private var plan: QuantumPreparedRecoveryControl? = null
     private var quote: QuantumRecoveryControlQuote? = null
+    private var fundingPlan: QuantumPreparedProbeFunding? = null
+    private var fundingOperation: java.util.UUID? = null
     private var confirmation: AlertDialog? = null
     // Test diagnostics only: class/frames, never exception messages or input values.
     private var diagnosticFailureStack: String? = null
@@ -83,6 +85,11 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Reload possession message", "quantum.recovery.probe.reload") {
             run { showProbe(accounts.pendingQuantumRecoveryProbe(wallet)) }
         }
+        button("Review 0.01 TOS key-check funding", "quantum.recovery.funding.review") { reviewFunding() }
+        button("Authenticate and sign funding", "quantum.recovery.funding.sign") { signFunding() }
+        button("Reload funding message", "quantum.recovery.funding.reload") {
+            run { fundingPlan = null; fundingOperation = null; showFunding(accounts.pendingQuantumProbeFunding(wallet)) }
+        }
         button("Close", "quantum.recovery.close") { finish() }
         reload()
     }
@@ -105,8 +112,10 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             catch (error: Exception) {
                 if (BuildConfig.DEBUG) diagnosticFailureStack =
                     (error.javaClass.name + "\n" + error.stackTrace.take(16).joinToString("\n")).take(8192)
-                plan = null; quote = null
-                status.text = "Unable to complete this step. Reload the saved operation before continuing. Recovery controls currently require an imported encrypted backup with matching rescue material. Nothing was unlocked."
+                plan = null; quote = null; fundingPlan = null; fundingOperation = null
+                status.text = if (error is QuantumPriorControlNotExpired)
+                    "The previous authorization has not yet expired at the proven chain time. Wait, then review funding again. Nothing was signed or sent."
+                else "Unable to complete this step. Reload the saved operation before continuing. Recovery controls currently require an imported encrypted backup with matching rescue material. Nothing was unlocked."
             } finally { actions.forEach { it.isEnabled = true } }
         }
     }
@@ -183,13 +192,51 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         accounts.signQuantumRecoveryProbe(wallet, saved.operation)
         showProbe(accounts.pendingQuantumRecoveryProbe(wallet))
     }
+    private fun showFunding(saved: AccountRepository.RecoveryProbeFundingStatus?) {
+        status.text = saved?.let {
+            "Funding message: ${it.phase}\nOperation: ${it.operation}" +
+                "\nThis is a local signing record, not a chain result. Nothing was sent by this step. Payments remain restricted."
+        } ?: "No saved funding message. Review the key-check funding before authenticating."
+    }
+    private fun reviewFunding() = run {
+        val saved = accounts.pendingQuantumProbeFunding(wallet)
+        if (saved != null && saved.phase != "RESERVED") {
+            fundingPlan = null; fundingOperation = null; showFunding(saved); return@run
+        }
+        val prepared = if (saved != null) accounts.resumeQuantumProbeFunding(wallet, saved.operation)
+            else accounts.prepareQuantumProbeFunding(wallet, BigInteger("10000000"))
+        fundingPlan = prepared; fundingOperation = saved?.operation
+        status.text = "Ready to authenticate key-check funding." +
+            "\nSend value: ${java.math.BigDecimal(prepared.amount, 9).stripTrailingZeros().toPlainString()} TOS. Wallet gas fees are additional and must be estimated and confirmed before sending." +
+            "\nProbe: ${prepared.probeAddressText}\nExpires: ${java.util.Date(prepared.expiresAt * 1000)}" +
+            "\nSigning alone sends nothing. The key check and replacement keys remain unverified on chain."
+    }
+    private fun signFunding() = run {
+        val saved = accounts.pendingQuantumProbeFunding(wallet)
+        if (saved != null && saved.phase != "RESERVED") {
+            fundingPlan = null; fundingOperation = null; showFunding(saved); return@run
+        }
+        val prepared = fundingPlan
+        if (prepared == null) { status.text = "Review the key-check funding before authenticating."; return@run }
+        check(saved?.operation == fundingOperation)
+        prepared.requireFresh(System.currentTimeMillis() / 1000)
+        authenticating = true
+        val amount = java.math.BigDecimal(prepared.amount, 9).stripTrailingZeros().toPlainString()
+        val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Sign $amount TOS key-check funding") }
+            finally { authenticating = false }
+        if (!accepted) return@run
+        val operationId = saved?.operation ?: accounts.reserveQuantumProbeFunding(prepared)
+        fundingPlan = null; fundingOperation = null
+        accounts.signQuantumProbeFunding(wallet, operationId, prepared.request.digest)
+        showFunding(accounts.pendingQuantumProbeFunding(wallet))
+    }
     override fun onPause() {
-        if (!authenticating) { operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null }
+        if (!authenticating) { operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null }
         super.onPause()
     }
     override fun onDestroyView() {
         diagnosticFailureStack = null
-        operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; actions.clear()
+        operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null; actions.clear()
         super.onDestroyView()
     }
 }
