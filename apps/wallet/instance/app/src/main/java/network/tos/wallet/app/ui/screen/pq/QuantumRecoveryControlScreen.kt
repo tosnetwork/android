@@ -116,7 +116,13 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                 status.text = if (error is QuantumPriorControlNotExpired)
                     "The previous authorization has not yet expired at the proven chain time. Wait, then review funding again. Nothing was signed or sent."
                 else "Unable to complete this step. Reload the saved operation before continuing. Recovery controls currently require an imported encrypted backup with matching rescue material. Nothing was unlocked."
-            } finally { actions.forEach { it.isEnabled = true } }
+            } finally {
+                actions.forEach { it.isEnabled = true }
+                status.post {
+                    if (status.isAttachedToWindow) status.requestRectangleOnScreen(
+                        android.graphics.Rect(0, 0, status.width, minOf(status.height, 96)), false)
+                }
+            }
         }
     }
     private fun reload() = run {

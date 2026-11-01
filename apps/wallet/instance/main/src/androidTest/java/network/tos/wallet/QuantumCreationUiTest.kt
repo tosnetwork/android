@@ -667,7 +667,28 @@ class QuantumCreationUiTest {
         fun status(value: String): String {
             androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true))
                 .setMaxSearchSwipes(10).scrollIntoView(androidx.test.uiautomator.UiSelector().description("quantum.recovery.status"))
-            return checkNotNull(device.wait(Until.findObject(By.desc("quantum.recovery.status").textContains(value)), 60000)).text
+            val deadline = android.os.SystemClock.elapsedRealtime() + 60000
+            do {
+                var rendered: String? = null
+                instrumentation.runOnMainSync {
+                    val activities = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                        .filter { it.packageName == context.packageName }
+                    val views = arrayListOf<android.view.View>()
+                    activities.forEach { it.window.decorView.findViewsWithText(views, "quantum.recovery.status",
+                        android.view.View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION) }
+                    rendered = views.filterIsInstance<android.widget.TextView>().firstOrNull {
+                        it.contentDescription?.toString() == "quantum.recovery.status" && it.isShown &&
+                            it.getGlobalVisibleRect(android.graphics.Rect())
+                    }?.text?.toString()
+                }
+                rendered?.let {
+                    if (it.contains(value)) return it
+                    check(!it.startsWith("Unable to complete")) { "Product recovery step refused" }
+                }
+                android.os.SystemClock.sleep(100)
+            } while (android.os.SystemClock.elapsedRealtime() < deadline)
+            error("Expected visible recovery status: $value")
         }
         resource("send").click()
         press("quantum.payment.recovery")
