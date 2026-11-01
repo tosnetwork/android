@@ -41,6 +41,12 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             check(phase == Phase.SIGNING)
             return Reservation(operation, bytes, Phase.SIGNED, signature)
         }
+        internal fun signedForEstimate(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry,
+                                       fresh: QuantumAccountReader.Observation, now: Long): Pair<QuantumPreparedProbeFunding, ByteArray> {
+            check(phase == Phase.SIGNED) { "Funding signature is not durably available" }
+            val plan = restore(prior, probe, fresh, now)
+            return plan to plan.signedMessage(signatureBytes, now)
+        }
         fun requirePlan(plan: QuantumPreparedProbeFunding, prior: QuantumRecoveryControlJournal.Entry,
                         probe: QuantumRecoveryProbeJournal.Entry, now: Long) {
             check(bytes.contentEquals(snapshot(plan, prior, probe, now))) { "Probe funding reservation changed" }
@@ -139,6 +145,16 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
         reservation.restore(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
             checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
     }
+    /** Read-only exact signed message, reauthenticated under the recovery lease; no signer or write. */
+    fun signedForEstimate(identity: TosQuantumSelfPayIdentity, operation: UUID, fresh: QuantumAccountReader.Observation,
+                          now: Long): Pair<QuantumPreparedProbeFunding, ByteArray> =
+        QuantumPaymentOutbox(context).withRecoveryControlIsolation(identity) {
+            require(fresh.identity == identity)
+            val saved = checkNotNull(pending(identity))
+            check(saved.operation == operation)
+            saved.signedForEstimate(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
+                checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
+        }
     /** Callback follows authenticated restore and durable SIGNING; failure never returns to RESERVED. */
     fun sign(identity: TosQuantumSelfPayIdentity, operation: UUID, fresh: QuantumAccountReader.Observation,
              now: Long, reviewedDigest: ByteArray, signer: (QuantumPreparedProbeFunding) -> ByteArray) =

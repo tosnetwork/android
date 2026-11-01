@@ -328,6 +328,10 @@ class QuantumSelfPayAccountTest {
                         fundingSeed, funding.identity.wallet.initialAuthority.rescueKey, funding.request.digest)
                     try {
                         funding.requireSignature(validFundingSignature)
+                        val expectedFundingMessage = funding.identity.wallet.external(funding.request.submission(validFundingSignature), false)
+                        assertEquals(expectedFundingMessage.hash(), BagOfCells(funding.signedMessage(validFundingSignature, now)).roots.single().hash())
+                        assertThrows(IllegalStateException::class.java) { funding.signedMessage(validFundingSignature, funding.expiresAt) }
+                        assertThrows(IllegalStateException::class.java) { funding.signedMessage(wrongFundingDomain, now) }
                         assertThrows(IllegalStateException::class.java) { funding.requireSignature(wrongFundingDomain) }
                         validFundingSignature[0] = (validFundingSignature[0].toInt() xor 1).toByte()
                         assertThrows(IllegalStateException::class.java) { funding.requireSignature(validFundingSignature) }

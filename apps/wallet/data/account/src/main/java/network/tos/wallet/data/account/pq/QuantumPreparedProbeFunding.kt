@@ -72,6 +72,11 @@ class QuantumPreparedProbeFunding internal constructor(
         check(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, rescueKey,
             request.digest, signature)) { "Probe funding signature mismatch" }
     }
+    internal fun signedMessage(signature: ByteArray, now: Long): ByteArray {
+        requireFresh(now)
+        requireSignature(signature)
+        return BagOfCells(identity.wallet.external(request.submission(signature), false)).toByteArray()
+    }
     internal fun requireReviewedRequest(digest: ByteArray) {
         require(digest.size == 32)
         check(digest.contentEquals(request.digest)) { "Funding request changed after review" }
