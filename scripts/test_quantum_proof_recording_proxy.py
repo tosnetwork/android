@@ -1,4 +1,5 @@
 import http.client
+import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 import socket
@@ -18,6 +19,9 @@ class RecordingRelayTest(unittest.TestCase):
 
             def do_POST(self):
                 body = self.rfile.read(int(self.headers['Content-Length']))
+                if json.loads(body).get('method') == 'sendBocReturnHash':
+                    self.server.submission_received_ns = time.time_ns()
+                    time.sleep(0.03)
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(body)
@@ -58,6 +62,11 @@ class RecordingRelayTest(unittest.TestCase):
                         self.assertEqual((output / '000001.request.json').read_bytes(), proof)
                         self.assertEqual((output / '000001.response.json').read_bytes(), proof)
                         self.assertTrue((output / 'submission-metadata.jsonl').is_file())
+                        event = json.loads((output / 'submission-metadata.jsonl').read_text())
+                        self.assertLessEqual(event['forward_started_ns'], upstream.submission_received_ns)
+                        self.assertGreaterEqual(event['time_ns'], upstream.submission_received_ns + 20_000_000)
+                        self.assertGreaterEqual(event['exchange_duration_ns'], 20_000_000)
+                        self.assertEqual(event['method'], 'sendBocReturnHash')
                         for file in output.iterdir():
                             self.assertNotIn(b'DO-NOT-RETAIN', file.read_bytes())
                     finally:

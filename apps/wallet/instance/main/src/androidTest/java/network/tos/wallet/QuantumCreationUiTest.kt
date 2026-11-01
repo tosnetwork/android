@@ -875,10 +875,14 @@ class QuantumCreationUiTest {
                             device.waitForIdle(3000)
                             if (device.hasObject(By.res(context.packageName, "num_pad"))) pin()
                             status("Funding estimate cleared.")
-                            press("quantum.recovery.funding.estimate"); status("Key-check funding estimate ready.")
+                            // The next stage force-stops this process. Do not spend the signed
+                            // challenge lifetime estimating a quote that must be discarded.
+                            press("quantum.recovery.funding.send"); status("Estimate the saved funding before confirming")
+                            assertFalse(device.hasObject(By.text("Send key-check funding?")))
                             assertEquals(funded, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
                             assertEquals(fundingBalance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
                             probePublic.put("funding_quote_verified", true).put("funding_quote_ui_verified", true)
+                                .put("funding_message_root_hash", quote.messageRootHash)
                                 .put("funding_quote_background_cleared", true).put("funding_quote_fee", quote.estimatedFee.toString())
                                 .put("funding_quote_debit", quote.estimatedDebit.toString()).put("funding_quote_deadline", quote.expiresAt)
                         }
@@ -960,6 +964,9 @@ class QuantumCreationUiTest {
         val prior = (before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
         assertFalse(runBlocking { repository.readQuantumRecoveryProbeVerification(wallet) }.verified)
         val quote = runBlocking { repository.estimateQuantumProbeFunding(wallet, saved.operation, BigInteger("100000000")) }
+        val original = org.json.JSONObject(File(context.cacheDir, "quantum-recovery-control-public.json").readText())
+            .getJSONObject("successor").getJSONObject("probe")
+        assertEquals(original.getString("funding_message_root_hash"), quote.messageRootHash)
         context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
         if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
         resource("send").click(); pressRecovery("quantum.payment.recovery")
@@ -973,12 +980,21 @@ class QuantumCreationUiTest {
         assertEquals(saved, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
         assertEquals(before.balance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
         pressRecovery("quantum.recovery.funding.send")
+        val attempt = org.json.JSONObject().put("operation", saved.operation.toString())
+            .put("message_root_hash", quote.messageRootHash).put("probe_body_hash", quote.probeBodyHash)
+            .put("probe_address", quote.address).put("signed_deadline", original.getLong("funding_deadline"))
+            .put("reference_quote_expiry", quote.expiresAt).put("confirmation_requested_ms", System.currentTimeMillis())
+        File(context.cacheDir, "quantum-funding-attempt-public.json").writeText(attempt.toString())
         checkNotNull(device.wait(Until.findObject(By.res("android", "button1")), 10000)).click()
         recoveryStatus("Funding message: UNKNOWN")
         val submitted = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
         assertEquals(saved.operation, submitted.operation); assertEquals(saved.signatureDigest, submitted.signatureDigest)
         assertEquals("UNKNOWN", submitted.phase)
-        assertThrows(IllegalStateException::class.java) { runBlocking { repository.submitQuantumProbeFunding(quote) } }
+        attempt.put("phase_after_confirmation", submitted.phase)
+        File(context.cacheDir, "quantum-funding-attempt-public.json").writeText(attempt.toString())
+        val duplicate = assertThrows(IllegalStateException::class.java) { runBlocking { repository.submitQuantumProbeFunding(quote) } }
+        assertTrue("Repeated submission must fail at the saved phase or authenticated changed state, not only quote expiry",
+            duplicate.stackTrace.first().methodName in setOf("signedForEstimate", "observeCompletedRecoveryLock"))
         pressRecovery("quantum.recovery.funding.send"); recoveryStatus("Estimate the saved funding before confirming")
         assertFalse(device.hasObject(By.text("Send key-check funding?")))
         val deadline = android.os.SystemClock.elapsedRealtime() + 60000
