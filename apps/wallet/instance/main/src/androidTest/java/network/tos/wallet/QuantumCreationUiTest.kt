@@ -1822,7 +1822,9 @@ class QuantumCreationUiTest {
     @Test fun freshNetworkEndsOriginalAuthorizationAndExplicitlyPaysAgain() = actualAppPayment(true)
     @Test fun freshNetworkEndsExpiredAuthorizationWithUnverifiedOutcome() = actualAppPayment(false, true)
     @Test fun journeyPaysFromRestoredWallet() = actualAppPayment(false, restored = true)
-    private fun actualAppPayment(retireAndPayAgain: Boolean, endUnverified: Boolean = false, restored: Boolean = false) {
+    @Test fun journeyPaysFromActiveRestoredWallet() = actualAppPayment(false, restored = true, activeRestore = true)
+    private fun actualAppPayment(retireAndPayAgain: Boolean, endUnverified: Boolean = false,
+                                 restored: Boolean = false, activeRestore: Boolean = false) {
         val args = InstrumentationRegistry.getArguments()
         val endpoint = requireNotNull(args.getString("quantumRpc"))
         val target = requireNotNull(args.getString("quantumRecipient"))
@@ -1867,38 +1869,49 @@ class QuantumCreationUiTest {
         val prefs = Security.pref(context, "_network_tos_quantum_creation_key_", "quantum_creation_custody", requireUnlockedDevice = true)
         val vault = QuantumSeedVault(prefs)
         assertArrayEquals(authority.primaryKey, vault.publicKey(wallet.id, QuantumRole.PRIMARY, binding, QuantumDeviceKey.get(false)))
-        assertTrue(runBlocking { repository.readQuantumAccount(wallet) }.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Absent)
-        resource("receive").click()
-        assertTrue(device.wait(Until.hasObject(By.text("Before funding this Quantum wallet")), 10000))
-        assertTrue(device.hasObject(By.textContains("Public QSI1 account information is not a secret backup")))
-        click("I understand"); device.pressBack()
         val rawAddress = "0:" + requireNotNull(wallet.quantumIdentity).address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
-        val funding = okhttp3.Request.Builder().url((endpoint + "/__quantum_balance/fund").toHttpUrl())
-            .post(org.json.JSONObject().put("address", rawAddress).toString().toRequestBody("application/json".toMediaType())).build()
-        okhttp3.OkHttpClient().newCall(funding).execute().use { check(it.isSuccessful) }
-        val fundingDeadline = android.os.SystemClock.elapsedRealtime() + 45000
-        var balance = runBlocking { repository.readQuantumAccount(wallet) }
-        while (balance.balance < java.math.BigInteger("10000000000") && android.os.SystemClock.elapsedRealtime() < fundingDeadline) {
-            android.os.SystemClock.sleep(500); balance = runBlocking { repository.readQuantumAccount(wallet) }
-        }
-        assertEquals(java.math.BigInteger("10000000000"), balance.balance)
-        assertTrue(balance.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Uninitialized)
-        if (restored) {
-            verifyQuantumBalanceAndFailureRecovery(wallet, endpoint, java.math.BigInteger("10000000000"))
-            click("History")
-            val rowSelector = By.res(java.util.regex.Pattern.compile("""quantum\.history\.record\..*"""))
-            var row = device.wait(Until.findObject(rowSelector), 10000)
-            repeat(4) {
-                if (row == null) {
-                    checkNotNull(device.wait(Until.findObject(By.res("quantum.history.newest")), 10000)).click()
-                    row = device.wait(Until.findObject(rowSelector), 10000)
-                }
+        val beforePayment = runBlocking { repository.readQuantumAccount(wallet) }
+        val restoredState = if (activeRestore) {
+            assertTrue(beforePayment.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active)
+            val state = (beforePayment.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+            assertTrue("Restore must cover an already used wallet", state.seqno > 0 && state.primaryNonce > 0uL)
+            assertTrue(beforePayment.balance > java.math.BigInteger("1000000000"))
+            assertFalse(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+            state
+        } else null
+        if (!activeRestore) {
+            assertTrue(beforePayment.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Absent)
+            resource("receive").click()
+            assertTrue(device.wait(Until.hasObject(By.text("Before funding this Quantum wallet")), 10000))
+            assertTrue(device.hasObject(By.textContains("Public QSI1 account information is not a secret backup")))
+            click("I understand"); device.pressBack()
+            val funding = okhttp3.Request.Builder().url((endpoint + "/__quantum_balance/fund").toHttpUrl())
+                .post(org.json.JSONObject().put("address", rawAddress).toString().toRequestBody("application/json".toMediaType())).build()
+            okhttp3.OkHttpClient().newCall(funding).execute().use { check(it.isSuccessful) }
+            val fundingDeadline = android.os.SystemClock.elapsedRealtime() + 45000
+            var balance = runBlocking { repository.readQuantumAccount(wallet) }
+            while (balance.balance < java.math.BigInteger("10000000000") && android.os.SystemClock.elapsedRealtime() < fundingDeadline) {
+                android.os.SystemClock.sleep(500); balance = runBlocking { repository.readQuantumAccount(wallet) }
             }
-            assertNotNull("Recovered wallet must authenticate its actual incoming funding", row)
-            assertTrue(device.hasObject(By.textContains("Incoming transfer")))
-            assertTrue(device.hasObject(By.textContains("10 TOS")))
-            assertTrue(device.hasObject(By.textContains("Included")))
-            click("Wallet")
+            assertEquals(java.math.BigInteger("10000000000"), balance.balance)
+            assertTrue(balance.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Uninitialized)
+            if (restored) {
+                verifyQuantumBalanceAndFailureRecovery(wallet, endpoint, java.math.BigInteger("10000000000"))
+                click("History")
+                val rowSelector = By.res(java.util.regex.Pattern.compile("""quantum\.history\.record\..*"""))
+                var row = device.wait(Until.findObject(rowSelector), 10000)
+                repeat(4) {
+                    if (row == null) {
+                        checkNotNull(device.wait(Until.findObject(By.res("quantum.history.newest")), 10000)).click()
+                        row = device.wait(Until.findObject(rowSelector), 10000)
+                    }
+                }
+                assertNotNull("Recovered wallet must authenticate its actual incoming funding", row)
+                assertTrue(device.hasObject(By.textContains("Incoming transfer")))
+                assertTrue(device.hasObject(By.textContains("10 TOS")))
+                assertTrue(device.hasObject(By.textContains("Included")))
+                click("Wallet")
+            }
         }
         resource("send").click()
         fun field(description: String) = checkNotNull(device.wait(Until.findObject(By.desc(description)), 15000))
@@ -1982,7 +1995,10 @@ class QuantumCreationUiTest {
         field("quantum.payment.comment").text = "Android App protected custody"
         press("quantum.payment.review")
         top()
-        assertTrue(device.wait(Until.hasObject(By.textContains("The first payment also deploys this wallet")), 30000))
+        if (activeRestore) {
+            assertTrue(device.wait(Until.hasObject(By.textContains("Review the exact recipient")), 30000))
+            assertFalse(field("quantum.payment.details").text.contains("first payment also deploys"))
+        } else assertTrue(device.wait(Until.hasObject(By.textContains("The first payment also deploys this wallet")), 30000))
         assertNull(runBlocking { repository.pendingQuantumPayment(wallet) })
         press("quantum.payment.sign")
         pin()
@@ -1991,7 +2007,12 @@ class QuantumCreationUiTest {
         assertTrue(device.wait(Until.hasObject(By.textContains("Estimated total debit:")), 45000))
         val signed = checkNotNull(runBlocking { repository.pendingQuantumPayment(wallet) })
         assertEquals(network.tos.wallet.data.account.pq.QuantumPaymentOutbox.Phase.SIGNED, signed.phase)
-        assertTrue(signed.deploy); assertNull(signed.feeApproval)
+        assertEquals(!activeRestore, signed.deploy); assertNull(signed.feeApproval)
+        restoredState?.let { state ->
+            val request = network.tos.blockchain.ton.contract.QuantumStoredSelfPayRequest.parse(signed.requestBOC)
+            assertEquals(state.epoch, request.epoch)
+            assertEquals(state.primaryNonce, request.nonce)
+        }
         val originalBOC = checkNotNull(signed.signedBOC)
         press("quantum.payment.submit")
         top()
