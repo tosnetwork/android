@@ -11,6 +11,9 @@ import network.tos.security.pq.QuantumProofTransport
 import network.tos.security.pq.QuantumVerifiedRead
 import network.tos.wallet.data.account.pq.QuantumSelfPayAccount
 import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
+import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl
+import network.tos.wallet.data.account.pq.QuantumAccountReader
+import network.tos.wallet.data.account.pq.QuantumNetworkProfile
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -92,7 +95,7 @@ class QuantumSelfPayAccountTest {
         val records = JSONObject(read("public-self-pay-accounts.json").toString(Charsets.UTF_8)).getJSONObject("accounts")
         fun identity(role: String) = TosQuantumSelfPayIdentity.fromBoc(Base64.decode(records.getJSONObject(role).getString("identity_boc"), Base64.NO_WRAP))
         val directories = mutableListOf<File>()
-        fun prove(role: String, corrupt: Boolean = false): QuantumVerifiedRead {
+        fun prove(role: String, corrupt: Boolean = false, recoveryBase: Boolean = false): QuantumVerifiedRead {
             val id = UUID.randomUUID()
             directories.add(File(instrumentation.targetContext.noBackupFilesDir, "quantum-proof-checkpoints/$id"))
             val session = QuantumProofSession(instrumentation.targetContext, id, read("anchor.json"))
@@ -101,7 +104,9 @@ class QuantumSelfPayAccountTest {
             // Corrupt the returned masterchain root, not ignored TL padding.
             if (corrupt) replies.last().let { it[20] = (it[20].toInt() xor 1).toByte() }
             var calls = 0
-            val result = session.enrollBound(read("$role/request.json"), now, QuantumProofTransport { _, capacity ->
+            val request = if (recoveryBase) JSONObject(read("$role/request.json").toString(Charsets.UTF_8))
+                .put("config_params", org.json.JSONArray(listOf(8, 19))).toString().toByteArray() else read("$role/request.json")
+            val result = session.enrollBound(request, now, QuantumProofTransport { _, capacity ->
                 check(calls < replies.size)
                 replies[calls++].also { check(it.size <= capacity) }
             })
@@ -110,6 +115,8 @@ class QuantumSelfPayAccountTest {
         }
         try {
             val policy = prove("policy")
+            val recoveryBase = prove("policy", recoveryBase = true)
+            assertThrows(IllegalStateException::class.java) { recoveryBase.provenConfigParam(48) }
             val network = QuantumSelfPayNetwork.bind(policy, 1, now, 300)
             // Absence has no account BOC: its address must be bound by the proof boundary itself.
             for (role in listOf("absent", "prefunded", "active")) {
@@ -120,6 +127,29 @@ class QuantumSelfPayAccountTest {
                     birth.wallet.initialAuthority.rescueKey, birth.wallet.walletId, now))
                 val account = QuantumSelfPayAccount.bind(birth, proof, now, 300)
                 val s = account.snapshot(now)
+                val anchor = JSONObject(read("anchor.json").toString(Charsets.UTF_8))
+                val profile = QuantumNetworkProfile(1, anchor.getString("root_hash"), anchor.getString("file_hash"))
+                val observation = QuantumAccountReader.Observation(UUID.randomUUID(), birth, profile, recoveryBase, proof, s)
+                if (role == "active") {
+                    for (kind in QuantumPreparedRecoveryControl.Kind.entries) {
+                        val control = QuantumPreparedRecoveryControl(observation, kind, now, 120)
+                        assertEquals(QuantumAuthRole.RESCUE, control.request.role)
+                        assertEquals("TOS-QSP-SLH128S-v1", control.request.context)
+                        assertArrayEquals(birth.wallet.initialAuthority.rescueKey, control.signingPublicKey)
+                        control.requireRevalidated(observation, now)
+                        assertThrows(IllegalArgumentException::class.java) {
+                            control.requireRevalidated(observation.copy(id = UUID.randomUUID()), now)
+                        }
+                        assertThrows(IllegalStateException::class.java) { control.requireFresh(control.expiresAt) }
+                    }
+                } else {
+                    // A forged Active snapshot cannot substitute for the actual authenticated account.
+                    val forged = observation.copy(snapshot = QuantumSelfPayAccount.Snapshot(
+                        QuantumSelfPayAccount.Status.Active(QuantumSelfPayState(birth.wallet.initialAuthority)), s.balance, s.storageDebt, s.lastPaid))
+                    assertThrows(IllegalStateException::class.java) {
+                        QuantumPreparedRecoveryControl(forged, QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY, now, 120)
+                    }
+                }
                 when (role) {
                     "active" -> {
                         assertEquals(birth.wallet.initialData.hash(), (s.status as QuantumSelfPayAccount.Status.Active).state.cell.hash())

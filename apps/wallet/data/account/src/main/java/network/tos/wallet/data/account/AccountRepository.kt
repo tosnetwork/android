@@ -593,6 +593,17 @@ class AccountRepository(
             QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(UUID.fromString(wallet.id), identity, cursor, limit)
     }
 
+    /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */
+    suspend fun prepareQuantumRecoveryControl(wallet: WalletEntity,
+        kind: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind,
+    ): network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl = runInterruptible(Dispatchers.IO) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        check(QuantumPaymentOutbox(context).requiresRecovery(identity)) { "Recovery isolation required" }
+        val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
+        val observed = reader.observe(UUID.fromString(wallet.id), identity, intArrayOf(8, 19))
+        network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl(observed, kind, System.currentTimeMillis() / 1000, 120)
+    }
+
     private fun quantumPaymentEndpoint() = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
 
     private fun quantumPayments(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumPaymentCoordinator {

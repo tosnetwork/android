@@ -71,6 +71,24 @@ class QuantumSelfPayNetwork private constructor(
 
         /** Recovery identifies the network even when PRIMARY admission has ended. */
         internal fun validateRecovery(version: Cell, identity: Cell, policy: Cell, expectedGlobalId: Int): ByteArray {
+            validateRecoveryBase(version, identity, expectedGlobalId)
+            require(policy.type == CellType.ORDINARY && policy.levelMask.level == 0)
+            val p = policy.beginParse()
+            require(p.loadUInt(8).toInt() == 0xa1)
+            val namespace = p.loadBits(256).toByteArray()
+            TosQuantumRetirementPolicy.requireNetwork(policy, namespace)
+            return namespace
+        }
+
+        /** RESCUE control is bound to the enrolled birth namespace and authenticated account.
+         * It does not require a CP48 value or PRIMARY admission. */
+        internal fun requireRecoveryBase(proof: QuantumVerifiedRead, globalId: Int, now: Long) {
+            proof.requireLive(now, 300)
+            fun cell(index: Int) = BagOfCells(proof.provenConfigParam(index)).roots.single()
+            validateRecoveryBase(cell(8), cell(19), globalId)
+        }
+
+        private fun validateRecoveryBase(version: Cell, identity: Cell, expectedGlobalId: Int) {
             fun ordinary(cell: Cell) {
                 require(cell.type == CellType.ORDINARY && cell.levelMask.level == 0)
             }
@@ -83,12 +101,6 @@ class QuantumSelfPayNetwork private constructor(
             val i = identity.beginParse()
             require(i.loadInt(32).toInt() == expectedGlobalId) { "Creation network global ID mismatch" }
             require(i.remainingBits == 0 && i.refsPosition == i.refs.size)
-            ordinary(policy)
-            val p = policy.beginParse()
-            require(p.loadUInt(8).toInt() == 0xa1)
-            val namespace = p.loadBits(256).toByteArray()
-            TosQuantumRetirementPolicy.requireNetwork(policy, namespace)
-            return namespace
         }
 
         private fun policyTime(proof: QuantumVerifiedRead, now: Long): Long {
