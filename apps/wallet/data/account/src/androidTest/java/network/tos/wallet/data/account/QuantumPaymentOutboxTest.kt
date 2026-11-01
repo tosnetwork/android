@@ -501,6 +501,15 @@ class QuantumPaymentOutboxTest {
                     assertTrue(reopened.requiresRecovery(identity))
                     publicPath.writeBytes(originalPublicBytes)
                     assertEquals(durable.id, reopened.retainBackupImportRecord(backup, profile) { retained }.id)
+                    val publicJournal = importFile.readBytes()
+                    val publicMarker = File(journal.parentFile, journal.nameWithoutExtension + ".recovery")
+                    assertTrue(importFile.delete())
+                    assertTrue(publicMarker.delete())
+                    assertTrue(reopened.requiresRecovery(identity))
+                    assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
+                    importFile.writeBytes(publicJournal)
+                    Os.chmod(importFile.absolutePath, 0x180)
+                    assertEquals(durable.id, reopened.prepareBackupImport(backup, profile).id)
                 } finally { publicPath.delete() }
                 assertTrue(reopened.requiresRecovery(identity))
                 val marker = File(journal.parentFile, journal.nameWithoutExtension + ".recovery")

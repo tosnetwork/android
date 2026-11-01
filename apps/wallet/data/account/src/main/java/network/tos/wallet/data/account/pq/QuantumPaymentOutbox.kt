@@ -88,7 +88,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         return listOf(canonical, File(canonical.absolutePath + ".next")).any { file ->
             try { Os.lstat(file.absolutePath); true }
             catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) false else throw e }
-        }
+        } || QuantumRecoveryRecord.containsIdentity(custodyContext, identity)
     }
 
     internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES, PROTECTED_STORED, PUBLIC_RECORD_DURABLE }

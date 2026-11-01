@@ -36,6 +36,8 @@ internal class QuantumRecoveryRecord(
         val directory = directory(context)
         val path = File(directory, "$id.json")
         val bytes = encode()
+        val names = checkNotNull(directory.list())
+        check(names.size < 64 || names.size == 64 && names.contains(path.name)) { "Recovery enrollment capacity" }
         val fd = try {
             Os.open(path.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or
                 OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
@@ -53,6 +55,22 @@ internal class QuantumRecoveryRecord(
 
     companion object {
         private val lock = Any()
+        /** A surviving public recovery-only enrollment is itself an isolation obligation. */
+        fun containsIdentity(context: Context, identity: TosQuantumSelfPayIdentity): Boolean = synchronized(lock) {
+            val path = File(context.noBackupFilesDir, "quantum-recovery-records")
+            try { Os.lstat(path.absolutePath) }
+            catch (error: ErrnoException) { if (error.errno == OsConstants.ENOENT) return@synchronized false else throw error }
+            val names = checkNotNull(directory(context).list())
+            check(names.size <= 64) { "Recovery enrollment capacity" }
+            var found = false
+            for (name in names) {
+                check(name.endsWith(".json"))
+                val id = UUID.fromString(name.removeSuffix(".json"))
+                check(name == "$id.json")
+                if (load(context, id).identity == identity) found = true
+            }
+            found
+        }
         private fun validate(fd: java.io.FileDescriptor) {
             val stat = Os.fstat(fd)
             check(stat.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG &&
