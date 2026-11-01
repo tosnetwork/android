@@ -8,8 +8,6 @@ import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
 import network.tos.wallet.data.account.entities.WalletIdentity
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
-import java.io.FileInputStream
 import java.util.UUID
 
 /** Public birth identity and derivation coordinates, retained before any secret writes.
@@ -27,7 +25,7 @@ class QuantumCreationRecord(val id: UUID, val profile: QuantumNetworkProfile, va
         val path = File(directory, "$id.json")
         val fd = Os.open(path.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or
             OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180) // 0600; never overwrite enrollment
-        FileOutputStream(fd).use { output -> output.write(encode()); output.fd.sync() }
+        withOwnedOutputStream(fd) { output -> output.write(encode()); output.fd.sync() }
         val dir = Os.open(directory.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
         try {
             check((Os.fstat(dir).st_mode and OsConstants.S_IFMT) == OsConstants.S_IFDIR)
@@ -48,7 +46,7 @@ class QuantumCreationRecord(val id: UUID, val profile: QuantumNetworkProfile, va
         fun load(context: Context, id: UUID): QuantumCreationRecord {
             val path = File(directory(context), "$id.json")
             val fd = Os.open(path.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
-            return FileInputStream(fd).use { input ->
+            return withOwnedInputStream(fd) { input ->
                 val stat = Os.fstat(fd)
                 check((stat.st_mode and OsConstants.S_IFMT) == OsConstants.S_IFREG &&
                     stat.st_uid == Os.getuid() && (stat.st_mode and 0x3f) == 0 && stat.st_size in 1..32768) {

@@ -111,7 +111,7 @@ internal class QuantumRecoveryProbeJournal(private val context: Context, private
         check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFDIR && st.st_uid == Os.getuid() && st.st_mode and 0x3f == 0)
         sync(directory); sync(context.noBackupFilesDir)
         val fd = Os.open(File(directory, ".lock").path, OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { stream ->
+        withOwnedOutputStream(fd) { stream ->
             validate(fd)
             val lease = try { stream.channel.tryLock() } catch (_: OverlappingFileLockException) { null }
             checkNotNull(lease).use {
@@ -125,7 +125,7 @@ internal class QuantumRecoveryProbeJournal(private val context: Context, private
     private fun read(identity: TosQuantumSelfPayIdentity): Entry? {
         val fd = try { Os.open(file(identity).path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
             catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return null else throw e }
-        return FileInputStream(fd).use { input ->
+        return withOwnedInputStream(fd) { input ->
             validate(fd); val size = Os.fstat(fd).st_size; check(size in 1..MAX_FILE.toLong())
             val bytes = ByteArray(size.toInt()); DataInputStream(input).readFully(bytes); check(input.read() == -1)
             Entry.decode(bytes).also { require(it.identity == identity) }
@@ -134,7 +134,7 @@ internal class QuantumRecoveryProbeJournal(private val context: Context, private
     private fun write(entry: Entry) {
         val target = file(entry.identity); val next = File(target.path + ".next")
         val fd = Os.open(next.path, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { out -> validate(fd); out.write(entry.encode()); fault?.invoke("before_file_sync"); out.fd.sync() }
+        withOwnedOutputStream(fd) { out -> validate(fd); out.write(entry.encode()); fault?.invoke("before_file_sync"); out.fd.sync() }
         fault?.invoke("before_rename"); Os.rename(next.path, target.path)
         fault?.invoke("before_directory_sync"); sync(directory)
     }

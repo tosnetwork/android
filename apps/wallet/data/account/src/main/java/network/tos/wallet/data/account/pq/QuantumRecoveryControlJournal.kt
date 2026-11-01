@@ -149,7 +149,7 @@ internal class QuantumRecoveryControlJournal(
         check(stat.st_mode and OsConstants.S_IFMT == OsConstants.S_IFDIR && stat.st_uid == Os.getuid() && stat.st_mode and 0x3f == 0)
         sync(directory); sync(context.noBackupFilesDir)
         val fd = Os.open(File(directory, ".lock").path, OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { stream ->
+        withOwnedOutputStream(fd) { stream ->
             validate(fd)
             val lease = try { stream.channel.tryLock() } catch (_: OverlappingFileLockException) { null }
             checkNotNull(lease) { "Recovery journal busy" }.use {
@@ -163,7 +163,7 @@ internal class QuantumRecoveryControlJournal(
     private fun read(identity: TosQuantumSelfPayIdentity): Entry? {
         val fd = try { Os.open(file(identity).path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
         catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return null else throw e }
-        return FileInputStream(fd).use { input ->
+        return withOwnedInputStream(fd) { input ->
             validate(fd); val size = Os.fstat(fd).st_size; check(size in 1..MAX_FILE.toLong())
             val bytes = ByteArray(size.toInt()); DataInputStream(input).readFully(bytes); check(input.read() == -1)
             Entry.decode(bytes).also { require(it.identity == identity) }
@@ -172,7 +172,7 @@ internal class QuantumRecoveryControlJournal(
     private fun write(entry: Entry) {
         val target = file(entry.identity); val stage = File(target.path + ".next")
         val fd = Os.open(stage.path, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { output -> validate(fd); output.write(entry.encode()); fault?.invoke("before_file_sync"); output.fd.sync() }
+        withOwnedOutputStream(fd) { output -> validate(fd); output.write(entry.encode()); fault?.invoke("before_file_sync"); output.fd.sync() }
         fault?.invoke("before_rename"); Os.rename(stage.path, target.path)
         fault?.invoke("before_directory_sync"); sync(directory)
     }

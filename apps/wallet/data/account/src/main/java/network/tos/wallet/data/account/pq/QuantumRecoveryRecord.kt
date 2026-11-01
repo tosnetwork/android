@@ -9,8 +9,6 @@ import network.tos.wallet.data.account.entities.WalletIdentity
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.util.UUID
 
 /** Public import enrollment only. Its existence never authorizes signing or clears isolation. */
@@ -54,7 +52,7 @@ internal class QuantumRecoveryRecord(
             syncDirectory(directory)
             return@synchronized
         }
-        FileOutputStream(fd).use { output -> output.write(bytes); output.fd.sync() }
+        withOwnedOutputStream(fd) { output -> output.write(bytes); output.fd.sync() }
         syncDirectory(directory)
     }
 
@@ -107,7 +105,7 @@ internal class QuantumRecoveryRecord(
         fun load(context: Context, id: UUID): QuantumRecoveryRecord = synchronized(lock) {
             val fd = Os.open(File(directory(context), "$id.json").absolutePath,
                 OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
-            val bytes = FileInputStream(fd).use { input ->
+            val bytes = withOwnedInputStream(fd) { input ->
                 validate(fd)
                 ByteArray(Os.fstat(fd).st_size.toInt()).also {
                     DataInputStream(input).readFully(it); check(input.read() == -1)

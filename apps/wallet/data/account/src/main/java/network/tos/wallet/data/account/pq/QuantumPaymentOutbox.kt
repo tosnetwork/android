@@ -75,7 +75,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
                 check(names().size < 240) { "Recovery isolation capacity exceeded" }
                 val fd = Os.open(file.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or
                     OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-                FileOutputStream(fd).use { stream ->
+                withOwnedOutputStream(fd) { stream ->
                     stream.write(recoveryMarker(identity))
                     fault?.invoke("recovery_guard_before_file_sync")
                     stream.fd.sync()
@@ -299,7 +299,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     private fun readImport(file: File, backup: QuantumBackupInspection, profile: QuantumNetworkProfile): JSONObject? {
         val fd = try { Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
         catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return null else throw e }
-        val bytes = FileInputStream(fd).use { stream ->
+        val bytes = withOwnedInputStream(fd) { stream ->
             val st = Os.fstat(fd)
             check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() &&
                 st.st_nlink == 1L && st.st_mode and 0x3f == 0 && st.st_size in 1..65536L)
@@ -323,7 +323,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         val stage = File(canonical.absolutePath + ".next")
         val fd = Os.open(stage.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or
             OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { stream ->
+        withOwnedOutputStream(fd) { stream ->
             stream.write(bytes); fault?.invoke("import_before_file_sync"); stream.fd.sync()
         }
         sync(directory)
@@ -337,7 +337,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     private fun recoveryIsolated(identity: TosQuantumSelfPayIdentity): Boolean {
         val fd = try { Os.open(recoveryPath(identity).absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
         catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return false else throw e }
-        FileInputStream(fd).use { stream ->
+        withOwnedInputStream(fd) { stream ->
             val st = Os.fstat(fd)
             check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() &&
                 st.st_mode and 0x3f == 0 && st.st_nlink == 1L && st.st_size == 40L)
@@ -354,7 +354,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     private fun <T> recoveryGate(body: () -> T): T = synchronized(recoveryMutex) {
         val fd = Os.open(File(directory, ".custody-lock").absolutePath,
             OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { stream ->
+        withOwnedOutputStream(fd) { stream ->
             val st = Os.fstat(fd)
             check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() &&
                 st.st_mode and 0x3f == 0 && st.st_nlink == 1L)
@@ -511,7 +511,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     internal fun readStored(file: File, expectedIdentity: TosQuantumSelfPayIdentity? = null): StoredEntry? {
         val fd = try { Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
             catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return null else throw e }
-        val bytes = FileInputStream(fd).use { input ->
+        val bytes = withOwnedInputStream(fd) { input ->
             val st = Os.fstat(fd)
             check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() && st.st_mode and 0x3f == 0 && st.st_size in 1..MAX_FILE.toLong())
             val output = ByteArrayOutputStream(); val buffer = ByteArray(8192)
@@ -550,7 +550,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         val bytes = entry.json().toString().toByteArray(Charsets.UTF_8); check(bytes.size <= MAX_FILE)
         val temporary = File(directory, "${UUID.randomUUID()}.pending")
         val fd = Os.open(temporary.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { stream ->
+        withOwnedOutputStream(fd) { stream ->
             stream.write(bytes)
             fault?.invoke("outbox_before_file_sync")
             stream.fd.sync()
@@ -568,7 +568,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     }
     private fun <T> locked(recovery: Boolean = false, allowPending: Boolean = false, body: () -> T): T = synchronized(mutex) {
         val fd = Os.open(File(directory, ".lock").absolutePath, OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { stream ->
+        withOwnedOutputStream(fd) { stream ->
             val lease = try { stream.channel.tryLock() } catch (_: OverlappingFileLockException) { null }
             check(lease != null) { "Outbox is busy" }
             lease.use {

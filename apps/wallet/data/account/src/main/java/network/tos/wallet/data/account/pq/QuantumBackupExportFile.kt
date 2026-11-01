@@ -8,8 +8,6 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.io.InputStream
 import java.security.MessageDigest
 import java.util.UUID
@@ -68,7 +66,7 @@ class QuantumBackupExportFile internal constructor(
         try {
             val fd = Os.open(pending.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
             created = true
-            FileOutputStream(fd).use { output ->
+            withOwnedOutputStream(fd) { output ->
                 output.write(owned)
                 fault?.invoke("before_file_sync")
                 output.fd.sync()
@@ -95,7 +93,7 @@ class QuantumBackupExportFile internal constructor(
         val file = path(ticket.id, "ready")
         regular(file)
         val fd = Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
-        FileInputStream(fd).use { input ->
+        withOwnedInputStream(fd) { input ->
             val st = Os.fstat(fd)
             check(st.st_size == ticket.size.toLong() && st.st_size in 58..262201 && st.st_nlink == 1L &&
                 st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() && st.st_mode and 0x3f == 0)
