@@ -51,6 +51,56 @@ class QuantumMigrationSigningStoreTest {
         ByteArray(32) { 3 }, ByteArray(32) { 4 }, 1000, 1030,
         java.math.BigInteger.valueOf(100), java.math.BigInteger.valueOf(90), java.math.BigInteger.TEN)
 
+    @Test fun singleDispatchRetainsUnknownOnSuccessValidationFailureAndTransportFailure() {
+        for (failure in listOf("none", "validation", "transport")) {
+            val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+            val reserved = store.reserve(byteArrayOf(1)); val signed = store.signOnce(reserved, { ByteArray(7856) { 7 } }, {})
+            var calls = 0
+            val action = {
+                store.submitOnce(signed, approval(signed), validate = {
+                    assertEquals(QuantumMigrationSigningRecord.Phase.SUBMITTING, store.load()!!.phase)
+                    if (failure == "validation") error("Injected validation failure")
+                }, dispatch = {
+                    calls++
+                    assertEquals(QuantumMigrationSigningRecord.Phase.SUBMITTING, store.load()!!.phase)
+                    if (failure == "transport") error("Injected transport failure")
+                })
+            }
+            if (failure == "none") action() else assertThrows(IllegalStateException::class.java) { action() }
+            assertEquals(if (failure == "validation") 0 else 1, calls)
+            val restarted = QuantumMigrationSigningStore(MemoryIO(io.state))
+            assertEquals(QuantumMigrationSigningRecord.Phase.UNKNOWN, restarted.load()!!.phase)
+            assertThrows(IllegalStateException::class.java) {
+                restarted.submitOnce(signed, approval(signed), {}, { calls++ })
+            }
+            assertEquals(if (failure == "validation") 0 else 1, calls)
+        }
+    }
+
+    @Test fun failedSubmissionDurabilityNeverInvokesTransport() {
+        val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+        val signed = store.signOnce(store.reserve(byteArrayOf(1)), { ByteArray(7856) { 7 } }, {})
+        var calls = 0; io.state.fail = "file_sync"
+        assertThrows(IOException::class.java) { store.submitOnce(signed, approval(signed), {}, { calls++ }) }
+        assertEquals(0, calls)
+        assertThrows(IllegalStateException::class.java) { store.load() }
+    }
+
+    @Test fun failedUncertaintyWriteAfterTransportNeverMakesSignatureReusable() {
+        val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+        val signed = store.signOnce(store.reserve(byteArrayOf(1)), { ByteArray(7856) { 7 } }, {})
+        var calls = 0
+        assertThrows(IOException::class.java) {
+            store.submitOnce(signed, approval(signed), {}, { calls++; io.state.fail = "file_sync" })
+        }
+        assertEquals(1, calls)
+        assertEquals(QuantumMigrationSigningRecord.Phase.SUBMITTING,
+            QuantumMigrationSigningRecord.decode(io.state.current!!).phase)
+        val restarted = QuantumMigrationSigningStore(MemoryIO(io.state))
+        assertThrows(IllegalStateException::class.java) { restarted.submitOnce(signed, approval(signed), {}, { calls++ }) }
+        assertEquals(1, calls)
+    }
+
     @Test fun submissionRetainsExactSignatureAndApprovalAcrossRestartAndCannotReopen() {
         val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
         val reserved = store.reserve(ByteArray(QuantumMigrationSigningRecord.MAX_BINDING_BYTES) { 1 })

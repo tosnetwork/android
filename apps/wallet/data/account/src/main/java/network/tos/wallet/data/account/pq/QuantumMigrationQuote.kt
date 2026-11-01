@@ -48,4 +48,11 @@ class QuantumMigrationQuote internal constructor(
     internal fun approvalRecord(): ByteArray = QuantumMigrationApproval.record(operation,
         QuantumPaymentOutbox.digest(messageBytes), plan.request.digest, quotedAt, expiresAt,
         observedBalance, estimatedBalance, maximumEstimatedFee)
+
+    internal fun requireSubmitting(current: QuantumMigrationSigningRecord, now: Long) {
+        check(current.encode().contentEquals(record.beginSubmission(approvalRecord()).encode())) {
+            "Migration submission differs from fee confirmation"
+        }
+        requireFresh(record, now)
+    }
 }

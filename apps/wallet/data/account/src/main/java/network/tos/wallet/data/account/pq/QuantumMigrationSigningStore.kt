@@ -61,6 +61,19 @@ internal class QuantumMigrationSigningStore(private val io: IO) {
         next
     }
 
+    /** One explicit invocation only. Neither success nor failure establishes delivery/inclusion. */
+    fun submitOnce(expected: QuantumMigrationSigningRecord, approval: ByteArray,
+        validate: (QuantumMigrationSigningRecord) -> Unit, dispatch: () -> Unit) {
+        val submitting = beginSubmission(expected, approval)
+        try {
+            validate(submitting)
+            dispatch()
+        } finally {
+            // A failed uncertainty write leaves durable SUBMITTING, never a reusable SIGNED.
+            unknown(submitting)
+        }
+    }
+
     private fun requireCurrent(expected: QuantumMigrationSigningRecord): QuantumMigrationSigningRecord {
         val actual = checkNotNull(retained()) { "Migration reservation missing" }
         check(actual.encode().contentEquals(expected.encode())) { "Migration reservation changed" }

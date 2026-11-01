@@ -945,6 +945,55 @@ class AccountRepository(
         }
     }
 
+    /** Caller explicitly confirms this native quote. One transport attempt; never an inclusion claim. */
+    suspend fun submitFundedQuantumSuccessorMigration(quote: network.tos.wallet.data.account.pq.QuantumMigrationQuote) =
+        withContext(Dispatchers.IO) {
+            val plan = quote.plan
+            val wallet = checkNotNull(database.getAccount(plan.walletId.toString()))
+            require(wallet.quantumIdentity == plan.identity && wallet.type == Wallet.Type.Default)
+            val stage = inspectFundedQuantumSuccessorMaterial(wallet)
+            val result = readQuantumProbeFundingOutcome(wallet, plan.fundingOperation)
+            val coroutine = currentCoroutineContext()
+            quantumCreationMutex.withLock {
+                val actual = checkNotNull(database.getAccount(wallet.id))
+                require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+                runInterruptible { QuantumPaymentOutbox(context).withRecoveryControlIsolation(plan.identity) {
+                    coroutine.ensureActive()
+                    val (_, prior, binding) = successorBackupBinding(actual, stage)
+                    val backup = quantumCustody.requireSuccessorBackup(binding)
+                    val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).pending(plan.identity))
+                    val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(plan.identity))
+                    val now = System.currentTimeMillis() / 1000
+                    val restored = result.prepareMigration(entry, prior, probe, backup, now, 120, plan.expiresAt)
+                    plan.requireRecords(entry, prior, probe, backup)
+                    check(restored.request.request.hash() == plan.request.request.hash() &&
+                        restored.boundStateBOC.contentEquals(plan.boundStateBOC)) { "Migration changed after fee review" }
+                    val key = plan.identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
+                    val store = network.tos.wallet.data.account.pq.QuantumMigrationSigningStore(
+                        network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO(context, key))
+                    val saved = checkNotNull(store.load())
+                    val snapshot = network.tos.wallet.data.account.pq.QuantumMigrationSigningSnapshot.create(restored, entry, prior, probe, now)
+                    check(saved.binding.contentEquals(snapshot.encode())) { "Migration reservation changed before dispatch" }
+                    quote.requireFresh(saved, now)
+                    val signature = saved.signature()
+                    val message = try { restored.signedMessage(signature, now) } finally { signature.fill(0) }
+                    val approval = quote.approvalRecord()
+                    network.tos.wallet.data.account.pq.QuantumMigrationApproval.decode(approval).requireBound(saved.operation,
+                        QuantumPaymentOutbox.digest(message), restored.request.digest, restored.expiresAt)
+                    coroutine.ensureActive()
+                        store.submitOnce(saved, approval, validate = {
+                            coroutine.ensureActive()
+                            restored.requireFresh(System.currentTimeMillis() / 1000)
+                            quote.requireSubmitting(checkNotNull(store.load()), System.currentTimeMillis() / 1000)
+                        }, dispatch = {
+                            if (Thread.currentThread().isInterrupted) throw InterruptedException("Migration submission cancelled")
+                            network.tos.wallet.data.account.pq.QuantumPaymentHttpTransport(quantumPaymentEndpoint(), quantumHttpClient).send(message)
+                        })
+                    }
+                }
+            }
+        }
+
     private fun observeCompletedRecoveryLock(wallet: WalletEntity): QuantumAccountReader.Observation {
         val identity = requireNotNull(wallet.quantumIdentity)
         check(QuantumPaymentOutbox(context).requiresRecovery(identity))
