@@ -12,20 +12,38 @@ import java.nio.channels.OverlappingFileLockException
 import java.util.UUID
 import java.math.BigInteger
 
-/** Durable reservation only. Neither a signing capability nor a broadcast/unlock API.
+/** Durable restricted signing journal. No broadcast/unlock API.
  * A reservation is never replaced or released, including after its deadline.
  */
 internal class QuantumProbeFundingJournal(private val context: Context, private val fault: ((String) -> Unit)? = null) {
-    class Reservation private constructor(val operation: UUID, snapshot: ByteArray) {
+    enum class Phase { RESERVED, SIGNING, SIGNED }
+    class Reservation private constructor(val operation: UUID, snapshot: ByteArray,
+        val phase: Phase = Phase.RESERVED, signature: ByteArray = ByteArray(0), originalEncoding: ByteArray? = null) {
         private val bytes = snapshot.copyOf()
+        private val signatureBytes = signature.copyOf()
+        private val original = originalEncoding?.copyOf()
+        init {
+            require(bytes.size in 1..MAX_FILE - 24)
+            if (phase != Phase.RESERVED) require(bytes.size <= MAX_SNAPSHOT)
+            require(if (phase == Phase.SIGNED) signatureBytes.size == 7856 else signatureBytes.isEmpty())
+        }
+        internal fun beginSigning(): Reservation {
+            check(phase == Phase.RESERVED)
+            return Reservation(operation, bytes, Phase.SIGNING)
+        }
+        internal fun finishSigning(signature: ByteArray): Reservation {
+            check(phase == Phase.SIGNING)
+            return Reservation(operation, bytes, Phase.SIGNED, signature)
+        }
         fun requirePlan(plan: QuantumPreparedProbeFunding, prior: QuantumRecoveryControlJournal.Entry,
                         probe: QuantumRecoveryProbeJournal.Entry, now: Long) {
             check(bytes.contentEquals(snapshot(plan, prior, probe, now))) { "Probe funding reservation changed" }
         }
         /** Reconstruct the saved request after fresh authentication; never renew its deadline. */
         internal fun restore(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry,
-                             fresh: QuantumAccountReader.Observation, now: Long): QuantumPreparedProbeFunding =
-            DataInputStream(ByteArrayInputStream(bytes)).use { input ->
+                             fresh: QuantumAccountReader.Observation, now: Long): QuantumPreparedProbeFunding {
+            check(phase != Phase.SIGNING) { "Prior funding signature may have been produced; retry forbidden" }
+            return DataInputStream(ByteArrayInputStream(bytes)).use { input ->
                 val walletId = UUID(input.readLong(), input.readLong())
                 val globalId = input.readInt(); val root = input.readUTF(); val file = input.readUTF()
                 require(root.matches(Regex("[0-9a-f]{64}")) && file.matches(Regex("[0-9a-f]{64}")))
@@ -45,24 +63,40 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
                 QuantumPreparedProbeFunding(probe, fresh, amount, now, 120, handoff, stored.deadline).also { plan ->
                     plan.requireBound(stored.cell)
                     requirePlan(plan, prior, probe, now)
+                    if (phase == Phase.SIGNED) plan.requireSignature(signatureBytes)
                 }
             }
-        internal fun encode(): ByteArray = ByteArrayOutputStream().also { buffer ->
+        }
+        internal fun encode(): ByteArray {
+            original?.let { return it.copyOf() }
+            return ByteArrayOutputStream().also { buffer ->
             DataOutputStream(buffer).use { out ->
-                out.writeInt(0x51504631)
+                out.writeInt(0x51504632)
                 out.writeLong(operation.mostSignificantBits); out.writeLong(operation.leastSignificantBits)
+                out.writeByte(phase.ordinal)
                 out.writeInt(bytes.size); out.write(bytes)
+                out.writeInt(signatureBytes.size); out.write(signatureBytes)
             }
         }.toByteArray().also { require(it.size <= MAX_FILE) }
+        }
         companion object {
             internal fun create(plan: QuantumPreparedProbeFunding, prior: QuantumRecoveryControlJournal.Entry,
                                 probe: QuantumRecoveryProbeJournal.Entry, now: Long) =
                 Reservation(UUID.randomUUID(), snapshot(plan, prior, probe, now))
             internal fun decode(bytes: ByteArray): Reservation = DataInputStream(ByteArrayInputStream(bytes)).use { input ->
-                require(bytes.size in 25..MAX_FILE && input.readInt() == 0x51504631)
+                require(bytes.size in 25..MAX_FILE)
+                val magic = input.readInt(); require(magic == 0x51504631 || magic == 0x51504632)
                 val operation = UUID(input.readLong(), input.readLong())
-                val size = input.readInt(); require(size > 0 && size == input.available())
-                Reservation(operation, ByteArray(size).also(input::readFully))
+                val phase = if (magic == 0x51504631) Phase.RESERVED else
+                    Phase.entries.getOrNull(input.readUnsignedByte()) ?: error("Funding phase")
+                val size = input.readInt(); require(size > 0 && size <= input.available())
+                val snapshot = ByteArray(size).also(input::readFully)
+                val signature = if (magic == 0x51504631) ByteArray(0) else {
+                    val count = input.readInt(); require(count in 0..7856 && count == input.available())
+                    ByteArray(count).also(input::readFully)
+                }
+                require(input.read() == -1)
+                Reservation(operation, snapshot, phase, signature, bytes)
             }
             private fun snapshot(plan: QuantumPreparedProbeFunding, prior: QuantumRecoveryControlJournal.Entry,
                                  probe: QuantumRecoveryProbeJournal.Entry, now: Long): ByteArray {
@@ -76,7 +110,7 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
                             require(bytes.size <= 131072); out.writeInt(bytes.size); out.write(bytes)
                         }
                     }
-                }.toByteArray().also { require(it.size <= MAX_FILE - 24) }
+                }.toByteArray().also { require(it.size <= MAX_SNAPSHOT) }
             }
         }
     }
@@ -99,7 +133,28 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
         reservation.restore(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
             checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
     }
-    companion object { private const val MAX_FILE = 262144 }
+    /** Callback follows authenticated restore and durable SIGNING; failure never returns to RESERVED. */
+    fun sign(identity: TosQuantumSelfPayIdentity, operation: UUID, fresh: QuantumAccountReader.Observation,
+             now: Long, signer: (QuantumPreparedProbeFunding) -> ByteArray) =
+        QuantumPaymentOutbox(context).withRecoveryControlIsolation(identity) {
+            val reserved = checkNotNull(pending(identity))
+            check(reserved.operation == operation && reserved.phase == Phase.RESERVED)
+            require(fresh.identity == identity)
+            val plan = reserved.restore(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
+                checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
+            val signing = reserved.beginSigning()
+            store.transition(key(identity), reserved.encode(), signing.encode())
+            plan.requireFresh(System.currentTimeMillis() / 1000)
+            val signature = signer(plan)
+            try {
+                plan.requireSignature(signature)
+                store.transition(key(identity), signing.encode(), signing.finishSigning(signature).encode())
+            } finally { signature.fill(0) }
+        }
+    companion object {
+        private const val MAX_FILE = 262144
+        private const val MAX_SNAPSHOT = MAX_FILE - 29 - 7856
+    }
 }
 
 /** Storage only: bytes read here establish no proof, signature or release authority. */

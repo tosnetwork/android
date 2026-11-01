@@ -309,6 +309,18 @@ class QuantumSelfPayAccountTest {
                     assertEquals(QuantumAuthRole.RESCUE, funding.request.role)
                     assertTrue(funding.expiresAt <= signed.deadline)
                     funding.requireBound(funding.request.request); funding.requireRevalidated(observation, now)
+                    // Public unfunded fixture key, not real custody material.
+                    val fundingSeed = ByteArray(QuantumRole.RESCUE.seedSize) { 0x22 }
+                    val validFundingSignature = QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY,
+                        fundingSeed, funding.identity.wallet.initialAuthority.rescueKey, funding.request.digest)
+                    val wrongFundingDomain = QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP,
+                        fundingSeed, funding.identity.wallet.initialAuthority.rescueKey, funding.request.digest)
+                    try {
+                        funding.requireSignature(validFundingSignature)
+                        assertThrows(IllegalStateException::class.java) { funding.requireSignature(wrongFundingDomain) }
+                        validFundingSignature[0] = (validFundingSignature[0].toInt() xor 1).toByte()
+                        assertThrows(IllegalStateException::class.java) { funding.requireSignature(validFundingSignature) }
+                    } finally { fundingSeed.fill(0); validFundingSignature.fill(0); wrongFundingDomain.fill(0) }
                     // Resuming must retain the exact request, rather than renewing TTL from the new local time.
                     val restored = QuantumPreparedProbeFunding(signed, observation, funding.amount, now + 1, 120,
                         restoredDeadline = funding.expiresAt)

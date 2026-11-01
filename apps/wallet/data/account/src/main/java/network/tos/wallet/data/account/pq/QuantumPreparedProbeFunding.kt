@@ -6,6 +6,9 @@ import org.ton.boc.BagOfCells
 import org.ton.cell.Cell
 import org.ton.cell.buildCell
 import java.math.BigInteger
+import network.tos.security.pq.QuantumCrypto
+import network.tos.security.pq.QuantumRole
+import network.tos.security.pq.QuantumPurpose
 
 /** One bounded deployment to the saved probe only. Not a quote, signer or broadcast capability. */
 class QuantumPreparedProbeFunding internal constructor(
@@ -27,6 +30,7 @@ class QuantumPreparedProbeFunding internal constructor(
     val request: TosQuantumSelfPayRequest
     internal val walletId = entry.walletId
     private val stateHash: ByteArray
+    private val rescueKey: ByteArray
 
     init {
         requireAmount(amount)
@@ -36,6 +40,7 @@ class QuantumPreparedProbeFunding internal constructor(
         val current = (QuantumSelfPayAccount.bind(identity, observation.proof, now, 300).snapshot(now).status
             as? QuantumSelfPayAccount.Status.Active)?.state ?: error("Probe funding requires an active wallet")
         stateHash = current.cell.hash().toByteArray()
+        rescueKey = current.authority.rescueKey.copyOf()
         val time = maxOf(now, observation.network.masterchainTime,
             observation.proof.provenAccountTime(QuantumAccountReader.rawAddress(identity)))
         expiresAt = restoredDeadline ?: minOf(time + ttl, entry.deadline)
@@ -73,6 +78,10 @@ class QuantumPreparedProbeFunding internal constructor(
     }
     internal fun requireProbe(stored: QuantumRecoveryProbeJournal.Entry) {
         check(entry.encode().contentEquals(stored.encode())) { "Saved possession probe changed" }
+    }
+    internal fun requireSignature(signature: ByteArray) {
+        check(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, rescueKey,
+            request.digest, signature)) { "Probe funding signature mismatch" }
     }
     /** Unsigned codec objects alone cannot authorize a new current-key operation. */
     internal fun requireHandoff(prior: QuantumRecoveryControlJournal.Entry, now: Long) {
