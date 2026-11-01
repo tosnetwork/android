@@ -393,12 +393,82 @@ class QuantumCreationUiTest {
                 assertEquals(record.identity, inspection.birth)
                 assertEquals(setOf(QuantumRole.PRIMARY, QuantumRole.RESCUE), inspection.roles.map { it.role }.toSet())
                 assertTrue(inspection.roles.all { it.account == 0L && it.generation == 0L && it.sourceProfile == 2 })
+                if (InstrumentationRegistry.getArguments().getString("quantumEncryptedColdRecovery") == "true") {
+                    coldControl("stage-file", org.json.JSONObject().put("password", String(password))
+                        .put("documentId", id).put("public", publicRecoveryIdentity(record))
+                        .put("cipherSha256", java.security.MessageDigest.getInstance("SHA-256").digest(cipher)
+                            .joinToString("") { "%02x".format(it) }))
+                }
                 File(context.cacheDir, "quantum-created-export-public.json").writeText(org.json.JSONObject()
                     .put("cipherBytes", cipher.size).put("cancelDidNotRegister", true).put("savedAndReadBack", true)
                     .put("cipherSha256", java.security.MessageDigest.getInstance("SHA-256").digest(cipher).joinToString("") { "%02x".format(it) })
                     .toString())
             } finally { cipher.fill(0) }
         } finally { password.fill('\u0000'); context.unregisterReceiver(documentObserver) }
+    }
+
+    @Test fun encryptedFileRestoresAfterUninstallWithSameIdentityAndRecoveryIsolation() {
+        privateBackupExport = true
+        assertTrue(runBlocking { repository.getWallets() }.isEmpty())
+        assertFalse(runBlocking { GlobalContext.get().get<PasscodeManager>().hasPinCode() })
+        assertFalse(File(context.noBackupFilesDir, "quantum-creation").exists())
+        assertFalse(File(context.noBackupFilesDir, "quantum-recovery-records").exists())
+        assertThrows(Exception::class.java) { QuantumDeviceKey.get(false) }
+        val args = InstrumentationRegistry.getArguments()
+        val profile = QuantumNetworkProfile(requireNotNull(args.getString("quantumGlobalId")).toInt(),
+            requireNotNull(args.getString("quantumRootHash")), requireNotNull(args.getString("quantumFileHash")))
+        profile.save(context); api.setCustomTosRpcEndpoint(requireNotNull(args.getString("quantumRpc")))
+        val payload = coldControl("restore-file")
+        val password = payload.getString("password").toCharArray()
+        payload.remove("password")
+        try {
+            launch(); click("Import existing wallet")
+            checkNotNull(device.wait(Until.findObject(By.res(context.packageName, "action_cell_title").text("Import wallet")), 10000)).click()
+            checkNotNull(device.wait(Until.findObject(By.res(context.packageName, "quantum_backup_file")), 10000)).click()
+            pin(); pin()
+            checkNotNull(device.wait(Until.findObject(By.desc("quantum.backup.choose")), 15000)).click()
+            assertTrue(device.wait(Until.hasObject(By.pkg("com.android.documentsui")), 15000))
+            if (device.wait(Until.findObject(By.res("android", "title").text("Public TOS backup fixtures")), 1500) == null) {
+                checkNotNull(device.wait(Until.findObject(By.desc("Show roots")), 10000)).click()
+            }
+            device.waitForIdle(3000)
+            checkNotNull(device.wait(Until.findObject(By.res("android", "title").text("Public TOS backup fixtures")), 10000)).click()
+            click("Encrypted-wallet-backup.tosqbk")
+            assertTrue(device.wait(Until.hasObject(By.text("Encrypted backup selected. Enter its password to review the original wallet.")), 15000))
+            instrumentation.runOnMainSync {
+                val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).single { it.packageName == context.packageName }
+                val views = arrayListOf<android.view.View>()
+                activity.window.decorView.findViewsWithText(views, "quantum.backup.password", android.view.View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION)
+                views.filterIsInstance<android.widget.EditText>().single { it.contentDescription == "quantum.backup.password" }
+                    .setText(password, 0, password.size)
+            }
+            checkNotNull(device.wait(Until.findObject(By.desc("quantum.backup.review").enabled(true)), 10000)).click()
+            assertTrue(device.wait(Until.hasObject(By.text("Confirm Recovery Network")), 10000))
+            assertTrue(device.hasObject(By.textContains(profile.rootHash)))
+            assertTrue(device.hasObject(By.textContains(profile.fileHash)))
+            checkNotNull(device.findObject(By.res("android", "button1"))).click()
+            assertTrue(device.wait(Until.hasObject(By.text("Review Recovery Wallet")), 90000))
+            assertTrue(device.hasObject(By.textContains(payload.getJSONObject("public").getString("address"))))
+            checkNotNull(device.findObject(By.res("android", "button1"))).click()
+            assertTrue(device.wait(Until.hasObject(By.text("TOS")), 90000))
+            val wallet = runBlocking { repository.getWallets() }.single()
+            val identity = requireNotNull(wallet.quantumIdentity)
+            assertEquals(payload.getJSONObject("public").getString("identity_cell_hash"),
+                identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
+            assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(identity))
+            assertFalse("File import must not fabricate a creation record", File(context.noBackupFilesDir, "quantum-creation/${wallet.id}.json").exists())
+            fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val stored = QuantumRecoveryMaterialVault(Security.pref(context, "_network_tos_quantum_creation_key_",
+                "quantum_creation_custody", requireUnlockedDevice = true)).inspectStored(java.util.UUID.fromString(wallet.id),
+                identity, hex(payload.getString("cipherSha256")), QuantumDeviceKey.get(false), profile.globalId,
+                hex(profile.rootHash), hex(profile.fileHash), identity.wallet.initialAuthority.namespace)
+            assertEquals(identity, stored.birth)
+            assertEquals(setOf(QuantumRole.PRIMARY, QuantumRole.RESCUE), stored.roles.map { it.role }.toSet())
+            assertTrue(stored.roles.all { it.account == 0L && it.generation == 0L && it.sourceProfile == 2 })
+            runBlocking { repository.readQuantumAccount(wallet) } // Fresh authenticated account read through published recovery record.
+            assertTrue(coldControl("verify-file", publicRecoveryIdentity(identity, profile)).getBoolean("matched"))
+        } finally { password.fill('\u0000') }
     }
 
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
@@ -513,14 +583,18 @@ class QuantumCreationUiTest {
         }
     }
 
-    private fun publicRecoveryIdentity(record: QuantumCreationRecord): org.json.JSONObject {
+    private fun publicRecoveryIdentity(record: QuantumCreationRecord): org.json.JSONObject =
+        publicRecoveryIdentity(record.identity, record.profile)
+
+    private fun publicRecoveryIdentity(identity: network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity,
+                                       profile: QuantumNetworkProfile): org.json.JSONObject {
         fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
-        val authority = record.identity.wallet.initialAuthority
-        return org.json.JSONObject().put("address", "0:" + hex(record.identity.address.address.toByteArray()))
-            .put("identity_cell_hash", hex(record.identity.cell.hash().toByteArray()))
+        val authority = identity.wallet.initialAuthority
+        return org.json.JSONObject().put("address", "0:" + hex(identity.address.address.toByteArray()))
+            .put("identity_cell_hash", hex(identity.cell.hash().toByteArray()))
             .put("primary", hex(authority.primaryKey)).put("rescue", hex(authority.rescueKey))
-            .put("global_id", record.profile.globalId).put("root_hash", record.profile.rootHash)
-            .put("file_hash", record.profile.fileHash)
+            .put("global_id", profile.globalId).put("root_hash", profile.rootHash)
+            .put("file_hash", profile.fileHash)
     }
 
     @Test fun coldRecoveryCreatesAndStagesDisplayedBackup() {

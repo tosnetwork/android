@@ -25,8 +25,11 @@ def main():
     parser.add_argument('--file-hash', required=True)
     parser.add_argument('--rpc', default='http://10.0.2.2:18545')
     parser.add_argument('--port', type=int, default=18853)
+    parser.add_argument('--encrypted-backup', action='store_true', help='Restore an actual App-exported encrypted file; password stays in controller memory')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
+    if a.encrypted_backup and a.journey_recipient:
+        raise ValueError('Encrypted imports remain isolated until the R06 recovery-control journey is implemented')
     if a.journey_recipient and not re.fullmatch(r'0:[0-9a-f]{64}', a.journey_recipient):
         raise ValueError('Requires a public raw localnet recipient')
     if not re.fullmatch(r'emulator-\d+', a.serial):
@@ -41,7 +44,8 @@ def main():
     artifacts = {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in (a.app, a.test_app)}
     (a.out / 'apks.json').write_text(json.dumps(artifacts, indent=2))
     token = secrets.token_hex(32)
-    state = {'words': None, 'public': None, 'reinstalled': False, 'restored': False, 'verified': False}
+    state = {'words': None, 'password': None, 'document': None, 'cipher_hash': None,
+             'public': None, 'reinstalled': False, 'restored': False, 'verified': False}
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -54,7 +58,30 @@ def main():
                 if not 0 < length <= 32768:
                     raise ValueError('request limit')
                 body = json.loads(self.rfile.read(length))
-                if self.path == '/stage':
+                if self.path == '/stage-file':
+                    if not a.encrypted_backup or state['public'] is not None or set(body) != {'password', 'documentId', 'public', 'cipherSha256'}:
+                        raise ValueError('file stage unavailable')
+                    password, document, digest = body['password'], body['documentId'], body['cipherSha256']
+                    if not isinstance(password, str) or not 12 <= len(password) <= 1024 or not re.fullmatch(r'saved-[0-9a-f-]{36}', document) or not re.fullmatch(r'[0-9a-f]{64}', digest):
+                        raise ValueError('invalid encrypted file stage')
+                    state.update(password=password, document=document, cipher_hash=digest, public=body['public'])
+                    (a.out / 'before-public.json').write_text(json.dumps(state['public'], indent=2))
+                    result = {'staged': True}
+                elif self.path == '/restore-file':
+                    if not a.encrypted_backup or body or not state['reinstalled'] or state['restored'] or state['password'] is None:
+                        raise ValueError('file restore unavailable')
+                    result = {'password': state['password'], 'public': state['public'], 'cipherSha256': state['cipher_hash']}
+                    state['password'] = None
+                    state['restored'] = True
+                elif self.path == '/verify-file':
+                    if not a.encrypted_backup or not state['restored'] or state['verified'] or body != state['public']:
+                        raise ValueError('file identity mismatch')
+                    (a.out / 'after-public.json').write_text(json.dumps(body, indent=2))
+                    state['verified'] = True
+                    result = {'matched': True}
+                elif self.path == '/stage':
+                    if a.encrypted_backup:
+                        raise ValueError('phrase stage disabled')
                     if state['public'] is not None or set(body) != {'words', 'public'}:
                         raise ValueError('stage already consumed')
                     words = body['words']
@@ -117,16 +144,39 @@ def main():
     try:
         install()
         run(['shell', 'pm', 'clear', 'network.tos.wallet'])
-        test('coldRecoveryCreatesAndStagesDisplayedBackup')
-        if state['words'] is None:
-            raise RuntimeError('No displayed backup staged')
+        if a.encrypted_backup:
+            # Clear only this disposable test provider's old external ciphertext documents.
+            run(['shell', 'pm', 'clear', 'network.tos.wallet.test'])
+            test('createdWalletExportsEncryptedFileThroughSystemPicker', {'quantumEncryptedColdRecovery': 'true'})
+            if state['password'] is None:
+                raise RuntimeError('No encrypted backup staged')
+            cipher = run(['exec-out', 'run-as', 'network.tos.wallet.test', 'cat',
+                          'cache/encrypted-exports/' + state['document']])
+            if not 58 <= len(cipher) <= 262201 or hashlib.sha256(cipher).hexdigest() != state['cipher_hash']:
+                raise ValueError('Actual exported ciphertext mismatch')
+            # Ciphertext is the external backup artifact; plaintext and password never go to disk.
+            (a.out / 'actual-app-backup.tosqbk').write_bytes(cipher)
+        else:
+            test('coldRecoveryCreatesAndStagesDisplayedBackup')
+            if state['words'] is None:
+                raise RuntimeError('No displayed backup staged')
         receipt = run(['uninstall', 'network.tos.wallet']).decode()
         if 'Success' not in receipt:
             raise RuntimeError('Uninstall failed')
         (a.out / 'uninstall.txt').write_text(receipt)
         install()
         state['reinstalled'] = True
-        test('coldRecoveryRestoresAfterUninstallWithSameAddressAndKeys')
+        if a.encrypted_backup:
+            # Recreate only the external document source from the exact saved ciphertext.
+            run(['shell', 'pm', 'clear', 'network.tos.wallet.test'])
+            run(['push', str(a.out / 'actual-app-backup.tosqbk'), '/data/local/tmp/tos-cold-encrypted-backup'])
+            run(['shell', 'run-as', 'network.tos.wallet.test', 'mkdir', '-p', 'cache/encrypted-exports'])
+            run(['shell', 'run-as', 'network.tos.wallet.test', 'cp', '/data/local/tmp/tos-cold-encrypted-backup',
+                 'cache/encrypted-exports/' + state['document']])
+            run(['shell', 'rm', '/data/local/tmp/tos-cold-encrypted-backup'])
+            test('encryptedFileRestoresAfterUninstallWithSameIdentityAndRecoveryIsolation')
+        else:
+            test('coldRecoveryRestoresAfterUninstallWithSameAddressAndKeys')
         if not state['verified']:
             raise RuntimeError('Identity verification missing')
         journey = {}
@@ -182,10 +232,12 @@ def main():
             if hashlib.sha256(path.read_bytes()).hexdigest() != artifacts[str(path.resolve())]:
                 raise ValueError('APK changed before final result')
         (a.out / 'result.json').write_text(json.dumps({'passed': True, 'same_apk': True,
-            'actual_uninstall': True, 'same_address_identity_and_keys': True, **journey}, indent=2))
+            'actual_uninstall': True, 'same_address_identity_and_keys': True,
+            'encrypted_file': a.encrypted_backup, 'recovery_isolation_retained': a.encrypted_backup, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None
+        state['password'] = None
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
