@@ -71,6 +71,7 @@ import org.ton.contract.wallet.WalletTransfer
 import org.ton.mnemonic.Mnemonic
 import java.math.BigInteger
 import java.util.UUID
+import org.ton.boc.BagOfCells
 
 class AccountRepository(
     private val context: Context,
@@ -602,6 +603,41 @@ class AccountRepository(
         val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
         val observed = reader.observe(UUID.fromString(wallet.id), identity, intArrayOf(8, 19))
         network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl(observed, kind, System.currentTimeMillis() / 1000, 120)
+    }
+
+    suspend fun reserveQuantumRecoveryControl(plan: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl): UUID =
+        runInterruptible(Dispatchers.IO) {
+            network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context)
+                .reserve(plan, System.currentTimeMillis() / 1000).operation
+        }
+
+    /** Caller must explicitly authenticate this control. No broadcast or recovery unlock.
+     * SIGNING is durable before the protected vault can produce a signature. */
+    suspend fun signQuantumRecoveryControl(plan: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl,
+        operation: UUID,
+    ) = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val coroutine = currentCoroutineContext()
+            coroutine.ensureActive()
+            val wallet = checkNotNull(database.getAccount(plan.walletId.toString()))
+            check(wallet.quantumIdentity == plan.identity && wallet.type == Wallet.Type.Default)
+            val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, plan.identity))
+            check(record.id == plan.walletId && sameProfile(record.profile, plan.profile))
+            val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
+            val fresh = reader.observe(plan.walletId, plan.identity, intArrayOf(8, 19))
+            val now = System.currentTimeMillis() / 1000
+            plan.requireRevalidated(fresh, now)
+            val state = (network.tos.wallet.data.account.pq.QuantumSelfPayAccount.bind(plan.identity, fresh.proof, now, 300)
+                .snapshot(now).status as? network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active)?.state
+                ?: error("Recovery control wallet no longer active")
+            network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).sign(plan, fresh, now, operation) {
+                coroutine.ensureActive()
+                val inspection = quantumCustody.inspectRecoveryMaterial(record.id, record.identity, record.encryptedDigest, record.profile)
+                coroutine.ensureActive()
+                quantumCustody.signRecoveryControl(record.id, inspection, state,
+                    BagOfCells(plan.request.request).toByteArray(), System.currentTimeMillis() / 1000)
+            }
+        }
     }
 
     private fun quantumPaymentEndpoint() = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()

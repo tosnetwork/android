@@ -52,6 +52,10 @@ internal class QuantumCreationCustody internal constructor(
         finally { password.fill('\u0000') }
     }
     private fun mnemonicKey(id: UUID) = "quantum.mnemonic.v1.$id"
+    fun signRecoveryControl(id: UUID, inspection: QuantumBackupInspection,
+        state: network.tos.blockchain.ton.contract.QuantumSelfPayState, request: ByteArray, now: Long): ByteArray = synchronized(lock) {
+        recovery.signRecoveryControl(id, inspection, wrappingKey(false), state, request, now)
+    }
 
     fun saveMnemonic(id: UUID, words: List<String>) = synchronized(lock) {
         require(words.size == 24 && words.all { it.matches(Regex("[a-z]+")) })

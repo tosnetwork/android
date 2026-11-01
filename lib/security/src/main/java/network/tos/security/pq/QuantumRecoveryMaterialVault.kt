@@ -10,6 +10,9 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
 import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
+import network.tos.blockchain.ton.contract.QuantumSelfPayState
+import network.tos.blockchain.ton.contract.QuantumStoredSelfPayRequest
+import network.tos.blockchain.ton.contract.QuantumAuthRole
 import org.ton.boc.BagOfCells
 
 /** Complete recovery material at rest. App authentication and durable isolation belong to the service.
@@ -96,6 +99,35 @@ class QuantumRecoveryMaterialVault(private val prefs: SharedPreferences) {
                 }
             }
         } finally { plaintext.fill(0); password.fill('\u0000') }
+    }
+
+    /** Restricted primitive only: service must authenticate, obtain fresh state and durably
+     * enter SIGNING before calling. Historical file metadata never authorizes this operation. */
+    fun signRecoveryControl(id: UUID, inspection: QuantumBackupInspection, wrappingKey: SecretKey,
+                            current: QuantumSelfPayState, requestBOC: ByteArray, now: Long): ByteArray {
+        val request = QuantumStoredSelfPayRequest.parse(requestBOC)
+        request.requireIdentity(inspection.birth)
+        require(request.role == QuantumAuthRole.RESCUE && request.kind in setOf(1, 3)) { "Only RESCUE lock/configure allowed" }
+        require(now in 1..0xffffffffL && request.deadline - now in 1..3600) { "Recovery control expired" }
+        require(current.walletId == inspection.birth.wallet.walletId &&
+            current.authority.globalId == request.globalId && current.authority.namespace.contentEquals(request.namespace))
+        require(request.authorityHash.contentEquals(current.authority.hash) && request.epoch == current.epoch &&
+            request.nonce == current.rescueNonce) { "Recovery control state mismatch" }
+        // Reconstructing also enforces control counter saturation rules.
+        val expected = network.tos.blockchain.ton.contract.TosQuantumSelfPayRequest(inspection.birth.address, current,
+            QuantumAuthRole.RESCUE, request.deadline, if (request.kind == 1)
+                network.tos.blockchain.ton.contract.QuantumSelfPayAction.ConfigureRequired else
+                network.tos.blockchain.ton.contract.QuantumSelfPayAction.LockPrimary, now)
+        require(expected.request.hash() == request.cell.hash())
+        return withStoredPayload(id, inspection, wrappingKey) { plaintext ->
+            inspection.validatePayload(plaintext)
+            QuantumBackupPayload.parseUnverified(plaintext).use { payload ->
+                val rescue = requireNotNull(payload.roles.singleOrNull { it.role == QuantumRole.RESCUE.id }) { "RESCUE material unavailable" }
+                // Native signing independently derives and checks the actual current public key.
+                QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, rescue.seed,
+                    current.authority.rescueKey, request.cell.hash().toByteArray())
+            }
+        }
     }
 
     /** Internal custody scope only; never exposed to wallet UI or as a general seed getter. */
