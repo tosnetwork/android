@@ -9,9 +9,19 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
+from quantum_proof_recording_proxy import LoopbackHTTPServer
 
 
 class RecordingRelayTest(unittest.TestCase):
+    def test_numeric_loopback_binding_does_not_depend_on_reverse_dns(self):
+        with patch('socket.getfqdn', side_effect=RuntimeError('resolver unavailable')):
+            with self.assertRaises(RuntimeError):
+                HTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
+            with LoopbackHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler) as server:
+                self.assertEqual(server.server_name, '127.0.0.1')
+                self.assertGreater(server.server_port, 0)
+
     def test_explicit_close_preserves_sequential_requests_without_payload_retention(self):
         class Echo(BaseHTTPRequestHandler):
             def log_message(self, *_):
@@ -26,7 +36,7 @@ class RecordingRelayTest(unittest.TestCase):
                 self.end_headers()
                 self.wfile.write(body)
 
-        upstream = HTTPServer(('127.0.0.1', 0), Echo)
+        upstream = LoopbackHTTPServer(('127.0.0.1', 0), Echo)
         worker = threading.Thread(target=upstream.serve_forever, daemon=True)
         worker.start()
         try:

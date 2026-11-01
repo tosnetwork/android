@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import TCPServer
 import time
 import urllib.error
 import urllib.request
@@ -17,6 +18,16 @@ import urllib.request
 MAX_REQUEST = 1_048_576
 MAX_RESPONSE = 90_000_000
 MAX_CAPTURE = 268_435_456
+
+
+class LoopbackHTTPServer(HTTPServer):
+    def server_bind(self):
+        if self.server_address[0] != '127.0.0.1':
+            raise ValueError('numeric loopback required')
+        # HTTPServer performs reverse DNS here, even for a numeric loopback.
+        # The relay needs no hostname; resolver stalls must not delay listening.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address
 
 
 def serve(port, upstream, output):
@@ -108,7 +119,7 @@ def serve(port, upstream, output):
             except (ValueError, OSError, urllib.error.URLError):
                 self.send_error(502, 'Recording relay refused; inspect trial evidence')
 
-    HTTPServer(('127.0.0.1', port), Handler).serve_forever()
+    LoopbackHTTPServer(('127.0.0.1', port), Handler).serve_forever()
 
 
 if __name__ == '__main__':
