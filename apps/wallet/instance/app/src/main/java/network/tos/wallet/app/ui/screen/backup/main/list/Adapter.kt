@@ -25,6 +25,7 @@ class Adapter(
             Item.TYPE_MANUAL_BACKUP -> ManualHolder(parent, onClick)
             Item.TYPE_MANUAL_ACCENT_BACKUP -> ManualAccentHolder(parent, onClick)
             Item.TYPE_ALERT -> AlertHolder(parent)
+            Item.TYPE_ENCRYPTED_BACKUP -> network.tos.wallet.app.ui.screen.backup.main.list.holder.EncryptedBackupHolder(parent, onClick)
             else -> throw IllegalArgumentException("Unknown viewType: $viewType")
         }
     }

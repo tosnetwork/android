@@ -28,6 +28,7 @@ class BackupScreen(wallet: WalletEntity): BaseListWalletScreen<ScreenContext.Wal
 
     private val adapter = Adapter { item ->
         when (item) {
+            is Item.EncryptedBackup -> navigation?.add(QuantumBackupExportScreen(screenContext.wallet))
             is Item.RecoveryPhrase -> attentionDialog.show {
                 openRecoveryPhrase()
             }

@@ -777,6 +777,16 @@ class AccountRepository(
         }
     }
 
+    suspend fun hasOriginalQuantumCreation(id: String): Boolean = withContext(Dispatchers.IO) {
+        val wallet = database.getAccount(id) ?: return@withContext false
+        if (!wallet.isQuantum || wallet.type != Wallet.Type.Default) return@withContext false
+        val record = try { QuantumCreationRecord.load(context, UUID.fromString(id)) }
+        catch (error: android.system.ErrnoException) {
+            if (error.errno == android.system.OsConstants.ENOENT) return@withContext false else throw error
+        }
+        wallet.quantumIdentity == record.identity && QuantumRecoveryRecord.findIdentity(context, record.identity) == null
+    }
+
     /** Encrypted-file recovery preserves the birth identity and publishes with ordinary payment isolated. */
     data class QuantumBackupPreview(val address: String, val containsPrimary: Boolean, val containsRescue: Boolean)
 

@@ -16,11 +16,13 @@ sealed class Item(type: Int): BaseListItem(type) {
         const val TYPE_MANUAL_BACKUP = 5
         const val TYPE_MANUAL_ACCENT_BACKUP = 6
         const val TYPE_ALERT = 7
+        const val TYPE_ENCRYPTED_BACKUP = 8
     }
 
     data object Header: Item(TYPE_HEADER)
 
     data object RecoveryPhrase: Item(TYPE_RECOVERY_PHRASE)
+    data object EncryptedBackup: Item(TYPE_ENCRYPTED_BACKUP)
 
     data object Space: Item(TYPE_SPACE)
 
