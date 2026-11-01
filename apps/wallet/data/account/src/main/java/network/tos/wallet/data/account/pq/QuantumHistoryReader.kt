@@ -21,7 +21,8 @@ class QuantumHistoryReader(
         internal val logicalTime: String,
         internal val hash: String,
     )
-    data class Page(val transactions: List<QuantumHistoryTransaction>, val next: Cursor?, val checkpointTime: Long, val balanceNano: String)
+    class Page internal constructor(val transactions: List<QuantumHistoryTransaction>, val next: Cursor?, val checkpointTime: Long,
+        val balanceNano: String, internal val observation: QuantumAccountReader.Observation)
 
     suspend fun read(id: UUID, identity: TosQuantumSelfPayIdentity, cursor: Cursor? = null, limit: Int = 20): Page {
         require(limit in 1..20)
@@ -55,7 +56,7 @@ class QuantumHistoryReader(
                 requireRunning()
                 observation.requireFresh(now())
                 Page(Collections.unmodifiableList(transactions), if (time == "0") null else Cursor(observation, time, hash),
-                    observation.network.masterchainTime, observation.snapshot.balance.toString())
+                    observation.network.masterchainTime, observation.snapshot.balance.toString(), observation)
             } finally { leave(id) }
         }
     }

@@ -594,6 +594,17 @@ class AccountRepository(
             QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(UUID.fromString(wallet.id), identity, cursor, limit)
     }
 
+    /** Authenticated control inclusion only; no journal retirement or recovery unlock. */
+    suspend fun readQuantumRecoveryControlOutcome(wallet: WalletEntity):
+        network.tos.wallet.data.account.pq.QuantumRecoveryControlOutcomeReader.Result {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val endpoint = quantumPaymentEndpoint()
+        val history = QuantumHistoryReader(QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+            QuantumHistoryHttpTransport(endpoint, quantumHttpClient))
+        return network.tos.wallet.data.account.pq.QuantumRecoveryControlOutcomeReader(context, history)
+            .read(UUID.fromString(wallet.id), identity)
+    }
+
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */
     suspend fun prepareQuantumRecoveryControl(wallet: WalletEntity,
         kind: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind,

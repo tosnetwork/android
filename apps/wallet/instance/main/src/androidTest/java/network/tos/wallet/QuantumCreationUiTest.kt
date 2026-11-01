@@ -589,6 +589,11 @@ class QuantumCreationUiTest {
             assertTrue(transaction.messagesCreated == null || transaction.messagesCreated == 0L)
             assertEquals(expected.cell.hash(), finalState.cell.hash())
             assertEquals(before.balance - finalBalance, java.math.BigInteger(transaction.feesNano))
+            val controlOutcome = runBlocking { repository.readQuantumRecoveryControlOutcome(wallet) }
+            assertEquals(operation, controlOutcome.operation)
+            assertEquals(network.tos.wallet.data.account.pq.QuantumRecoveryControlOutcomeReader.Status.Executed, controlOutcome.status)
+            assertEquals(transaction.hash, controlOutcome.transactionHash)
+            assertEquals(transaction.feesNano, controlOutcome.feesNano)
             assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(identity))
         }
         File(context.cacheDir, "quantum-recovery-control-public.json").writeText(org.json.JSONObject()
