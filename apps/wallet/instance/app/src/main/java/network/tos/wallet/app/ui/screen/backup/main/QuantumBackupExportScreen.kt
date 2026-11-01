@@ -31,7 +31,7 @@ import network.tos.uikit.color.textPrimaryColor
 import uikit.base.BaseFragment
 import uikit.extensions.dp
 
-class QuantumBackupExportScreen(wallet: WalletEntity) :
+class QuantumBackupExportScreen(wallet: WalletEntity, private val successor: Boolean = false) :
     BaseWalletScreen<ScreenContext.Wallet>(0, ScreenContext.Wallet(wallet)), BaseFragment.SwipeBack {
     override val fragmentName = "QuantumBackupExportScreen"
     override val secure = true
@@ -43,6 +43,7 @@ class QuantumBackupExportScreen(wallet: WalletEntity) :
     private lateinit var status: TextView
     private var operation: Job? = null
     private var ticket: QuantumBackupExportFile.Ticket? = null
+    private var successorExport: network.tos.wallet.data.account.AccountRepository.SuccessorBackupExport? = null
     private var generation = 0L
     private var busy = false
     private var choosingDestination = false
@@ -60,13 +61,15 @@ class QuantumBackupExportScreen(wallet: WalletEntity) :
         val resolver = requireContext().contentResolver
         operation = viewLifecycleOwner.lifecycleScope.launch {
             try {
-                runInterruptible(Dispatchers.IO) { files.saveAndVerify(staged, resolver, uri) }
+                val saved = runInterruptible(Dispatchers.IO) { files.saveAndVerify(staged, resolver, uri) }
                 coroutineContext.ensureActive()
                 if (token != generation) return@launch
-                viewModel.recordVerifiedEncryptedBackup()
+                if (successor) viewModel.confirmSuccessorBackup(checkNotNull(successorExport), saved)
+                else viewModel.recordVerifiedEncryptedBackup()
                 operation = null
                 reset()
-                status.text = "Encrypted backup saved and read back successfully. Keep its password separately and retain your previous backups. Restoring this file keeps payments locked until recovery checks complete."
+                status.text = if (successor) "Replacement-key backup saved, read back and recorded for this recovery operation. Keep its password separately and retain your old backup. Replacement keys are not installed; payments remain restricted."
+                    else "Encrypted backup saved and read back successfully. Keep its password separately and retain your previous backups. Restoring this file keeps payments locked until recovery checks complete."
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { failure(token, "Could not verify completion. Keep your previous backups and any saved file. Create a new export to retry.") }
         }
@@ -79,9 +82,10 @@ class QuantumBackupExportScreen(wallet: WalletEntity) :
         }
         fun label(value: String) = TextView(context).apply { text = value; textSize = 17f; setTextColor(context.textPrimaryColor) }
         content.addView(Button(context).apply { text = "Cancel"; setOnClickListener { reset(); finish() } })
-        content.addView(label("Export encrypted backup"))
+        content.addView(label(if (successor) "Back up replacement keys" else "Export encrypted backup"))
         content.addView(label("Wallet: ${screenContext.wallet.label.name}\nOriginal address: ${screenContext.wallet.accountId}\nNetwork ID: ${screenContext.wallet.networkGlobalId}"))
-        content.addView(label("This file includes the original master recovery phrase and both original keys, which can also control related accounts. It is not independent cold rescue storage. Keep previous verified backups after any key change."))
+        content.addView(label(if (successor) "This file contains both independent replacement roots for this original address. Save and verify it before replacing keys. Keep your old backup too. Saving this file does not install replacement keys or enable payments."
+            else "This file includes the original master recovery phrase and both original keys, which can also control related accounts. It is not independent cold rescue storage. Keep previous verified backups after any key change."))
         content.addView(label("Choose a file password different from your App PIN, with at least 12 characters. Enter it twice exactly; losing this password can prevent file recovery."))
         fun field(hintText: String, identifier: String) = AppCompatEditText(context).apply {
             hint = hintText; contentDescription = identifier; isSaveEnabled = false
@@ -123,6 +127,7 @@ class QuantumBackupExportScreen(wallet: WalletEntity) :
         generation++; operation?.cancel(); operation = null; busy = false; choosingDestination = false
         clearSecrets()
         ticket?.let { runCatching { files.discard(it) } }; ticket = null
+        successorExport = null
         render()
     }
 
@@ -146,15 +151,17 @@ class QuantumBackupExportScreen(wallet: WalletEntity) :
         operation = viewLifecycleOwner.lifecycleScope.launch {
             var prepared: QuantumBackupExportFile.Ticket? = null
             try {
-                val encrypted = viewModel.createEncryptedBackup(requireContext(), pass)
+                val exported = if (successor) viewModel.createSuccessorBackup(requireContext(), pass) else null
+                val encrypted = exported?.encryptedFile() ?: viewModel.createEncryptedBackup(requireContext(), pass)
                 try { withContext(Dispatchers.IO) { prepared = files.stage(encrypted) } }
                 finally { encrypted.fill(0) }
                 coroutineContext.ensureActive()
                 if (token != generation) return@launch
                 ticket = checkNotNull(prepared); prepared = null
+                successorExport = exported
                 operation = null; busy = false; choosingDestination = true; render()
                 status.text = "Save a new encrypted file. Keep your previous backup until this file is saved and verified."
-                destination.launch("TOS-backup-${System.currentTimeMillis()}.tosqbk")
+                destination.launch("TOS-${if (successor) "replacement-" else ""}backup-${System.currentTimeMillis()}.tosqbk")
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { failure(token, "Could not create this backup. Keep your existing recovery materials. Check authentication and the TOS node, then retry.") }
             finally { pass.fill('\u0000'); prepared?.let { runCatching { files.discard(it) } } }

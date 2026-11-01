@@ -680,6 +680,108 @@ class AccountRepository(
         }
     }
 
+    class SuccessorBackupExport internal constructor(
+        internal val binding: network.tos.wallet.data.account.pq.QuantumSuccessorBackupConfirmation.Binding,
+        encrypted: ByteArray,
+    ) {
+        private val file = encrypted.copyOf()
+        internal val digest: ByteArray get() = java.security.MessageDigest.getInstance("SHA-256").digest(file)
+        fun encryptedFile(): ByteArray = file.copyOf()
+    }
+
+    /** Must run under the creation mutex and recovery isolation lease, after fresh funded inspection. */
+    private fun successorBackupBinding(wallet: WalletEntity,
+        stage: network.tos.security.pq.QuantumSuccessorMaterialVault.Stage,
+    ): Triple<QuantumRecoveryRecord, network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Entry,
+        network.tos.wallet.data.account.pq.QuantumSuccessorBackupConfirmation.Binding> {
+        require(wallet.type == Wallet.Type.Default)
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+        val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).pending(identity))
+        val prior = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(identity))
+        val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(identity))
+        check(entry.phase == network.tos.wallet.data.account.pq.QuantumProbeFundingJournal.Phase.COMPLETED)
+        require(record.id.toString() == wallet.id && entry.walletId == record.id && stage.walletId == record.id &&
+            stage.inspection.birth == identity && sameProfile(record.profile, probe.profile) &&
+            stage.inspection.encryptedDigest.contentEquals(probe.materialDigest) &&
+            stage.inspection.snapshot.hash.contentEquals(probe.successor.hash))
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        return Triple(record, prior, network.tos.wallet.data.account.pq.QuantumSuccessorBackupConfirmation.Binding(
+            record.id, entry.operation, identity.cell.hash().toByteArray(), hex(record.profile.rootHash), hex(record.profile.fileHash),
+            probe.materialDigest, probe.successor.hash))
+    }
+
+    /** Caller authenticates. Export a pending successor, never mark the current wallet backed up. */
+    suspend fun exportFundedQuantumSuccessorBackup(wallet: WalletEntity, password: CharArray): SuccessorBackupExport {
+        var encrypted = ByteArray(0)
+        try {
+            val stage = inspectFundedQuantumSuccessorMaterial(wallet)
+            val output = withContext(Dispatchers.IO) {
+                val coroutine = currentCoroutineContext()
+                quantumCreationMutex.withLock {
+                    val actual = checkNotNull(database.getAccount(wallet.id))
+                    require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+                    QuantumPaymentOutbox(context).withRecoveryControlIsolation(requireNotNull(wallet.quantumIdentity)) {
+                        coroutine.ensureActive()
+                        val (record, prior, binding) = successorBackupBinding(wallet, stage)
+                        encrypted = quantumCustody.exportSuccessorMaterial(record, prior.expectedControlState(),
+                            stage.inspection.encryptedDigest, stage.inspection.snapshot, password)
+                        SuccessorBackupExport(binding, encrypted)
+                    }
+                }
+            }
+            val fresh = inspectFundedQuantumSuccessorMaterial(wallet)
+            withContext(Dispatchers.IO) {
+                quantumCreationMutex.withLock {
+                    val actual = checkNotNull(database.getAccount(wallet.id))
+                    require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+                    QuantumPaymentOutbox(context).withRecoveryControlIsolation(requireNotNull(wallet.quantumIdentity)) {
+                        check(output.binding.encode().contentEquals(successorBackupBinding(wallet, fresh).third.encode()))
+                    }
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            return output
+        } finally { encrypted.fill(0); password.fill('\u0000') }
+    }
+
+    /** A system-file read-back capability plus fresh material/operation checks is required. */
+    suspend fun confirmFundedQuantumSuccessorBackup(wallet: WalletEntity, exported: SuccessorBackupExport,
+        saved: network.tos.wallet.data.account.pq.QuantumBackupExportFile.Saved,
+    ) {
+        val fresh = inspectFundedQuantumSuccessorMaterial(wallet)
+        withContext(Dispatchers.IO) {
+            val coroutine = currentCoroutineContext()
+            quantumCreationMutex.withLock {
+                val actual = checkNotNull(database.getAccount(wallet.id))
+                require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+                QuantumPaymentOutbox(context).withRecoveryControlIsolation(requireNotNull(wallet.quantumIdentity)) {
+                    coroutine.ensureActive()
+                    val binding = successorBackupBinding(wallet, fresh).third
+                    check(binding.encode().contentEquals(exported.binding.encode())) { "Successor export operation changed" }
+                    quantumCustody.confirmSuccessorBackup(binding, exported.digest, saved)
+                }
+            }
+        }
+    }
+
+    /** Revalidates a retained saved-file confirmation; does not authorize migration or payment. */
+    suspend fun verifiedFundedQuantumSuccessorBackup(wallet: WalletEntity): String {
+        val fresh = inspectFundedQuantumSuccessorMaterial(wallet)
+        return withContext(Dispatchers.IO) {
+            val coroutine = currentCoroutineContext()
+            quantumCreationMutex.withLock {
+                val actual = checkNotNull(database.getAccount(wallet.id))
+                require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+                QuantumPaymentOutbox(context).withRecoveryControlIsolation(requireNotNull(wallet.quantumIdentity)) {
+                    coroutine.ensureActive()
+                    quantumCustody.requireSuccessorBackup(successorBackupBinding(wallet, fresh).third)
+                        .joinToString("") { "%02x".format(it) }
+                }
+            }
+        }
+    }
+
     private fun observeCompletedRecoveryLock(wallet: WalletEntity): QuantumAccountReader.Observation {
         val identity = requireNotNull(wallet.quantumIdentity)
         check(QuantumPaymentOutbox(context).requiresRecovery(identity))

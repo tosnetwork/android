@@ -7,6 +7,10 @@ import android.system.Os
 import android.system.ErrnoException
 import android.system.OsConstants
 import network.tos.wallet.data.account.pq.QuantumBackupExportFile
+import network.tos.wallet.data.account.pq.QuantumSuccessorBackupConfirmation
+import android.content.Context
+import android.content.SharedPreferences
+import java.security.MessageDigest
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,6 +22,73 @@ import java.util.UUID
 /** Transport/durability tests use synthetic ciphertext-shaped bytes, not secret wallet material. */
 @RunWith(AndroidJUnit4::class)
 class QuantumBackupExportFileTest {
+    @Test fun successorConfirmationRequiresSavedFileAndExactMaterialBinding() = scope { root ->
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "successor-confirm-${UUID.randomUUID()}"
+        val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        val wallet = UUID.randomUUID(); val operation = UUID.randomUUID()
+        val hashes = List(5) { n -> ByteArray(32) { (n + 1).toByte() } }
+        fun binding(id: UUID = wallet, op: UUID = operation, values: List<ByteArray> = hashes) =
+            QuantumSuccessorBackupConfirmation.Binding(id, op, values[0], values[1], values[2], values[3], values[4])
+        val journal = QuantumSuccessorBackupConfirmation(prefs)
+        val files = QuantumBackupExportFile(File(root, "private"), mutableSetOf())
+        val bytes = ByteArray(150) { it.toByte() }; val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        val ticket = files.stage(bytes); val destination = File(root, "saved")
+        try {
+            assertThrows(IllegalStateException::class.java) { journal.requireConfirmed(binding()) }
+            val saved = files.writeAndVerify(ticket, { descriptor(destination) }, { destination.inputStream() })
+            assertThrows(IllegalArgumentException::class.java) { journal.confirm(binding(), ByteArray(32), saved) }
+            assertTrue(prefs.all.isEmpty())
+            journal.confirm(binding(), digest, saved)
+            assertArrayEquals(digest, QuantumSuccessorBackupConfirmation(prefs).requireConfirmed(binding()))
+            for (i in hashes.indices) {
+                val changed = hashes.mapIndexed { index, value -> if (index == i) ByteArray(32) { 99 } else value }
+                assertThrows(IllegalStateException::class.java) { journal.requireConfirmed(binding(values = changed)) }
+                assertThrows(IllegalStateException::class.java) { journal.confirm(binding(values = changed), digest, saved) }
+            }
+            assertThrows(IllegalStateException::class.java) { journal.requireConfirmed(binding(op = UUID.randomUUID())) }
+            assertThrows(IllegalStateException::class.java) { journal.requireConfirmed(binding(id = UUID.randomUUID())) }
+            // A newly verified file for the same material can replace a lost/old file confirmation.
+            val replacement = bytes.copyOf().also { it[0] = 99 }
+            val next = files.stage(replacement)
+            val nextSaved = files.writeAndVerify(next, { descriptor(destination) }, { destination.inputStream() })
+            val nextDigest = MessageDigest.getInstance("SHA-256").digest(replacement)
+            journal.confirm(binding(), nextDigest, nextSaved)
+            assertArrayEquals(nextDigest, journal.requireConfirmed(binding()))
+            files.discard(next)
+        } finally { files.discard(ticket); context.deleteSharedPreferences(name) }
+    }
+
+    @Test fun successorConfirmationRetriesUncertainCommitBeforeUse() = scope { root ->
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "successor-confirm-fault-${UUID.randomUUID()}"
+        val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        var commits = 0
+        val failing = object : SharedPreferences by prefs {
+            override fun edit(): SharedPreferences.Editor {
+                val editor = prefs.edit()
+                return object : SharedPreferences.Editor by editor {
+                    override fun putString(key: String?, value: String?): SharedPreferences.Editor {
+                        editor.putString(key, value); return this
+                    }
+                    override fun commit(): Boolean { commits++; editor.commit(); return false }
+                }
+            }
+        }
+        val binding = QuantumSuccessorBackupConfirmation.Binding(UUID.randomUUID(), UUID.randomUUID(),
+            ByteArray(32) { 1 }, ByteArray(32) { 2 }, ByteArray(32) { 3 }, ByteArray(32) { 4 }, ByteArray(32) { 5 })
+        val files = QuantumBackupExportFile(File(root, "private"), mutableSetOf())
+        val bytes = ByteArray(150); val ticket = files.stage(bytes); val destination = File(root, "saved")
+        try {
+            val saved = files.writeAndVerify(ticket, { descriptor(destination) }, { destination.inputStream() })
+            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+            assertThrows(IllegalStateException::class.java) { QuantumSuccessorBackupConfirmation(failing).confirm(binding, digest, saved) }
+            assertEquals(1, commits)
+            assertThrows(IllegalStateException::class.java) { QuantumSuccessorBackupConfirmation(failing).requireConfirmed(binding) }
+            assertEquals(2, commits)
+            assertArrayEquals(digest, QuantumSuccessorBackupConfirmation(prefs).requireConfirmed(binding))
+        } finally { files.discard(ticket); context.deleteSharedPreferences(name) }
+    }
     private fun scope(body: (File) -> Unit) {
         val root = File(InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir,
             "export-file-test-${UUID.randomUUID()}").also { check(it.mkdir()) }

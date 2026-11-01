@@ -126,6 +126,19 @@ class BackupViewModel(
         backupRepository.addBackups(listOf(wallet.id))
     }
 
+    suspend fun createSuccessorBackup(context: Context, password: CharArray): AccountRepository.SuccessorBackupExport {
+        try {
+            check(passcodeManager.hasPinCode() && passcodeManager.confirmation(context, "Back up replacement keys")) {
+                "Backup authentication cancelled"
+            }
+            return accountRepository.exportFundedQuantumSuccessorBackup(wallet, password)
+        } finally { password.fill('\u0000') }
+    }
+
+    suspend fun confirmSuccessorBackup(exported: AccountRepository.SuccessorBackupExport,
+        saved: network.tos.wallet.data.account.pq.QuantumBackupExportFile.Saved,
+    ) = accountRepository.confirmFundedQuantumSuccessorBackup(wallet, exported, saved)
+
     private suspend fun getBalanceType(
         balanceFiat: Coins,
     ): Int {

@@ -22,6 +22,12 @@ class QuantumBackupExportFile internal constructor(
     constructor(context: Context) : this(File(context.noBackupFilesDir, "quantum-backup-export"))
     class Ticket internal constructor(internal val id: UUID, internal val size: Int,
                                      internal val digest: ByteArray, internal val owner: String)
+    /** Produced only after durable destination write and exact read-back verification.
+     * Receipt consumers still bind this ciphertext to the authenticated export operation. */
+    class Saved internal constructor(ticket: Ticket) {
+        internal val digest = ticket.digest.copyOf()
+        internal val size = ticket.size
+    }
 
     private fun prepare() {
         try { Os.mkdir(directory.absolutePath, 0x1c0) }
@@ -119,13 +125,13 @@ class QuantumBackupExportFile internal constructor(
         finally { active.remove(ticket.id) }
     }
 
-    fun saveAndVerify(ticket: Ticket, resolver: ContentResolver, uri: Uri) {
+    fun saveAndVerify(ticket: Ticket, resolver: ContentResolver, uri: Uri): Saved {
         require(uri.scheme == "content")
-        writeAndVerify(ticket, { checkNotNull(resolver.openFileDescriptor(uri, "wt")) },
+        return writeAndVerify(ticket, { checkNotNull(resolver.openFileDescriptor(uri, "wt")) },
             { checkNotNull(resolver.openInputStream(uri)) })
     }
 
-    internal fun writeAndVerify(ticket: Ticket, openWrite: () -> ParcelFileDescriptor, openRead: () -> InputStream) {
+    internal fun writeAndVerify(ticket: Ticket, openWrite: () -> ParcelFileDescriptor, openRead: () -> InputStream): Saved {
         check(writing.compareAndSet(false, true)) { "Another document save is active" }
         var bytes = ByteArray(0)
         try {
@@ -147,6 +153,7 @@ class QuantumBackupExportFile internal constructor(
                 }
             }
             check(total == bytes.size && MessageDigest.isEqual(ticket.digest, hash.digest())) { "Saved backup could not be verified" }
+            return Saved(ticket)
         } finally { bytes.fill(0); writing.set(false) }
     }
 

@@ -82,6 +82,20 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Generate replacement keys", "quantum.recovery.successor.generate") { successor(false) }
         button("Verify saved replacement keys", "quantum.recovery.successor.resume") { successor(true) }
         button("Authenticate and verify funded replacement keys", "quantum.recovery.successor.funded") { fundedSuccessor() }
+        button("Save encrypted replacement-key backup", "quantum.recovery.successor.backup") {
+            navigation?.add(network.tos.wallet.app.ui.screen.backup.main.QuantumBackupExportScreen(wallet, successor = true))
+        }
+        button("Verify saved replacement-key backup record", "quantum.recovery.successor.backup.verify") {
+            run {
+                authenticating = true
+                val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Verify replacement-key backup") }
+                    finally { authenticating = false }
+                if (!accepted) return@run
+                check(viewLifecycleOwnerLiveData.value?.lifecycle?.currentState == androidx.lifecycle.Lifecycle.State.RESUMED)
+                val digest = accounts.verifiedFundedQuantumSuccessorBackup(wallet)
+                status.text = "Saved replacement-key backup record verified.\nFile SHA-256: $digest\nKeep the file, its password and the old backup. Replacement keys are not installed; payments remain restricted."
+            }
+        }
         button("Prepare possession challenge", "quantum.recovery.probe.prepare") { prepareProbe() }
         button("Sign possession message", "quantum.recovery.probe.sign") { signProbe() }
         button("Reload possession message", "quantum.recovery.probe.reload") {
