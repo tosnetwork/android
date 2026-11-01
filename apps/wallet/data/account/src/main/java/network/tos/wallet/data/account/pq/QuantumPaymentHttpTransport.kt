@@ -10,10 +10,12 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.io.IOException
 
 /** Broadcast acceptance is not inclusion. No caller may infer a payment result here. */
 class QuantumPaymentHttpTransport(private val endpoint: HttpUrl, client: OkHttpClient) {
-    private val client = client.newBuilder().followRedirects(false).followSslRedirects(false)
+    private val client = client.newBuilder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
         .callTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
     fun send(bytes: ByteArray) {
         require(bytes.size in 1..1_048_576)
@@ -22,7 +24,14 @@ class QuantumPaymentHttpTransport(private val endpoint: HttpUrl, client: OkHttpC
         val payload = JSONObject().put("jsonrpc", "2.0").put("id", id).put("method", "sendBocReturnHash")
             .put("params", JSONObject().put("boc", Base64.encodeToString(bytes, Base64.NO_WRAP)))
         val request = Request.Builder().url(endpoint).post(payload.toString().toRequestBody("application/json".toMediaType())).build()
-        client.newCall(request).execute().use { response ->
+        // Some HTTP follow-ups (e.g. 503 Retry-After: 0) are separate from connection recovery.
+        // Enforce one actual network exchange per explicit invocation, including all follow-ups.
+        val dispatched = AtomicBoolean(false)
+        val singleAttempt = client.newBuilder().addNetworkInterceptor { chain ->
+            if (!dispatched.compareAndSet(false, true)) throw IOException("Broadcast transport repeat refused")
+            chain.proceed(chain.request())
+        }.build()
+        singleAttempt.newCall(request).execute().use { response ->
             check(response.isSuccessful)
             val body = checkNotNull(response.body); check(body.contentLength() <= 65536)
             val output = ByteArrayOutputStream()

@@ -89,6 +89,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Review 0.01 TOS key-check funding", "quantum.recovery.funding.review") { reviewFunding() }
         button("Authenticate and sign funding", "quantum.recovery.funding.sign") { signFunding() }
         button("Estimate saved funding", "quantum.recovery.funding.estimate") { estimateFunding() }
+        button("Confirm fee and send funding", "quantum.recovery.funding.send") { confirmFundingSend() }
         button("Reload funding message", "quantum.recovery.funding.reload") {
             run { fundingPlan = null; fundingOperation = null; showFunding(accounts.pendingQuantumProbeFunding(wallet)) }
         }
@@ -204,7 +205,9 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     private fun showFunding(saved: AccountRepository.RecoveryProbeFundingStatus?) {
         status.text = saved?.let {
             "Funding message: ${it.phase}\nOperation: ${it.operation}" +
-                "\nThis is a local signing record, not a chain result. Nothing was sent by this step. Payments remain restricted."
+                if (it.phase == "SUBMITTING" || it.phase == "UNKNOWN")
+                    "\nA submission may have reached the network. Do not send it again. Its chain outcome and key check remain unverified. Payments remain restricted."
+                else "\nThis is a local signing record, not a chain result. Nothing was sent by this step. Payments remain restricted."
         } ?: "No saved funding message. Review the key-check funding before authenticating."
     }
     private fun reviewFunding() = run {
@@ -252,6 +255,34 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             "\nEstimated total debit: ${tos(estimate.estimatedDebit)} TOS" +
             "\nExpires: ${java.util.Date(estimate.expiresAt * 1000)}" +
             "\nThis is a local estimate. Nothing has been sent or approved. Recovery and payments remain restricted."
+    }
+    private fun confirmFundingSend() {
+        val estimate = fundingQuote
+        if (estimate == null) { status.text = "Estimate the saved funding before confirming its fee."; return }
+        if (System.currentTimeMillis() / 1000 >= estimate.expiresAt) {
+            fundingQuote = null; status.text = "Funding estimate expired. Estimate the saved funding again."; return
+        }
+        fun tos(value: BigInteger) = java.math.BigDecimal(value, 9).stripTrailingZeros().toPlainString()
+        confirmation = AlertDialog.Builder(requireContext()).setTitle("Send key-check funding?")
+            .setMessage("From wallet: ${wallet.address}\nProbe: ${estimate.address}\nSend value: ${tos(estimate.amount)} TOS" +
+                "\nEstimated fee: ${tos(estimate.estimatedFee)} TOS\nEstimated total debit: ${tos(estimate.estimatedDebit)} TOS" +
+                "\nExpires: ${java.util.Date(estimate.expiresAt * 1000)}\nActual fees can change. This funds the replacement-key check; recovery and payments stay restricted.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Send funding") { _, _ ->
+                if (fundingQuote !== estimate || viewLifecycleOwnerLiveData.value?.lifecycle?.currentState
+                        ?.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) != true) {
+                    status.text = "Estimate the saved funding before confirming its fee."
+                } else run {
+                    status.text = "Submitting key-check funding. Its outcome is unverified. Do not send it again."
+                    try { accounts.submitQuantumProbeFunding(estimate) }
+                    catch (cancel: CancellationException) { throw cancel }
+                    catch (error: Exception) {
+                        val saved = accounts.pendingQuantumProbeFunding(wallet)
+                        if (saved?.phase == "SUBMITTING" || saved?.phase == "UNKNOWN") { showFunding(saved); return@run }
+                        throw error
+                    }
+                    showFunding(accounts.pendingQuantumProbeFunding(wallet))
+                }
+            }.create().also { it.show() }
     }
     override fun onPause() {
         if (fundingQuote != null) {

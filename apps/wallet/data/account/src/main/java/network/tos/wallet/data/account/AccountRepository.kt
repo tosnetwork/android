@@ -813,6 +813,34 @@ class AccountRepository(
         }
     }
 
+    /** Caller explicitly confirms the displayed native estimate. One dispatch, never an inclusion claim. */
+    suspend fun submitQuantumProbeFunding(quote: network.tos.wallet.data.account.pq.QuantumProbeFundingQuote) =
+        withContext(Dispatchers.IO) {
+            quantumCreationMutex.withLock {
+                val plan = quote.plan
+                val actual = checkNotNull(database.getAccount(plan.walletId.toString()))
+                require(actual.type == Wallet.Type.Default && actual.quantumIdentity == plan.identity)
+                val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, plan.identity))
+                require(record.id == plan.walletId && record.identity == plan.identity && sameProfile(record.profile, plan.profile))
+                val observed = observeCompletedRecoveryLock(actual)
+                require(sameProfile(record.profile, observed.profile))
+                currentCoroutineContext().ensureActive()
+                runInterruptible {
+                    val journal = network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context)
+                    val (currentPlan, message) = journal.beginSubmission(quote, observed, System.currentTimeMillis() / 1000)
+                    try {
+                        if (Thread.currentThread().isInterrupted) throw InterruptedException("Funding submission cancelled")
+                        quote.requireFresh(quote.operation, currentPlan, message, System.currentTimeMillis() / 1000)
+                        network.tos.wallet.data.account.pq.QuantumPaymentHttpTransport(quantumPaymentEndpoint(), quantumHttpClient).send(message)
+                    } finally {
+                        // A response, rejection or exception cannot establish non-delivery or inclusion.
+                        // A failed uncertainty write conservatively leaves durable SUBMITTING.
+                        journal.unknown(plan.identity, quote.operation)
+                    }
+                }
+            }
+        }
+
     /** Caller authenticates this exact operation. No broadcast or recovery unlock. */
     suspend fun signQuantumProbeFunding(wallet: WalletEntity, operation: UUID, reviewedDigest: ByteArray) {
         require(reviewedDigest.size == 32)
