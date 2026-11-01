@@ -605,6 +605,27 @@ class AccountRepository(
             .read(UUID.fromString(wallet.id), identity)
     }
 
+    /** Unsigned random challenge only. Secret generation, durable signing and funded verification follow separately. */
+    suspend fun prepareQuantumRecoveryProbe(wallet: WalletEntity,
+        successor: network.tos.blockchain.ton.contract.QuantumSelfPayAuthority,
+    ): network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe = runInterruptible(Dispatchers.IO) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        check(QuantumPaymentOutbox(context).requiresRecovery(identity))
+        val completed = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(identity))
+        check(completed.walletId.toString() == wallet.id &&
+            completed.phase == network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.COMPLETED &&
+            completed.kind == network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY)
+        val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
+        val observed = reader.observe(UUID.fromString(wallet.id), identity, intArrayOf(8, 19))
+        val now = System.currentTimeMillis() / 1000
+        val state = (network.tos.wallet.data.account.pq.QuantumSelfPayAccount.bind(identity, observed.proof, now, 300)
+            .snapshot(now).status as? network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active)?.state
+            ?: error("Recovery wallet no longer active")
+        check(state.cell.hash() == completed.expectedControlState().cell.hash())
+        val challenge = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe(observed, successor, challenge, now, 120)
+    }
+
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */
     suspend fun prepareQuantumRecoveryControl(wallet: WalletEntity,
         kind: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind,

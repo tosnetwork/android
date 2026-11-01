@@ -12,6 +12,7 @@ import network.tos.security.pq.QuantumVerifiedRead
 import network.tos.wallet.data.account.pq.QuantumSelfPayAccount
 import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
 import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl
+import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe
 import network.tos.wallet.data.account.pq.QuantumAccountReader
 import network.tos.wallet.data.account.pq.QuantumNetworkProfile
 import network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal
@@ -133,6 +134,27 @@ class QuantumSelfPayAccountTest {
                 val profile = QuantumNetworkProfile(1, anchor.getString("root_hash"), anchor.getString("file_hash"))
                 val observation = QuantumAccountReader.Observation(UUID.randomUUID(), birth, profile, recoveryBase, proof, s)
                 if (role == "active") {
+                    val primary = birth.wallet.initialAuthority.primaryKey.also { it[0] = (it[0].toInt() xor 1).toByte() }
+                    val rescue = birth.wallet.initialAuthority.rescueKey.also { it[0] = (it[0].toInt() xor 1).toByte() }
+                    val successor = QuantumSelfPayAuthority(1, birth.wallet.initialAuthority.namespace, primary, rescue, QuantumPolicy.REQUIRED)
+                    val challenge = ByteArray(32) { 9 }
+                    val preparedProbe = QuantumPreparedRecoveryProbe(observation, successor, challenge, now, 120)
+                    val digest = preparedProbe.probe.digest
+                    challenge.fill(0)
+                    assertArrayEquals(digest, preparedProbe.probe.digest)
+                    assertNotEquals(preparedProbe.probe.address, birth.address)
+                    preparedProbe.requireRevalidated(observation, now)
+                    assertThrows(IllegalStateException::class.java) { preparedProbe.requireFresh(preparedProbe.expiresAt) }
+                    assertThrows(IllegalArgumentException::class.java) {
+                        preparedProbe.requireRevalidated(observation.copy(id = UUID.randomUUID()), now)
+                    }
+                    for (bad in listOf(birth.wallet.initialAuthority,
+                        QuantumSelfPayAuthority(2, successor.namespace, primary, rescue, QuantumPolicy.REQUIRED),
+                        QuantumSelfPayAuthority(1, ByteArray(32) { 7 }, primary, rescue, QuantumPolicy.REQUIRED))) {
+                        assertThrows(IllegalArgumentException::class.java) {
+                            QuantumPreparedRecoveryProbe(observation, bad, ByteArray(32) { 9 }, now, 120)
+                        }
+                    }
                     for (kind in QuantumPreparedRecoveryControl.Kind.entries) {
                         val control = QuantumPreparedRecoveryControl(observation, kind, now, 120)
                         assertEquals(QuantumAuthRole.RESCUE, control.request.role)
