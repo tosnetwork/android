@@ -14,6 +14,7 @@ var isAPK = gradle.startParameter.projectProperties["isApk"]?.toBoolean() ?: fal
 android {
     namespace = Build.namespacePrefix("wallet")
     compileSdk = Build.compileSdkVersion
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("lib/security/src/androidTest/assets/quantum-backup-exchange-v1"))
 
     defaultConfig {
         applicationId = "network.tos.wallet"
