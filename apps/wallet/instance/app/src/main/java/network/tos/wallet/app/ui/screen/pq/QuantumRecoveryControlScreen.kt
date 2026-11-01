@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import network.tos.wallet.app.R
+import network.tos.wallet.app.BuildConfig
 import network.tos.wallet.app.ui.base.BaseWalletVM
 import network.tos.wallet.app.ui.base.WalletContextScreen
 import network.tos.wallet.data.account.AccountRepository
@@ -35,6 +36,8 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     private var plan: QuantumPreparedRecoveryControl? = null
     private var quote: QuantumRecoveryControlQuote? = null
     private var confirmation: AlertDialog? = null
+    // Test diagnostics only: class/frames, never exception messages or input values.
+    private var diagnosticFailureStack: String? = null
     private val actions = mutableListOf<Button>()
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -96,9 +99,12 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     private fun run(action: suspend () -> Unit) {
         if (operation?.isActive == true) return
         operation = viewLifecycleOwner.lifecycleScope.launch {
+            diagnosticFailureStack = null
             actions.forEach { it.isEnabled = false }
             try { action() } catch (cancel: CancellationException) { throw cancel }
-            catch (_: Exception) {
+            catch (error: Exception) {
+                if (BuildConfig.DEBUG) diagnosticFailureStack =
+                    (error.javaClass.name + "\n" + error.stackTrace.take(16).joinToString("\n")).take(8192)
                 plan = null; quote = null
                 status.text = "Unable to complete this step. Reload the saved operation before continuing. Recovery controls currently require an imported encrypted backup with matching rescue material. Nothing was unlocked."
             } finally { actions.forEach { it.isEnabled = true } }
@@ -182,6 +188,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         super.onPause()
     }
     override fun onDestroyView() {
+        diagnosticFailureStack = null
         operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; actions.clear()
         super.onDestroyView()
     }

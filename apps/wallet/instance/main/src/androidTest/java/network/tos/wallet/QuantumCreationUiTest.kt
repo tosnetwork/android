@@ -86,6 +86,21 @@ class QuantumCreationUiTest {
             val recovery = recoveryViews.filter { it.contentDescription?.toString() == "quantum.recovery.status" }
                 .filterIsInstance<android.widget.TextView>()
             if (recovery.isNotEmpty()) text += "\nRecovery: " + recovery.joinToString("\n") { it.text.toString() }
+            val fragments = java.util.ArrayDeque<androidx.fragment.app.Fragment>()
+            activities.filterIsInstance<androidx.fragment.app.FragmentActivity>().forEach {
+                fragments.addAll(it.supportFragmentManager.fragments)
+            }
+            var visited = 0
+            while (fragments.isNotEmpty() && visited++ < 128) {
+                val fragment = fragments.removeFirst()
+                if (fragment.javaClass.name == "network.tos.wallet.app.ui.screen.pq.QuantumRecoveryControlScreen") {
+                    runCatching {
+                        val field = fragment.javaClass.getDeclaredField("diagnosticFailureStack").apply { isAccessible = true }
+                        (field.get(fragment) as? String)?.let { text += "\nRecovery debug frames: " + it }
+                    }
+                }
+                if (fragment.isAdded) fragments.addAll(fragment.childFragmentManager.fragments)
+            }
         }
         File(context.cacheDir, "quantum-ui-failure-status.txt").writeText(text.take(16384))
     }
