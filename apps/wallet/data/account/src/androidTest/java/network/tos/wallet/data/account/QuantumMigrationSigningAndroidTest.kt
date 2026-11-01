@@ -2,6 +2,7 @@ package network.tos.wallet.data.account
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -74,19 +75,38 @@ class QuantumMigrationSigningAndroidTest {
     }
 
     @Test fun linksCannotTouchProtectedTargets() {
+        var symlinkRejected = 0
+        var hardlinkRejected = 0
+        var hardlinkDenied = 0
         for (hard in listOf(false, true)) for (name in listOf(".lock", "$hash.record", "$hash.next")) scope { context, root ->
             assertNull(store(context).load())
             val target = File(root, "protected-target").apply { writeBytes(byteArrayOf(7, 8, 9)) }
             Os.chmod(target.absolutePath, 0x180)
             val link = File(directory(root), name)
             if (link.exists()) check(link.delete())
-            if (hard) Os.link(target.absolutePath, link.absolutePath) else Os.symlink(target.absolutePath, link.absolutePath)
-            try {
+            val created = try {
+                if (hard) Os.link(target.absolutePath, link.absolutePath) else Os.symlink(target.absolutePath, link.absolutePath)
+                true
+            } catch (error: ErrnoException) {
+                if (!hard || error.errno !in listOf(OsConstants.EACCES, OsConstants.EPERM)) throw error
+                assertFalse(link.exists())
+                assertEquals(1L, Os.lstat(target.absolutePath).st_nlink)
+                hardlinkDenied++
+                false
+            }
+            if (created) try {
                 assertThrows(Exception::class.java) { store(context).load() }
                 assertThrows(Exception::class.java) { store(context).reserve(byteArrayOf(1)) }
-                assertArrayEquals(byteArrayOf(7, 8, 9), target.readBytes())
+                if (hard) hardlinkRejected++ else symlinkRejected++
             } finally { Os.remove(link.absolutePath) }
+            assertArrayEquals(byteArrayOf(7, 8, 9), target.readBytes())
         }
+        assertEquals(3, symlinkRejected)
+        assertEquals(3, hardlinkRejected + hardlinkDenied)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        File(context.cacheDir, "quantum-migration-link-controls-public.json").writeText(org.json.JSONObject()
+            .put("symlink_adapter_rejected", symlinkRejected).put("hardlink_adapter_rejected", hardlinkRejected)
+            .put("hardlink_creation_denied_by_platform", hardlinkDenied).put("targets_unchanged", true).toString())
     }
 
     @Test fun symlinkDirectoryAndBroadFilePermissionsAreRejected() {
