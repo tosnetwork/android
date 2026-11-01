@@ -5,10 +5,52 @@ import java.security.MessageDigest
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
+import network.tos.blockchain.TosQuantumMnemonic
+import org.ton.mnemonic.Mnemonic
 
 /** Public test-only seeds; never use these for funds. */
 @RunWith(AndroidJUnit4::class)
 class QuantumBackupBindingDeviceTest {
+    @Test fun provenanceBindsOriginalMaterialsToExactDerivationContext() {
+        val network = ByteArray(32) { (it + 32).toByte() }
+        val words = List(11) { "abandon" } + "amateur"
+        val dictionary = Mnemonic.mnemonicWords()
+        val indices = words.map { dictionary.indexOf(it) }.toIntArray()
+        for (source in 2..3) for (role in QuantumRole.entries) {
+            val master = if (source == 2) TosQuantumMnemonic.masterAndWipePassword(words, charArrayOf())
+                else ByteArray(32) { it.toByte() }
+            val seed = QuantumKdf.deriveAndWipe(if (role == QuantumRole.PRIMARY)
+                QuantumKdf.Material.PRIMARY else QuantumKdf.Material.RESCUE,
+                master.copyOf(), network, -239, 1, 3)
+            fun check(networkInput: ByteArray = network, global: Int = -239,
+                      account: Long = 1, generation: Long = 3, password: ByteArray = byteArrayOf(),
+                      seedInput: ByteArray = seed) {
+                val entry = QuantumBackupPayload.Role(role.id, account, generation, seedInput.copyOf(),
+                    ByteArray(32), source, if (source == 2) indices.copyOf() else intArrayOf(),
+                    password.copyOf(), if (source == 3) master.copyOf() else byteArrayOf())
+                try {
+                    val bytes = QuantumBackupPayload.encodeUnverified(global, ByteArray(32), ByteArray(32),
+                        networkInput, byteArrayOf(1), byteArrayOf(1), listOf(entry))
+                    try { QuantumBackupPayload.parseUnverified(bytes).use { it.validateProvenance() } }
+                    finally { bytes.fill(0) }
+                } finally { entry.wipe() }
+            }
+            try {
+                check()
+                assertThrows(IllegalArgumentException::class.java) { check(networkInput = ByteArray(32)) }
+                assertThrows(IllegalArgumentException::class.java) { check(global = -238) }
+                assertThrows(IllegalArgumentException::class.java) { check(account = 2) }
+                assertThrows(IllegalArgumentException::class.java) { check(generation = 4) }
+                assertThrows(IllegalArgumentException::class.java) {
+                    check(seedInput = seed.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() })
+                }
+                if (source == 2) assertThrows(IllegalArgumentException::class.java) {
+                    check(password = "different password".toByteArray())
+                }
+            } finally { master.fill(0); seed.fill(0) }
+        }
+    }
+
     @Test fun nativeSeedsBindFullSnapshotKeysAndDigests() {
         val primarySeed = ByteArray(32) { 7 }
         val rescueSeed = ByteArray(48) { 8 }

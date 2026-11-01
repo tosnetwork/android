@@ -3,6 +3,8 @@ package network.tos.security.pq
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
+import network.tos.blockchain.TosQuantumMnemonic
+import org.ton.mnemonic.Mnemonic
 
 /** Wire structure only, never a signing context or an authenticated current-role capability. */
 internal class QuantumBackupPayload private constructor(
@@ -39,6 +41,47 @@ internal class QuantumBackupPayload private constructor(
             require(MessageDigest.isEqual(derived, expected) &&
                 MessageDigest.isEqual(MessageDigest.getInstance("SHA-256").digest(derived), entry.publicKeyHash)) {
                 "Backup seed does not match snapshot key"
+            }
+        }
+    }
+
+    /** Source-to-seed mapping only, never a live authority or signing capability. */
+    fun validateProvenance() {
+        for (entry in roles) {
+            if (entry.sourceProfile == 1) continue
+            var master = ByteArray(0)
+            var derived = ByteArray(0)
+            try {
+                master = when (entry.sourceProfile) {
+                    2 -> {
+                        val dictionary = Mnemonic.mnemonicWords()
+                        require(dictionary.size == 2048 && entry.wordIndices.all { it in dictionary.indices })
+                        val words = entry.wordIndices.map { dictionary[it] }
+                        val decoded = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(CodingErrorAction.REPORT)
+                            .decode(ByteBuffer.wrap(entry.phrasePassword))
+                        val password = CharArray(decoded.remaining())
+                        try {
+                            decoded.get(password)
+                            TosQuantumMnemonic.masterAndWipePassword(words, password)
+                        } finally {
+                            password.fill('\u0000')
+                            if (decoded.hasArray()) decoded.array().fill('\u0000')
+                        }
+                    }
+                    3 -> entry.master.copyOf()
+                    else -> throw IllegalArgumentException("Unsupported backup source profile")
+                }
+                val material = when (entry.role) {
+                    1 -> QuantumKdf.Material.PRIMARY
+                    2 -> QuantumKdf.Material.RESCUE
+                    else -> throw IllegalArgumentException("Unsupported backup role")
+                }
+                derived = QuantumKdf.deriveAndWipe(material, master, namespace, globalId,
+                    entry.account, entry.generation)
+                require(MessageDigest.isEqual(derived, entry.seed)) { "Backup provenance does not match seed" }
+            } finally {
+                master.fill(0); derived.fill(0)
             }
         }
     }
