@@ -25,6 +25,8 @@ class QuantumProbeFundingQuote internal constructor(
     val estimatedBalance: BigInteger
     val estimatedDebit: BigInteger
     val estimatedFee: BigInteger
+    val messageRootHash = QuantumPaymentQuote.hex(BagOfCells(messageBytes).roots.single().hash().toByteArray())
+    val probeBodyHash = plan.probeBodyHash
     init {
         require(maximumEstimatedFee.signum() > 0 && maximumEstimatedFee.bitLength() <= 120)
         plan.requireFresh(quotedAt)

@@ -53,8 +53,11 @@ def main():
     parser.add_argument('--prepare-probe-funding', action='store_true', help='Wait for authenticated prior-control expiry and prepare one unsigned probe funding request')
     parser.add_argument('--sign-probe-funding-ui', action='store_true', help='Review and PIN-sign probe funding in the product UI without broadcasting')
     parser.add_argument('--estimate-probe-funding', action='store_true', help='Native-estimate the saved funding message through the actual account service; no broadcast')
+    parser.add_argument('--submit-probe-funding', action='store_true', help='Explicit local test fee confirmation sends probe funding once, verifies the probe and checks restart isolation')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
+    if a.submit_probe_funding and not a.estimate_probe_funding:
+        raise ValueError('Probe submission requires the estimate/signing product journey')
     if a.estimate_probe_funding and not a.sign_probe_funding_ui:
         raise ValueError('Funding estimate requires the product signing journey')
     if a.sign_probe_funding_ui and not a.prepare_probe_funding:
@@ -224,6 +227,8 @@ def main():
             command[-1:-1] = ['-e', 'quantumSignProbeFundingUI', 'true']
         if a.estimate_probe_funding:
             command[-1:-1] = ['-e', 'quantumEstimateProbeFunding', 'true']
+        if a.submit_probe_funding:
+            command[-1:-1] = ['-e', 'quantumSubmitProbeFunding', 'true']
         def collect_failure():
             if a.prepare_probe_funding:
                 for name, limit, is_json in [('quantum-proof-failure-public.json', 2097152, True),
@@ -304,6 +309,20 @@ def main():
             (a.out / 'recovery-control-public.json').write_text(json.dumps(status, indent=2))
             run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
             test('recoveryControlJournalSurvivesProcessRestartWithoutUnlockOrResubmit')
+            if a.submit_probe_funding:
+                test('confirmedProbeFundingUsesOneSavedMessageAndAuthenticatesProbe')
+                funded = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funding-submission-public.json']))
+                original = status['successor']['probe']
+                if not (funded.get('phase') == 'UNKNOWN' and funded.get('operation') == original['funding_operation']
+                        and funded.get('signature_digest') == original['funding_signature_digest']
+                        and funded.get('probe') == original['address'] and funded.get('probe_verified')
+                        and funded.get('confirmation_cancelled') and funded.get('duplicate_refused')
+                        and all(re.fullmatch(r'[0-9a-f]{64}', funded.get(key, ''))
+                                for key in ('message_root_hash', 'transaction_hash', 'state_hash'))):
+                    raise ValueError('Funding submission and authenticated probe evidence missing')
+                (a.out / 'funding-submission-public.json').write_text(json.dumps(funded, indent=2))
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('submittedProbeFundingSurvivesRestartWithoutAnotherDispatch')
         journey = {}
         if a.journey_recipient:
             def recipient_state():
@@ -369,7 +388,9 @@ def main():
             'probe_funding_prepared_after_authenticated_expiry': a.prepare_probe_funding,
             'probe_funding_signed_product_and_restart_verified': a.sign_probe_funding_ui,
             'probe_funding_native_estimate_service_verified': a.estimate_probe_funding,
-            'probe_funding_estimate_product_and_background_verified': a.estimate_probe_funding, **journey}, indent=2))
+            'probe_funding_estimate_product_and_background_verified': a.estimate_probe_funding,
+            'probe_funding_confirmed_and_chain_verified': a.submit_probe_funding,
+            'funded_probe_verified_and_restart_isolated': a.submit_probe_funding, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

@@ -68,6 +68,10 @@ class QuantumVerifiedRead private constructor(json: ByteArray, request: ByteArra
     fun provenAccountTime(expectedAddress: String): Long = boundAccount(expectedAddress).getLong("gen_utime").also {
         check(it in 0..0xffffffffL) { "Invalid account timestamp" }
     }
+    /** Authenticated status only; active does not establish expected code, policy or signing authority. */
+    fun provenAccountIsActive(expectedAddress: String): Boolean = boundAccount(expectedAddress).let {
+        it.getBoolean("exists") && it.getBoolean("active")
+    }
     data class TransactionHead(val logicalTime: String, val hash: String)
     /** Authenticated ShardAccount head, never an RPC transaction_id. */
     fun provenTransactionHead(expectedAddress: String): TransactionHead {

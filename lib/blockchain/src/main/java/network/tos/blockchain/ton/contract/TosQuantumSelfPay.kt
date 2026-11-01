@@ -226,10 +226,16 @@ class TosQuantumSelfPayProbe(
         storeUInt(0x0ec3c86d, 32); storeUInt(3, 8); storeRef(buildCell { }); storeRef(fundingMessage(body, amount))
     }
     fun requireVerified(account: AddrStd, installedCode: Cell, installedData: Cell) {
+        require(isVerified(account, installedCode, installedData)) { "Probe is not verified" }
+    }
+    /** Raw codec only. The caller must separately authenticate the installed account at a fresh checkpoint. */
+    fun isVerified(account: AddrStd, installedCode: Cell, installedData: Cell): Boolean {
         require(account == address && installedCode.hash() == code.hash()) { "Probe birth identity mismatch" }
         QuantumSelfPayAuthority.ordinary(installedData)
         val s = installedData.beginParse()
-        require(s.remainingBits == 9 && s.refs.size == 1 && s.loadUInt(8).toInt() == 1 && s.loadBit()) { "Probe is not verified" }
+        require(s.remainingBits == 9 && s.refs.size == 1 && s.loadUInt(8).toInt() == 1) { "Probe state shape" }
+        val verified = s.loadBit()
         require(s.loadRef().hash() == immutable.hash()) { "Probe identity mismatch" }
+        return verified
     }
 }

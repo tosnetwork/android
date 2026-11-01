@@ -783,6 +783,45 @@ class AccountRepository(
         }
     }
 
+    data class RecoveryProbeVerification(val address: String, val exists: Boolean, val verified: Boolean,
+                                         val checkpointTime: Long, val balance: BigInteger?)
+    /** Fresh same-checkpoint observation only. This does not install keys or permit migration/payment. */
+    suspend fun readQuantumRecoveryProbeVerification(wallet: WalletEntity): RecoveryProbeVerification = withContext(Dispatchers.IO) {
+        val actual = checkNotNull(database.getAccount(wallet.id))
+        require(actual.type == Wallet.Type.Default && actual.identity == wallet.identity)
+        runInterruptible {
+        val identity = requireNotNull(actual.quantumIdentity)
+        val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+        require(record.id.toString() == actual.id && record.identity == identity)
+        val journal = network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context)
+        val entry = checkNotNull(journal.pending(identity))
+        require(entry.walletId == record.id && sameProfile(entry.profile, record.profile))
+        check(entry.phase == network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal.Phase.SIGNED)
+        check(QuantumPaymentOutbox(context).requiresRecovery(identity))
+        val transport = QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient)
+        val observation = QuantumAccountReader(context, transport).observe(record.id, identity)
+        require(sameProfile(observation.profile, record.profile))
+        val address = QuantumAccountReader.rawAddressFor(entry.probe.address)
+        val proof = network.tos.security.pq.QuantumProofSession(context, record.id, record.profile.anchor())
+            .readBound(observation.network.requestAtCheckpoint(address, maximumAge = 300), System.currentTimeMillis() / 1000, transport)
+        observation.network.requireSameCheckpoint(proof)
+        val now = System.currentTimeMillis() / 1000
+        observation.requireFresh(now); proof.requireLive(now, 300)
+        network.tos.wallet.data.account.pq.QuantumSelfPayAccount.validateTime(proof.masterchainTime,
+            proof.provenAccountTime(address), now, 300)
+        val state = proof.provenAccountState(address)
+        val active = if (state != null && proof.provenAccountIsActive(address))
+            network.tos.blockchain.ton.contract.TosQuantumAccountState.snapshot(
+                proof.accountState(address, network.tos.wallet.data.account.pq.QuantumPaymentQuote.hex(entry.probe.code.hash().toByteArray())),
+                entry.probe.address, entry.probe.code) else null
+        val verified = active?.let { entry.probe.isVerified(entry.probe.address, entry.probe.code, it.data) } ?: false
+        check(checkNotNull(journal.pending(identity)).encode().contentEquals(entry.encode()))
+        check(QuantumPaymentOutbox(context).requiresRecovery(identity))
+        RecoveryProbeVerification(address, state != null, verified, proof.masterchainTime,
+            active?.balance ?: if (state == null) BigInteger.ZERO else null)
+        }
+    }
+
     /** Native local estimate of the saved signature only; separate explicit confirmation is still required. */
     suspend fun estimateQuantumProbeFunding(wallet: WalletEntity, operation: UUID, maximumEstimatedFee: BigInteger):
         network.tos.wallet.data.account.pq.QuantumProbeFundingQuote = withContext(Dispatchers.IO) {

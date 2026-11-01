@@ -132,6 +132,8 @@ class TosQuantumSelfPayTest {
         assertArrayEquals(hex(field("initial_state_hash")), probe.initialData.hash().toByteArray())
         val verified = buildCell { storeUInt(1, 8); storeBit(true); storeRef(probe.immutable) }
         probe.requireVerified(probe.address, probe.code, verified)
+        assertTrue(probe.isVerified(probe.address, probe.code, verified))
+        assertFalse(probe.isVerified(probe.address, probe.code, probe.initialData))
         assertThrows(IllegalArgumentException::class.java) { probe.requireVerified(probe.address, probe.code, probe.initialData) }
         val forgedBirth = AddrStd(0, TosPqWallet.stateInit(probe.code, verified).hash())
         assertNotEquals(probe.address, forgedBirth)

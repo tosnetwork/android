@@ -652,11 +652,7 @@ class QuantumCreationUiTest {
             .put("estimated_fee", estimate.estimatedFee.toString()).put("quote_expires", estimate.expiresAt).toString())
     }
 
-    private fun recoveryControlThroughProductUI(wallet: network.tos.wallet.data.account.entities.WalletEntity) {
-        val identity = requireNotNull(wallet.quantumIdentity)
-        val before = runBlocking { repository.readQuantumAccount(wallet) }
-        val beforeState = (before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
-        fun press(id: String) {
+    private fun pressRecovery(id: String) {
             device.waitForIdle(3000)
             if (device.findObject(By.desc(id))?.visibleBounds?.isEmpty != false) {
                 androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true))
@@ -665,7 +661,7 @@ class QuantumCreationUiTest {
             device.waitForIdle(3000)
             checkNotNull(device.wait(Until.findObject(By.desc(id).enabled(true)), 15000)).click()
         }
-        fun status(value: String): String {
+    private fun recoveryStatus(value: String): String {
             androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true))
                 .setMaxSearchSwipes(10).scrollIntoView(androidx.test.uiautomator.UiSelector().description("quantum.recovery.status"))
             val deadline = android.os.SystemClock.elapsedRealtime() + 60000
@@ -691,6 +687,12 @@ class QuantumCreationUiTest {
             } while (android.os.SystemClock.elapsedRealtime() < deadline)
             error("Expected visible recovery status: $value")
         }
+    private fun recoveryControlThroughProductUI(wallet: network.tos.wallet.data.account.entities.WalletEntity) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        val beforeState = (before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        val press = ::pressRecovery
+        val status = ::recoveryStatus
         resource("send").click()
         press("quantum.payment.recovery")
         status("No saved")
@@ -923,6 +925,89 @@ class QuantumCreationUiTest {
                 network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY) }
             assertThrows(IllegalStateException::class.java) { runBlocking { repository.reserveQuantumRecoveryControl(replacement) } }
         }
+    }
+
+    @Test fun confirmedProbeFundingUsesOneSavedMessageAndAuthenticatesProbe() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val saved = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals("SIGNED", saved.phase)
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        val prior = (before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        assertFalse(runBlocking { repository.readQuantumRecoveryProbeVerification(wallet) }.verified)
+        val quote = runBlocking { repository.estimateQuantumProbeFunding(wallet, saved.operation, BigInteger("100000000")) }
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+        resource("send").click(); pressRecovery("quantum.payment.recovery")
+        recoveryStatus("Saved recovery operation:")
+        pressRecovery("quantum.recovery.funding.send"); recoveryStatus("Estimate the saved funding before confirming")
+        assertFalse(device.hasObject(By.text("Send key-check funding?")))
+        pressRecovery("quantum.recovery.funding.estimate"); recoveryStatus("Key-check funding estimate ready.")
+        pressRecovery("quantum.recovery.funding.send")
+        assertTrue(device.wait(Until.hasObject(By.text("Send key-check funding?")), 10000))
+        checkNotNull(device.findObject(By.res("android", "button2"))).click()
+        assertEquals(saved, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals(before.balance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
+        pressRecovery("quantum.recovery.funding.send")
+        checkNotNull(device.wait(Until.findObject(By.res("android", "button1")), 10000)).click()
+        recoveryStatus("Funding message: UNKNOWN")
+        val submitted = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals(saved.operation, submitted.operation); assertEquals(saved.signatureDigest, submitted.signatureDigest)
+        assertEquals("UNKNOWN", submitted.phase)
+        assertThrows(IllegalStateException::class.java) { runBlocking { repository.submitQuantumProbeFunding(quote) } }
+        pressRecovery("quantum.recovery.funding.send"); recoveryStatus("Estimate the saved funding before confirming")
+        assertFalse(device.hasObject(By.text("Send key-check funding?")))
+        val deadline = android.os.SystemClock.elapsedRealtime() + 60000
+        var transaction: network.tos.wallet.data.account.pq.QuantumHistoryTransaction? = null
+        var verified: AccountRepository.RecoveryProbeVerification? = null
+        do {
+            transaction = runBlocking { repository.readQuantumHistory(wallet) }.transactions.singleOrNull { it.inbound?.hash == quote.messageRootHash }
+            verified = runBlocking { repository.readQuantumRecoveryProbeVerification(wallet) }
+            if (transaction != null && verified.verified) break
+            android.os.SystemClock.sleep(500)
+        } while (android.os.SystemClock.elapsedRealtime() < deadline)
+        val tx = checkNotNull(transaction)
+        assertTrue(tx.successfulExecution && !tx.otherFeeCurrencies && tx.skippedActions == 0L && tx.messagesCreated == 1L)
+        assertEquals(1, tx.outbound.size)
+        val output = tx.outbound.single()
+        assertEquals("internal", output.kind); assertEquals(quote.address, output.destination)
+        assertEquals("0:" + requireNotNull(wallet.quantumIdentity).address.address.toByteArray()
+            .joinToString("") { "%02x".format(it) }, output.source)
+        assertEquals(quote.amount.toString(), output.amountNano); assertEquals(quote.probeBodyHash, output.bodyHash)
+        assertFalse(output.bounced || output.otherCurrencies); assertEquals(false, output.bounce)
+        val probe = checkNotNull(verified); assertTrue(probe.verified); assertEquals(quote.address, probe.address)
+        val after = runBlocking { repository.readQuantumAccount(wallet) }
+        val state = (after.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        val expected = network.tos.blockchain.ton.contract.QuantumSelfPayState(prior.authority, prior.walletId,
+            prior.seqno + 1, prior.retired, prior.epoch, prior.primaryNonce, prior.rescueNonce + 1u)
+        fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+        assertEquals(expected.cell.hash(), state.cell.hash())
+        assertTrue(before.balance - after.balance >= quote.amount + BigInteger(tx.feesNano))
+        assertEquals(submitted, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+        File(context.cacheDir, "quantum-funding-submission-public.json").writeText(org.json.JSONObject()
+            .put("operation", saved.operation.toString()).put("phase", submitted.phase).put("signature_digest", saved.signatureDigest)
+            .put("message_root_hash", quote.messageRootHash).put("transaction_hash", tx.hash).put("probe", probe.address)
+            .put("probe_verified", true).put("confirmation_cancelled", true).put("duplicate_refused", true)
+            .put("state_hash", hex(state.cell.hash().toByteArray())).put("balance", after.balance.toString()).toString())
+    }
+
+    @Test fun submittedProbeFundingSurvivesRestartWithoutAnotherDispatch() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val expected = org.json.JSONObject(File(context.cacheDir, "quantum-funding-submission-public.json").readText())
+        val saved = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals(expected.getString("operation"), saved.operation.toString())
+        assertEquals("UNKNOWN", saved.phase); assertEquals(expected.getString("signature_digest"), saved.signatureDigest)
+        assertThrows(IllegalStateException::class.java) { runBlocking { repository.resumeQuantumProbeFunding(wallet, saved.operation) } }
+        val actual = runBlocking { repository.readQuantumAccount(wallet) }
+        val state = (actual.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        assertEquals(expected.getString("state_hash"), state.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
+        assertEquals(expected.getString("balance"), actual.balance.toString())
+        assertTrue(runBlocking { repository.readQuantumRecoveryProbeVerification(wallet) }.verified)
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
     }
 
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
