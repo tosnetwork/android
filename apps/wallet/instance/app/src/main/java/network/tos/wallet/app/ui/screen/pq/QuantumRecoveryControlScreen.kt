@@ -109,6 +109,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                 migrationPlan = migration
                 fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
                 status.text = "Unsigned key replacement prepared.\nOriginal address: ${wallet.accountId}" +
+                    "\nRequest: ${hex(migration.request.digest)}" +
                     "\nReplacement authority: ${hex(migration.successor.hash)}\nSaved backup SHA-256: ${hex(migration.confirmedBackupDigest)}" +
                     "\nNew epoch: ${migration.expectedState.epoch}\nExpires: ${java.util.Date(migration.expiresAt * 1000)}" +
                     "\nNothing has been signed or sent. Replacement keys are not installed; payments remain restricted."

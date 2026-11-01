@@ -1374,6 +1374,89 @@ class QuantumCreationUiTest {
             .put("pin_confirmed", true).put("original_roots_verified", true).put("isolation_retained", true).put("restart", true).toString())
     }
 
+    @Test fun successorMigrationSigningUsesProductPinAndNeverDispatches() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSignSuccessorMigration") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        val funding = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertNull(runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        fun open() {
+            context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+            if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+            if (!device.hasObject(By.res(context.packageName, "pq_content"))) {
+                resource("send").click(); pressRecovery("quantum.payment.recovery")
+            }
+        }
+        fun review() {
+            pressRecovery("quantum.recovery.migration.review")
+            assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000)); pin()
+            recoveryStatus("Unsigned key replacement prepared.")
+        }
+        open(); review()
+        pressRecovery("quantum.recovery.migration.sign")
+        assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000))
+        device.pressBack(); device.waitForIdle()
+        assertNull(runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        // A real background transition clears the reviewed capability before key use.
+        device.pressHome(); open()
+        pressRecovery("quantum.recovery.migration.sign"); device.waitForIdle()
+        assertFalse(device.hasObject(By.res(context.packageName, "num_pad")))
+        assertNull(runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        review()
+        val text = checkNotNull(device.findObject(By.desc("quantum.recovery.status"))).text
+        val reviewedHash = checkNotNull(Regex("Request: ([0-9a-f]{64})").find(text)).groupValues[1]
+        val duplicatePlan = runBlocking { repository.prepareFundedQuantumSuccessorMigration(wallet) }
+        pressRecovery("quantum.recovery.migration.sign")
+        assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000)); pin()
+        recoveryStatus("Saved key replacement signature verified.")
+        val saved = checkNotNull(runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        assertEquals("SIGNED", saved.phase); assertEquals(reviewedHash, saved.requestHash)
+        assertTrue(checkNotNull(saved.signatureDigest).matches(Regex("[0-9a-f]{64}")))
+        val error = assertThrows(IllegalStateException::class.java) {
+            runBlocking { repository.signFundedQuantumSuccessorMigration(wallet, duplicatePlan) }
+        }
+        assertEquals("Migration signing already started or uncertain", error.message)
+        assertEquals(saved, runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        val after = runBlocking { repository.readQuantumAccount(wallet) }
+        assertEquals(before.balance, after.balance)
+        assertEquals((before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash(),
+            (after.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash())
+        assertEquals(funding, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+        File(context.cacheDir, "quantum-migration-signing-public.json").writeText(org.json.JSONObject()
+            .put("operation", saved.operation.toString()).put("request_hash", saved.requestHash)
+            .put("signature_digest", saved.signatureDigest).put("deadline", saved.deadline)
+            .put("pin_cancelled_without_reservation", true).put("background_cleared_review", true)
+            .put("signature_verified", true).put("duplicate_rejected", true).put("isolation_retained", true)
+            .put("state_and_balance_unchanged", true).toString())
+    }
+
+    @Test fun successorMigrationSignatureSurvivesRestartWithoutResigning() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSignSuccessorMigration") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val expected = org.json.JSONObject(File(context.cacheDir, "quantum-migration-signing-public.json").readText())
+        val saved = checkNotNull(runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        assertEquals("SIGNED", saved.phase)
+        assertEquals(expected.getString("operation"), saved.operation.toString())
+        assertEquals(expected.getString("request_hash"), saved.requestHash)
+        assertEquals(expected.getString("signature_digest"), saved.signatureDigest)
+        assertEquals(expected.getLong("deadline"), saved.deadline)
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+        resource("send").click(); pressRecovery("quantum.payment.recovery")
+        pressRecovery("quantum.recovery.migration.reload")
+        recoveryStatus("Saved key replacement signature verified.")
+        assertTrue(checkNotNull(device.findObject(By.desc("quantum.recovery.status"))).text.contains(saved.requestHash))
+        assertEquals(saved, runBlocking { repository.pendingFundedQuantumSuccessorMigration(wallet) })
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+        File(context.cacheDir, "quantum-migration-signing-restart-public.json").writeText(org.json.JSONObject()
+            .put("operation", saved.operation.toString()).put("request_hash", saved.requestHash)
+            .put("signature_digest", saved.signatureDigest).put("deadline", saved.deadline)
+            .put("signature_verified", true).put("restart", true).put("isolation_retained", true).toString())
+    }
+
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
         localNetworkCreatesWithMandatoryBackupAndProtectedKeys()
         val original = runBlocking { repository.getWallets() }.single()

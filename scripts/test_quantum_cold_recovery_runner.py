@@ -6,7 +6,52 @@ import unittest
 from pathlib import Path
 
 from quantum_cold_recovery import run_instrumentation, redact_failure_logcat, redact_failure_environment, instrumentation_timeout
+from quantum_cold_recovery import validate_migration_signing_evidence
 import json
+
+
+class MigrationSigningEvidenceTest(unittest.TestCase):
+    def evidence(self):
+        return dict(operation='12345678-1234-1234-1234-123456789abc', request_hash='ab' * 32,
+            signature_digest='cd' * 32, deadline=1120, pin_cancelled_without_reservation=True,
+            background_cleared_review=True, signature_verified=True, duplicate_rejected=True,
+            isolation_retained=True, state_and_balance_unchanged=True)
+
+    def restart(self, signed):
+        return {**{key: signed[key] for key in ('operation', 'request_hash', 'signature_digest', 'deadline')},
+            'signature_verified': True, 'restart': True, 'isolation_retained': True}
+
+    def test_matching_original_signature_and_restart_evidence(self):
+        signed = self.evidence()
+        validate_migration_signing_evidence(signed)
+        validate_migration_signing_evidence(signed, self.restart(signed))
+
+    def test_missing_or_false_product_controls_and_invalid_identity_are_rejected(self):
+        for key, value in self.evidence().items():
+            changed = self.evidence(); del changed[key]
+            with self.subTest(missing=key), self.assertRaises(ValueError):
+                validate_migration_signing_evidence(changed)
+            if value is True:
+                for invalid in (False, 1, 'true'):
+                    changed = {**self.evidence(), key: invalid}
+                    with self.subTest(key=key, invalid=invalid), self.assertRaises(ValueError):
+                        validate_migration_signing_evidence(changed)
+        for key, value in [('operation', '00000000-0000-0000-0000-000000000000'),
+                ('request_hash', 'bad'), ('signature_digest', 'EF' * 32), ('deadline', True),
+                ('deadline', 0), ('deadline', 0x100000000)]:
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                validate_migration_signing_evidence({**self.evidence(), key: value})
+
+    def test_restart_cannot_replace_original_operation_request_signature_or_deadline(self):
+        signed = self.evidence()
+        for key in self.restart(signed):
+            changed = self.restart(signed); del changed[key]
+            with self.subTest(missing=key), self.assertRaises(ValueError):
+                validate_migration_signing_evidence(signed, changed)
+            changed = self.restart(signed)
+            changed[key] = False if changed[key] is True else (1121 if key == 'deadline' else 'ef' * 32)
+            with self.subTest(changed=key), self.assertRaises(ValueError):
+                validate_migration_signing_evidence(signed, changed)
 
 
 class InstrumentationEvidenceTest(unittest.TestCase):

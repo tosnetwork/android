@@ -14,6 +14,20 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 
+def validate_migration_signing_evidence(signed, restarted=None):
+    if not (re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', signed.get('operation', ''))
+            and signed['operation'] != '00000000-0000-0000-0000-000000000000'
+            and all(re.fullmatch(r'[0-9a-f]{64}', signed.get(key, '')) for key in ('request_hash', 'signature_digest'))
+            and type(signed.get('deadline')) is int and 1 <= signed['deadline'] <= 0xffffffff
+            and all(signed.get(key) is True for key in ('pin_cancelled_without_reservation', 'background_cleared_review',
+                'signature_verified', 'duplicate_rejected', 'isolation_retained', 'state_and_balance_unchanged'))):
+        raise ValueError('Migration signing product evidence missing')
+    if restarted is not None and not (type(restarted.get('deadline')) is int and all(restarted.get(key) == signed[key]
+            for key in ('operation', 'request_hash', 'signature_digest', 'deadline'))
+            and all(restarted.get(key) is True for key in ('signature_verified', 'restart', 'isolation_retained'))):
+        raise ValueError('Migration signing restart evidence missing')
+
+
 def redact_failure_logcat(raw):
     """Owned-process metadata/frames only. Never retain exception messages or arbitrary log text."""
     if len(raw) > 1_048_576:
@@ -131,8 +145,11 @@ def main():
     parser.add_argument('--sign-probe-funding-ui', action='store_true', help='Review and PIN-sign probe funding in the product UI without broadcasting')
     parser.add_argument('--estimate-probe-funding', action='store_true', help='Native-estimate the saved funding message through the actual account service; no broadcast')
     parser.add_argument('--submit-probe-funding', action='store_true', help='Explicit local test fee confirmation sends probe funding once, verifies the probe and checks restart isolation')
+    parser.add_argument('--sign-successor-migration', action='store_true', help='PIN-sign replacement once after confirmed backup; no migration broadcast or installation')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
+    if a.sign_successor_migration and not a.submit_probe_funding:
+        raise ValueError('Migration signing requires the completed funding and confirmed backup journey')
     if a.submit_probe_funding and not a.estimate_probe_funding:
         raise ValueError('Probe submission requires the estimate/signing product journey')
     if a.estimate_probe_funding and not a.sign_probe_funding_ui:
@@ -306,6 +323,8 @@ def main():
             command[-1:-1] = ['-e', 'quantumEstimateProbeFunding', 'true']
         if a.submit_probe_funding:
             command[-1:-1] = ['-e', 'quantumSubmitProbeFunding', 'true']
+        if a.sign_successor_migration:
+            command[-1:-1] = ['-e', 'quantumSignSuccessorMigration', 'true']
         def collect_failure():
             try:
                 crash = redact_failure_logcat(run(['logcat', '-b', 'crash', '-b', 'events', '-b', 'main', '-b', 'system', '-d', '-t', '200', '-v', 'brief'], timeout=10))
@@ -462,6 +481,26 @@ def main():
                         and all(confirmed.get(key) is True for key in ('pin_confirmed', 'original_roots_verified', 'isolation_retained', 'restart'))):
                     raise ValueError('Successor backup restart evidence missing')
                 (a.out / 'successor-backup-restart-public.json').write_text(json.dumps(confirmed, indent=2))
+                if a.sign_successor_migration:
+                    test('successorMigrationSigningUsesProductPinAndNeverDispatches')
+                    signed = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-migration-signing-public.json']))
+                    validate_migration_signing_evidence(signed)
+                    (a.out / 'migration-signing-public.json').write_text(json.dumps(signed, indent=2))
+                    previous_pid = run(['shell', 'pidof', 'network.tos.wallet']).decode().split()
+                    if not previous_pid or not all(value.isdigit() for value in previous_pid):
+                        raise ValueError('Migration signing process unavailable before restart')
+                    run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                    stopped = subprocess.run(adb + ['shell', 'pidof', 'network.tos.wallet'], capture_output=True, timeout=10)
+                    if stopped.returncode not in (0, 1) or stopped.stdout.strip():
+                        raise ValueError('Migration signing process did not stop')
+                    test('successorMigrationSignatureSurvivesRestartWithoutResigning')
+                    current_pid = run(['shell', 'pidof', 'network.tos.wallet']).decode().split()
+                    if not current_pid or not all(value.isdigit() for value in current_pid) or set(previous_pid) & set(current_pid):
+                        raise ValueError('Migration signing process identity did not change')
+                    resumed = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-migration-signing-restart-public.json']))
+                    validate_migration_signing_evidence(signed, resumed)
+                    resumed['process_changed'] = True
+                    (a.out / 'migration-signing-restart-public.json').write_text(json.dumps(resumed, indent=2))
         journey = {}
         if a.journey_recipient:
             def recipient_state():
@@ -535,7 +574,8 @@ def main():
             'probe_funding_completion_rejections_verified': a.submit_probe_funding,
             'funded_successor_material_product_and_restart_verified': a.submit_probe_funding,
             'successor_backup_product_and_restart_verified': a.submit_probe_funding,
-            'successor_migration_preparation_verified': a.submit_probe_funding, **journey}, indent=2))
+            'successor_migration_preparation_verified': a.submit_probe_funding,
+            'successor_migration_signing_and_restart_verified': a.sign_successor_migration, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None
