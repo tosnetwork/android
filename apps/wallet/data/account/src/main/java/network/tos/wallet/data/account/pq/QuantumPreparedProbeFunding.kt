@@ -23,6 +23,7 @@ class QuantumPreparedProbeFunding internal constructor(
     val probeOperation = entry.operation
     val probeAddress = entry.probe.address
     val probeAddressText get() = QuantumAccountReader.rawAddressFor(probeAddress)
+    internal val probeBodyHash get() = QuantumPaymentQuote.hex(BagOfCells(entry.signedBody()).roots.single().hash().toByteArray())
     val expiresAt: Long
     val message: Cell
     val actions: Cell

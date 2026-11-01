@@ -783,6 +783,36 @@ class AccountRepository(
         }
     }
 
+    /** Native local estimate of the saved signature only; separate explicit confirmation is still required. */
+    suspend fun estimateQuantumProbeFunding(wallet: WalletEntity, operation: UUID, maximumEstimatedFee: BigInteger):
+        network.tos.wallet.data.account.pq.QuantumProbeFundingQuote = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            require(maximumEstimatedFee.signum() > 0 && maximumEstimatedFee.bitLength() <= 120)
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            val identity = requireNotNull(actual.quantumIdentity)
+            val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+            require(record.id.toString() == actual.id && record.identity == identity)
+            val observed = observeCompletedRecoveryLock(actual)
+            require(sameProfile(record.profile, observed.profile))
+            val journal = network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context)
+            val (plan, message) = journal.signedForEstimate(identity, operation, observed, System.currentTimeMillis() / 1000)
+            currentCoroutineContext().ensureActive()
+            val request = org.json.JSONObject().put("mode", "live").put("account", QuantumAccountReader.rawAddress(identity))
+                .put("max_age_seconds", 300).toString().toByteArray()
+            val transport = QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient)
+            val simulation = network.tos.security.pq.QuantumProofSession(context, record.id, record.profile.anchor())
+                .simulate(request, System.currentTimeMillis() / 1000, message, transport)
+            currentCoroutineContext().ensureActive()
+            val fresh = observeCompletedRecoveryLock(actual)
+            val now = System.currentTimeMillis() / 1000
+            val (currentPlan, currentMessage) = journal.signedForEstimate(identity, operation, fresh, now)
+            currentCoroutineContext().ensureActive()
+            network.tos.wallet.data.account.pq.QuantumProbeFundingQuote(operation, plan, message, simulation, request,
+                now, maximumEstimatedFee).also { it.requireFresh(operation, currentPlan, currentMessage, now) }
+        }
+    }
+
     /** Caller authenticates this exact operation. No broadcast or recovery unlock. */
     suspend fun signQuantumProbeFunding(wallet: WalletEntity, operation: UUID, reviewedDigest: ByteArray) {
         require(reviewedDigest.size == 32)
