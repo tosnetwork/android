@@ -45,6 +45,10 @@ internal class QuantumRecoveryProbeJournal(private val context: Context, private
             check(phase == Phase.SIGNED)
             return BagOfCells(probe.submission(primary, rescue)).toByteArray()
         }
+        internal fun signaturePair(): Pair<ByteArray, ByteArray> {
+            check(phase == Phase.SIGNED)
+            return Pair(primary.copyOf(), rescue.copyOf())
+        }
         internal fun requireCurrent(fresh: QuantumAccountReader.Observation, now: Long) {
             require(fresh.id == walletId && fresh.identity == identity && sameProfile(fresh.profile, profile))
             fresh.requireFresh(now)

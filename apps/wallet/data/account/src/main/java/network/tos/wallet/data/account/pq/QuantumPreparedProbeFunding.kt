@@ -71,6 +71,17 @@ class QuantumPreparedProbeFunding internal constructor(
         check(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, rescueKey,
             request.digest, signature)) { "Probe funding signature mismatch" }
     }
+    /** Account service invokes this only from the journal's durable SIGNING callback. */
+    internal fun signProtected(custody: QuantumCreationCustody, inspection: network.tos.security.pq.QuantumBackupInspection,
+                              state: QuantumSelfPayState, now: Long): ByteArray {
+        requireFresh(now)
+        check(state.cell.hash().toByteArray().contentEquals(stateHash))
+        val signatures = entry.signaturePair()
+        return try {
+            custody.signProbeFunding(walletId, inspection, state, entry.successor, entry.challenge, entry.deadline,
+                signatures.first, signatures.second, amount, BagOfCells(request.request).toByteArray(), now)
+        } finally { signatures.first.fill(0); signatures.second.fill(0) }
+    }
     /** Unsigned codec objects alone cannot authorize a new current-key operation. */
     internal fun requireHandoff(prior: QuantumRecoveryControlJournal.Entry, now: Long) {
         requireFresh(now)

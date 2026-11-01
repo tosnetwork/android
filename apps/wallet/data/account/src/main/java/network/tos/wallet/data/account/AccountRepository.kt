@@ -770,6 +770,33 @@ class AccountRepository(
         }
     }
 
+    /** Caller authenticates this exact operation. No broadcast or recovery unlock. */
+    suspend fun signQuantumProbeFunding(wallet: WalletEntity, operation: UUID) = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val coroutine = currentCoroutineContext(); coroutine.ensureActive()
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            val identity = requireNotNull(actual.quantumIdentity)
+            val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+            require(record.id.toString() == actual.id && record.identity == identity)
+            val fresh = observeCompletedRecoveryLock(actual)
+            require(sameProfile(record.profile, fresh.profile))
+            val now = System.currentTimeMillis() / 1000
+            val state = (network.tos.wallet.data.account.pq.QuantumSelfPayAccount.bind(identity, fresh.proof, now, 300)
+                .snapshot(now).status as? network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active)?.state
+                ?: error("Probe funding wallet no longer active")
+            coroutine.ensureActive()
+            network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).sign(identity, operation, fresh, now) { plan ->
+                coroutine.ensureActive()
+                require(plan.walletId == record.id && plan.identity == identity && sameProfile(plan.profile, record.profile))
+                plan.requireRevalidated(fresh, System.currentTimeMillis() / 1000)
+                val inspection = quantumCustody.inspectRecoveryMaterial(record.id, record.identity, record.encryptedDigest, record.profile)
+                coroutine.ensureActive()
+                plan.signProtected(quantumCustody, inspection, state, System.currentTimeMillis() / 1000)
+            }
+        }
+    }
+
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */
     suspend fun prepareQuantumRecoveryControl(wallet: WalletEntity,
         kind: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind,

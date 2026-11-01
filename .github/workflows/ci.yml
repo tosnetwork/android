@@ -91,6 +91,7 @@ jobs:
             make test_quantum_expiry_device
             make test_quantum_funding_storage_device
             make test_quantum_funding_custody_device
+            make test_quantum_funding_wrapper_device
       - name: Retain native device test reports
         if: always()
         uses: actions/upload-artifact@v4

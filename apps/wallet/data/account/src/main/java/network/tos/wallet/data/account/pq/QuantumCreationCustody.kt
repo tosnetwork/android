@@ -73,6 +73,13 @@ internal class QuantumCreationCustody internal constructor(
         state: network.tos.blockchain.ton.contract.QuantumSelfPayState, request: ByteArray, now: Long): ByteArray = synchronized(lock) {
         recovery.signRecoveryControl(id, inspection, wrappingKey(false), state, request, now)
     }
+    fun signProbeFunding(id: UUID, inspection: QuantumBackupInspection,
+        state: network.tos.blockchain.ton.contract.QuantumSelfPayState, successor: QuantumSelfPayAuthority,
+        challenge: ByteArray, probeDeadline: Long, primary: ByteArray, rescue: ByteArray,
+        amount: java.math.BigInteger, request: ByteArray, now: Long): ByteArray = synchronized(lock) {
+        recovery.signProbeFunding(id, inspection, wrappingKey(false), state, successor, challenge, probeDeadline,
+            primary, rescue, amount, request, now)
+    }
 
     fun saveMnemonic(id: UUID, words: List<String>) = synchronized(lock) {
         require(words.size == 24 && words.all { it.matches(Regex("[a-z]+")) })
