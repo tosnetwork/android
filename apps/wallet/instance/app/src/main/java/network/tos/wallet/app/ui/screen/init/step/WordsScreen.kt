@@ -82,6 +82,14 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         titleView = view.findViewById(R.id.header_title)
+        initViewModel.leaveQuantumBackupFile()
+        view.findViewById<Button>(R.id.quantum_backup_file).apply {
+            visibility = if (initViewModel.canImportQuantumBackup) View.VISIBLE else View.GONE
+            setOnClickListener {
+                wordInputs.forEach { it.text?.clear() }
+                initViewModel.openQuantumBackupFile()
+            }
+        }
 
         words24View = view.findViewById(R.id.words_24)
         words24View.setOnClickListener {

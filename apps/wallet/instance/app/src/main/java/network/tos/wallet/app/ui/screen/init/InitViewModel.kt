@@ -147,6 +147,7 @@ class InitViewModel(
     // serialized with activity state. An interrupted recovery can be re-entered.
     private var quantumRecoveryMnemonic: List<String>? = null
     private var quantumRecoveryProfile: QuantumNetworkProfile? = null
+    private var importsQuantumBackup = false
     private var newWalletNetworkProfile: QuantumNetworkProfile? = null
     private var hadPinAtFlowStart = false
     private var recoveryPhraseAuthorized = false
@@ -253,7 +254,9 @@ class InitViewModel(
     }
 
     private fun routeAfterSetup() {
-        if (type == InitArgs.Type.New && !savedState.quantumRecoveryPhraseConfirmed) {
+        if (importsQuantumBackup) {
+            routeTo(InitRoute.QuantumBackupFile)
+        } else if (type == InitArgs.Type.New && !savedState.quantumRecoveryPhraseConfirmed) {
             routeTo(InitRoute.QuantumRecoveryPhrase)
         } else {
             routeTo(InitRoute.LabelAccount)
@@ -296,6 +299,47 @@ class InitViewModel(
         savedState.passcode = passcode
 
         routeTo(InitRoute.ReEnterPasscode)
+    }
+
+    fun openQuantumBackupFile() {
+        check(type == InitArgs.Type.Import)
+        savedState.mnemonic = null; savedState.accounts = null; savedState.quantumRecovery = false
+        quantumRecoveryMnemonic = null; quantumRecoveryProfile = null
+        importsQuantumBackup = true
+        routeTo(if (requestSetPinCode) InitRoute.CreatePasscode else InitRoute.QuantumBackupFile)
+    }
+
+    val canImportQuantumBackup: Boolean get() = type == InitArgs.Type.Import
+
+    fun leaveQuantumBackupFile() { importsQuantumBackup = false }
+
+    suspend fun backupRecoveryNamespace(profile: QuantumNetworkProfile) = accountRepository.quantumRecoveryNamespace(profile)
+
+    suspend fun inspectBackupFile(input: ByteArray, password: CharArray, profile: QuantumNetworkProfile, namespace: ByteArray) =
+        accountRepository.inspectQuantumBackup(input, password, profile, namespace)
+
+    suspend fun importBackupFile(context: Context, input: ByteArray, password: CharArray,
+                                 profile: QuantumNetworkProfile, namespace: ByteArray) {
+        try {
+            check(importsQuantumBackup && type == InitArgs.Type.Import)
+            if (hadPinAtFlowStart) {
+                check(passcodeManager.confirmation(context, context.getString(Localization.app_name))) { "Authentication cancelled" }
+            } else {
+                val code = requireNotNull(savedState.passcode)
+                if (passcodeManager.hasPinCode()) check(passcodeManager.isValid(context, code))
+                passcodeManager.save(code)
+            }
+            if (accountRepository.getWallets().isEmpty() && api.config.flags.safeModeEnabled) {
+                settingsRepository.setSafeModeState(SafeModeState.Enabled)
+                settingsRepository.showSafeModeSetup = true
+            }
+            val wallet = accountRepository.importQuantumBackup(input, password, profile, namespace,
+                buildNewLabel(SimpleAccount(version = WalletVersion.QUANTUM_SELF_PAY)))
+            backupRepository.addBackups(listOf(wallet.id))
+            accountRepository.setSelectedWallet(wallet.id)
+            importsQuantumBackup = false
+            withContext(Dispatchers.Main) { TotalBalancesWorker.run(context); finish() }
+        } finally { password.fill('\u0000') }
     }
 
     fun reEnterPasscode(passcode: String) {
