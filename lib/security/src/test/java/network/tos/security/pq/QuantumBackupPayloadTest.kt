@@ -68,6 +68,30 @@ class QuantumBackupPayloadTest {
         }
     }
 
+    @Test fun encodingPreservesExactWireAndRejectsInvalidSources() {
+        for (source in 1..3) {
+            val original = fixture(source = source, password = "é 😀".toByteArray())
+            QuantumBackupPayload.parseUnverified(original).use { parsed ->
+                assertArrayEquals(original, QuantumBackupPayload.encodeUnverified(parsed.globalId,
+                    parsed.rootHash, parsed.fileHash, parsed.namespace, parsed.birthBoc,
+                    parsed.authorityBoc, parsed.roles))
+            }
+        }
+        QuantumBackupPayload.parseUnverified(fixture(source = 2)).use { parsed ->
+            parsed.roles[0].wordIndices[0] = 2048
+            assertThrows(IllegalArgumentException::class.java) {
+                QuantumBackupPayload.encodeUnverified(parsed.globalId, parsed.rootHash,
+                    parsed.fileHash, parsed.namespace, parsed.birthBoc, parsed.authorityBoc, parsed.roles)
+            }
+        }
+        QuantumBackupPayload.parseUnverified(fixture()).use { parsed ->
+            assertThrows(IllegalArgumentException::class.java) {
+                QuantumBackupPayload.encodeUnverified(parsed.globalId, ByteArray(31),
+                    parsed.fileHash, parsed.namespace, parsed.birthBoc, parsed.authorityBoc, parsed.roles)
+            }
+        }
+    }
+
     @Test fun rejectsInvalidRolesAndSourceMaterials() {
         for (roles in listOf(intArrayOf(), intArrayOf(1, 1), intArrayOf(2, 1), intArrayOf(3))) {
             assertThrows(IllegalArgumentException::class.java) {

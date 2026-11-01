@@ -25,6 +25,65 @@ internal class QuantumBackupPayload private constructor(
     override fun close() { roles.forEach { it.wipe() } }
 
     companion object {
+        /** Wire encoding only. The custody layer must first verify identity and role provenance. */
+        fun encodeUnverified(
+            globalId: Int, rootHash: ByteArray, fileHash: ByteArray, namespace: ByteArray,
+            birthBoc: ByteArray, authorityBoc: ByteArray, roles: List<Role>,
+        ): ByteArray {
+            require(rootHash.size == 32 && fileHash.size == 32 && namespace.size == 32)
+            require(birthBoc.size in 1..65536 && authorityBoc.size in 1..16384)
+            require(roles.size in 1..2)
+            var size = 1 + 4 + 96 + 4 + birthBoc.size + 4 + authorityBoc.size + 1
+            var previous = 0
+            for (role in roles) {
+                require(role.role in 1..2 && role.role > previous)
+                previous = role.role
+                require(role.account in 0L..0xffffffffL && role.generation in 0L..0xffffffffL)
+                require(role.seed.size == if (role.role == 1) 32 else 48)
+                require(role.publicKeyHash.size == 32)
+                size += 1 + 8 + role.seed.size + 32 + 1
+                when (role.sourceProfile) {
+                    1 -> require(role.wordIndices.isEmpty() && role.phrasePassword.isEmpty() && role.master.isEmpty())
+                    2 -> {
+                        require(role.wordIndices.size == 12 || role.wordIndices.size == 24)
+                        require(role.wordIndices.all { it in 0..2047 })
+                        require(role.phrasePassword.size <= 1024 && role.master.isEmpty())
+                        size += 2 + role.wordIndices.size * 2 + 2 + role.phrasePassword.size
+                    }
+                    3 -> require(role.master.size == 32 && role.wordIndices.isEmpty() && role.phrasePassword.isEmpty())
+                    else -> throw IllegalArgumentException("Unsupported backup source profile")
+                }
+                if (role.sourceProfile == 3) size += 32
+            }
+            require(size <= QuantumBackupEnvelope.MAX_CIPHERTEXT_SIZE)
+            val output = ByteArray(size)
+            try {
+                val buffer = ByteBuffer.wrap(output)
+                buffer.put(1).putInt(globalId).put(rootHash).put(fileHash).put(namespace)
+                buffer.putInt(birthBoc.size).put(birthBoc).putInt(authorityBoc.size).put(authorityBoc)
+                buffer.put(roles.size.toByte())
+                roles.forEach { role ->
+                    buffer.put(role.role.toByte()).putInt(role.account.toInt()).putInt(role.generation.toInt())
+                        .put(role.seed).put(role.publicKeyHash).put(role.sourceProfile.toByte())
+                    when (role.sourceProfile) {
+                        2 -> {
+                            buffer.put(1).put(role.wordIndices.size.toByte())
+                            role.wordIndices.forEach { buffer.putShort(it.toShort()) }
+                            buffer.putShort(role.phrasePassword.size.toShort()).put(role.phrasePassword)
+                        }
+                        3 -> buffer.put(role.master)
+                    }
+                }
+                check(!buffer.hasRemaining())
+                // Share the decoder's strict UTF-8 and exact-wire rules. Erase its temporary secrets.
+                parseUnverified(output).close()
+                return output
+            } catch (error: Throwable) {
+                output.fill(0)
+                throw error
+            }
+        }
+
         /** Caller must wipe the authenticated plaintext input after this returns or throws. */
         fun parseUnverified(plaintext: ByteArray): QuantumBackupPayload {
             val reader = QuantumBackupReader(plaintext)
