@@ -415,6 +415,9 @@ def main():
                 (a.out / 'funding-submission-public.json').write_text(json.dumps(funded, indent=2))
                 run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
                 test('submittedProbeFundingSurvivesRestartWithoutAnotherDispatch')
+                test('confirmedFundingCompletionRetainsIsolationAndRejectsRepeatedWrite')
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('completedFundingSurvivesRestartWithoutUnlockOrDispatch')
         journey = {}
         if a.journey_recipient:
             def recipient_state():
@@ -483,7 +486,8 @@ def main():
             'probe_funding_native_estimate_service_verified': a.estimate_probe_funding,
             'probe_funding_estimate_product_and_background_verified': a.estimate_probe_funding,
             'probe_funding_confirmed_and_chain_verified': a.submit_probe_funding,
-            'funded_probe_verified_and_restart_isolated': a.submit_probe_funding, **journey}, indent=2))
+            'funded_probe_verified_and_restart_isolated': a.submit_probe_funding,
+            'probe_funding_completed_product_and_restart_verified': a.submit_probe_funding, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

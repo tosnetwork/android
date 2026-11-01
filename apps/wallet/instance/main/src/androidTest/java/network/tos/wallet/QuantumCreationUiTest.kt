@@ -1040,6 +1040,49 @@ class QuantumCreationUiTest {
         assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
     }
 
+    @Test fun confirmedFundingCompletionRetainsIsolationAndRejectsRepeatedWrite() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val saved = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals("UNKNOWN", saved.phase)
+        val result = runBlocking { repository.readQuantumProbeFundingOutcome(wallet, saved.operation) }
+        assertEquals(network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader.Status.Verified, result.status)
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+        resource("send").click(); pressRecovery("quantum.payment.recovery")
+        recoveryStatus("Saved recovery operation:")
+        pressRecovery("quantum.recovery.funding.verify"); recoveryStatus("Funding message: COMPLETED")
+        val completed = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals(saved.operation, completed.operation); assertEquals(saved.signatureDigest, completed.signatureDigest)
+        assertEquals("COMPLETED", completed.phase)
+        assertThrows(IllegalStateException::class.java) { runBlocking { repository.completeQuantumProbeFunding(wallet, result) } }
+        pressRecovery("quantum.recovery.funding.verify"); recoveryStatus("Funding message: COMPLETED")
+        assertEquals(completed, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals(before.balance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+    }
+
+    @Test fun completedFundingSurvivesRestartWithoutUnlockOrDispatch() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val expected = org.json.JSONObject(File(context.cacheDir, "quantum-funding-submission-public.json").readText())
+        val saved = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals("COMPLETED", saved.phase)
+        assertEquals(expected.getString("operation"), saved.operation.toString())
+        assertEquals(expected.getString("signature_digest"), saved.signatureDigest)
+        assertThrows(IllegalStateException::class.java) { runBlocking { repository.resumeQuantumProbeFunding(wallet, saved.operation) } }
+        assertThrows(IllegalStateException::class.java) { runBlocking { repository.estimateQuantumProbeFunding(wallet, saved.operation, BigInteger("100000000")) } }
+        val actual = runBlocking { repository.readQuantumAccount(wallet) }
+        assertEquals(expected.getString("balance"), actual.balance.toString())
+        val state = (actual.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        assertEquals(expected.getString("state_hash"), state.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
+        assertTrue(runBlocking { repository.readQuantumRecoveryProbeVerification(wallet) }.verified)
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+    }
+
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
         localNetworkCreatesWithMandatoryBackupAndProtectedKeys()
         val original = runBlocking { repository.getWallets() }.single()

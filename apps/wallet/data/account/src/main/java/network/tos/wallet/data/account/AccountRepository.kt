@@ -821,6 +821,24 @@ class AccountRepository(
         network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader(context, history, transport)
             .read(record.id, identity, operation)
     }
+    /** Record a privately authenticated result; no key installation, retry or recovery unlock. */
+    suspend fun completeQuantumProbeFunding(wallet: WalletEntity,
+        result: network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader.Result) = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.type == Wallet.Type.Default && actual.identity == wallet.identity)
+            val identity = requireNotNull(actual.quantumIdentity)
+            val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+            require(record.id.toString() == actual.id && record.identity == identity)
+            val journal = network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context)
+            require(checkNotNull(journal.pending(identity)).walletId == record.id)
+            currentCoroutineContext().ensureActive()
+            runInterruptible {
+                journal.complete(identity, result, System.currentTimeMillis() / 1000)
+            }
+        }
+    }
+
     /** Fresh same-checkpoint observation only. This does not install keys or permit migration/payment. */
     suspend fun readQuantumRecoveryProbeVerification(wallet: WalletEntity): RecoveryProbeVerification = withContext(Dispatchers.IO) {
         val actual = checkNotNull(database.getAccount(wallet.id))

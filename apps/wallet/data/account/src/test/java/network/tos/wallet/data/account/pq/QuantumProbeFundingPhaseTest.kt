@@ -131,4 +131,40 @@ class QuantumProbeFundingPhaseTest {
             approval.requireSubmitted(id, amount, 1020, request, message + byteArrayOf(0))
         }
     }
+    private fun completion() = java.nio.ByteBuffer.allocate(88).put(ByteArray(32) { 3 })
+        .put(ByteArray(32) { 4 }).putLong(1100).put(ByteArray(16)).array()
+    @Test fun completedEnvelopeRetainsSignatureAndCannotReturnToDispatchablePhases() {
+        val reserved = QuantumProbeFundingJournal.Reservation.decode(envelope())
+        val signed = reserved.beginSigning().finishSigning(ByteArray(7856) { 9 })
+        assertThrows(IllegalStateException::class.java) { reserved.finishCompletion(completion()) }
+        assertThrows(IllegalStateException::class.java) { signed.finishCompletion(completion()) }
+        val record = completion()
+        val completed = signed.beginSubmission(approval()).unknown().finishCompletion(record)
+        record.fill(0)
+        val encoded = completed.encode()
+        val restarted = QuantumProbeFundingJournal.Reservation.decode(encoded)
+        assertEquals(QuantumProbeFundingJournal.Phase.COMPLETED, restarted.phase)
+        assertEquals(signed.signatureDigest, restarted.signatureDigest)
+        assertArrayEquals(encoded, restarted.encode())
+        assertThrows(IllegalStateException::class.java) { restarted.beginSigning() }
+        assertThrows(IllegalStateException::class.java) { restarted.beginSubmission(approval()) }
+        assertThrows(IllegalStateException::class.java) { restarted.unknown() }
+        assertThrows(IllegalStateException::class.java) { restarted.finishCompletion(completion()) }
+        for (length in listOf(0, 24, encoded.size - 89, encoded.size - 1)) assertThrows(Exception::class.java) {
+            QuantumProbeFundingJournal.Reservation.decode(encoded.copyOf(length))
+        }
+        assertThrows(IllegalArgumentException::class.java) { QuantumProbeFundingJournal.Reservation.decode(encoded + byteArrayOf(0)) }
+        assertThrows(IllegalArgumentException::class.java) {
+            QuantumProbeFundingJournal.Reservation.decode(encoded.copyOf().also { it[3] = 0x33 })
+        }
+    }
+    @Test fun completionEnvelopeRejectsMalformedPublicSummary() {
+        val submitting = QuantumProbeFundingJournal.Reservation.decode(envelope()).beginSigning()
+            .finishSigning(ByteArray(7856)).beginSubmission(approval())
+        for (record in listOf(ByteArray(0), completion().copyOf(87), completion() + byteArrayOf(0), ByteArray(88),
+            completion().also { java.nio.ByteBuffer.wrap(it).putLong(64, 0) },
+            completion().also { it[72] = 1 })) {
+            assertThrows(IllegalArgumentException::class.java) { submitting.finishCompletion(record) }
+        }
+    }
 }

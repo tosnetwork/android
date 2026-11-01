@@ -90,6 +90,20 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Authenticate and sign funding", "quantum.recovery.funding.sign") { signFunding() }
         button("Estimate saved funding", "quantum.recovery.funding.estimate") { estimateFunding() }
         button("Confirm fee and send funding", "quantum.recovery.funding.send") { confirmFundingSend() }
+        button("Verify and record key-check result", "quantum.recovery.funding.verify") {
+            run {
+                val saved = checkNotNull(accounts.pendingQuantumProbeFunding(wallet))
+                if (saved.phase == "COMPLETED") showFunding(saved)
+                else {
+                    val result = accounts.readQuantumProbeFundingOutcome(wallet, saved.operation)
+                    if (result.status == network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader.Status.Verified &&
+                        result.currentStateMatchesExpected == true) {
+                        accounts.completeQuantumProbeFunding(wallet, result)
+                        showFunding(accounts.pendingQuantumProbeFunding(wallet))
+                    } else status.text = "Key-check result: ${result.status}. Current state matches: ${result.currentStateMatchesExpected}. Payments remain restricted."
+                }
+            }
+        }
         button("Reload funding message", "quantum.recovery.funding.reload") {
             run { fundingPlan = null; fundingOperation = null; showFunding(accounts.pendingQuantumProbeFunding(wallet)) }
         }
@@ -209,6 +223,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             "Funding message: ${it.phase}\nOperation: ${it.operation}" +
                 if (it.phase == "SUBMITTING" || it.phase == "UNKNOWN")
                     "\nA submission may have reached the network. Do not send it again. Its chain outcome and key check remain unverified. Payments remain restricted."
+                else if (it.phase == "COMPLETED") "\nFunding and key check were verified and recorded. Key replacement and a new backup remain required. Payments remain restricted."
                 else "\nThis is a local signing record, not a chain result. Nothing was sent by this step. Payments remain restricted."
         } ?: "No saved funding message. Review the key-check funding before authenticating."
     }
