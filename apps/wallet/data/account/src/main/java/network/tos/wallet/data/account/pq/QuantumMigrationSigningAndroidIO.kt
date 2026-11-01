@@ -58,9 +58,9 @@ internal class QuantumMigrationSigningAndroidIO(context: Context, private val bi
         val fd = try { Os.open(current.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
         catch (error: ErrnoException) { if (error.errno == OsConstants.ENOENT) return null else throw error }
         return withOwnedInputStream(fd) { input ->
-            validate(fd, 30, QuantumMigrationSigningRecord.MAX_SIGNING_BYTES.toLong())
+            validate(fd, 30, QuantumMigrationSigningRecord.MAX_FILE_BYTES.toLong())
             val size = Os.fstat(fd).st_size
-            check(size in 30..QuantumMigrationSigningRecord.MAX_SIGNING_BYTES.toLong())
+            check(size in 30..QuantumMigrationSigningRecord.MAX_FILE_BYTES.toLong())
             val bytes = ByteArray(size.toInt())
             var offset = 0
             while (offset < bytes.size) { val count = input.read(bytes, offset, bytes.size - offset); check(count > 0); offset += count }
@@ -70,7 +70,7 @@ internal class QuantumMigrationSigningAndroidIO(context: Context, private val bi
     }
 
     override fun writePending(bytes: ByteArray) {
-        require(bytes.size in 30..QuantumMigrationSigningRecord.MAX_SIGNING_BYTES)
+        require(bytes.size in 30..QuantumMigrationSigningRecord.MAX_FILE_BYTES)
         val slots = checkNotNull(directory.list()).filter { it != ".lock" }.map { it.substringBefore('.') }.toSet()
         check(birthHash in slots || slots.size < 64) { "Migration slot capacity exceeded" }
         val fd = Os.open(pending.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
@@ -80,7 +80,7 @@ internal class QuantumMigrationSigningAndroidIO(context: Context, private val bi
     override fun replacePending() { Os.rename(pending.absolutePath, current.absolutePath) }
     override fun syncCurrent() {
         val fd = Os.open(current.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
-        try { validate(fd, 30, QuantumMigrationSigningRecord.MAX_SIGNING_BYTES.toLong()); Os.fsync(fd) } finally { Os.close(fd) }
+        try { validate(fd, 30, QuantumMigrationSigningRecord.MAX_FILE_BYTES.toLong()); Os.fsync(fd) } finally { Os.close(fd) }
     }
     override fun syncDirectory() {
         val fd = Os.open(directory.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)

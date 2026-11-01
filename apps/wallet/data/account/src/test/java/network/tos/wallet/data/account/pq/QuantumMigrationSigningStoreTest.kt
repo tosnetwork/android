@@ -47,6 +47,48 @@ class QuantumMigrationSigningStoreTest {
         assertThrows(IllegalStateException::class.java) { store.load() }
     }
 
+    private fun approval(record: QuantumMigrationSigningRecord) = QuantumMigrationApproval.record(record.operation,
+        ByteArray(32) { 3 }, ByteArray(32) { 4 }, 1000, 1030,
+        java.math.BigInteger.valueOf(100), java.math.BigInteger.valueOf(90), java.math.BigInteger.TEN)
+
+    @Test fun submissionRetainsExactSignatureAndApprovalAcrossRestartAndCannotReopen() {
+        val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+        val reserved = store.reserve(ByteArray(QuantumMigrationSigningRecord.MAX_BINDING_BYTES) { 1 })
+        val signed = store.signOnce(reserved, { ByteArray(7856) { 7 } }, {})
+        val approved = approval(signed)
+        val submitting = store.beginSubmission(signed, approved)
+        assertTrue(submitting.encode().size <= QuantumMigrationSigningRecord.MAX_FILE_BYTES)
+        assertEquals(QuantumMigrationSigningRecord.Phase.SUBMITTING, store.load()!!.phase)
+        approved.fill(0)
+        assertArrayEquals(approval(signed), submitting.approval())
+        assertArrayEquals(signed.signature(), submitting.signature())
+        assertThrows(IllegalStateException::class.java) { store.beginSubmission(signed, approval(signed)) }
+        val restarted = QuantumMigrationSigningStore(MemoryIO(io.state))
+        val unknown = restarted.unknown(submitting)
+        val decoded = QuantumMigrationSigningRecord.decode(unknown.encode())
+        assertEquals(QuantumMigrationSigningRecord.Phase.UNKNOWN, decoded.phase)
+        assertArrayEquals(signed.signature(), decoded.signature())
+        assertArrayEquals(approval(signed), decoded.approval())
+        assertThrows(IllegalStateException::class.java) { restarted.beginSubmission(decoded, approval(signed)) }
+        assertThrows(IllegalStateException::class.java) { restarted.beginSigning(decoded) }
+        assertThrows(IllegalStateException::class.java) { restarted.reserve(byteArrayOf(2)) }
+        assertArrayEquals(decoded.encode(), restarted.load()!!.encode())
+    }
+
+    @Test fun failedSubmissionPublicationRemainsBlockedAndCannotUseAnotherApproval() {
+        val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+        val reserved = store.reserve(byteArrayOf(1))
+        val signed = store.signOnce(reserved, { ByteArray(7856) { 7 } }, {})
+        val foreign = QuantumMigrationSigningRecord.reserve(byteArrayOf(1))
+        assertThrows(IllegalArgumentException::class.java) { store.beginSubmission(signed, approval(foreign)) }
+        assertArrayEquals(signed.encode(), store.load()!!.encode())
+        io.state.fail = "directory_sync"; io.state.failOccurrence = 2 // First sync reads SIGNED; second publishes SUBMITTING.
+        assertThrows(IOException::class.java) { store.beginSubmission(signed, approval(signed)) }
+        val restarted = QuantumMigrationSigningStore(MemoryIO(io.state))
+        assertEquals(QuantumMigrationSigningRecord.Phase.SUBMITTING, restarted.load()!!.phase)
+        assertThrows(IllegalStateException::class.java) { restarted.beginSubmission(signed, approval(signed)) }
+    }
+
     @Test fun failedSignerOrVerifierRetainsSigningAndNeverInvokesKeyAgain() {
         for (failSigner in listOf(false, true)) {
             val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)

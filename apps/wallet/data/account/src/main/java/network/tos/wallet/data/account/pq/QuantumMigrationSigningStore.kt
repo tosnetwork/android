@@ -48,6 +48,19 @@ internal class QuantumMigrationSigningStore(private val io: IO) {
         next
     }
 
+    /** Fresh native quote and explicit fee confirmation are checked by the account service. */
+    fun beginSubmission(expected: QuantumMigrationSigningRecord, approval: ByteArray): QuantumMigrationSigningRecord = io.locked {
+        val next = requireCurrent(expected).beginSubmission(approval)
+        publish(next)
+        next
+    }
+
+    fun unknown(expected: QuantumMigrationSigningRecord): QuantumMigrationSigningRecord = io.locked {
+        val next = requireCurrent(expected).unknown()
+        publish(next)
+        next
+    }
+
     private fun requireCurrent(expected: QuantumMigrationSigningRecord): QuantumMigrationSigningRecord {
         val actual = checkNotNull(retained()) { "Migration reservation missing" }
         check(actual.encode().contentEquals(expected.encode())) { "Migration reservation changed" }

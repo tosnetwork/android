@@ -7,6 +7,21 @@ import java.security.MessageDigest
 
 /** Structural envelope only; public synthetic bindings/signatures never stand in for native proof. */
 class QuantumMigrationSigningRecordTest {
+    @Test fun submissionVersionCannotMasqueradeAsAnUnsignedOrReusableRecord() {
+        val signed = QuantumMigrationSigningRecord.reserve(byteArrayOf(1)).beginSigning().finishSigning(ByteArray(7856) { 7 })
+        val approval = QuantumMigrationApproval.record(signed.operation, ByteArray(32) { 3 }, ByteArray(32) { 4 },
+            1000, 1030, java.math.BigInteger.valueOf(100), java.math.BigInteger.valueOf(90), java.math.BigInteger.TEN)
+        val wire = signed.beginSubmission(approval).encode()
+        assertEquals(0x514d5332, ByteBuffer.wrap(wire).int)
+        for (size in wire.indices) assertThrows(Exception::class.java) { QuantumMigrationSigningRecord.decode(wire.copyOf(size)) }
+        assertThrows(IllegalArgumentException::class.java) { QuantumMigrationSigningRecord.decode(wire + 0.toByte()) }
+        val oldMagic = wire.copyOf().also { ByteBuffer.wrap(it).putInt(0x514d5331) }
+        assertThrows(IllegalArgumentException::class.java) { QuantumMigrationSigningRecord.decode(oldMagic) }
+        val falseSigned = wire.copyOf().also { it[20] = 2 }
+        assertThrows(IllegalArgumentException::class.java) { QuantumMigrationSigningRecord.decode(falseSigned) }
+        assertEquals(0x514d5331, ByteBuffer.wrap(signed.encode()).int)
+        assertArrayEquals(signed.encode(), QuantumMigrationSigningRecord.decode(signed.encode()).encode())
+    }
     @Test fun restartRetainsSigningUncertaintyAndRejectsBackwardTransitions() {
         val reserved = QuantumMigrationSigningRecord.reserve(byteArrayOf(1, 2, 3))
         val signing = QuantumMigrationSigningRecord.decode(reserved.beginSigning().encode())

@@ -10,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO
 import network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord
 import network.tos.wallet.data.account.pq.QuantumMigrationSigningStore
+import network.tos.wallet.data.account.pq.QuantumMigrationApproval
 import network.tos.wallet.data.account.pq.withOwnedOutputStream
 import org.junit.Assert.*
 import org.junit.Test
@@ -31,6 +32,27 @@ class QuantumMigrationSigningAndroidTest {
     }
     private fun store(context: Context, key: String = hash) = QuantumMigrationSigningStore(QuantumMigrationSigningAndroidIO(context, key))
     private fun directory(root: File) = File(root, "quantum-migration-signing")
+
+    @Test fun largestSubmissionRecordFitsRealFilesAndCannotBeReopenedAfterReload() = scope { context, root ->
+        val first = store(context)
+        val reserved = first.reserve(ByteArray(QuantumMigrationSigningRecord.MAX_BINDING_BYTES) { 1 })
+        val signed = first.signOnce(reserved, { ByteArray(7856) { 7 } }, {})
+        val approval = QuantumMigrationApproval.record(signed.operation, ByteArray(32) { 3 }, ByteArray(32) { 4 },
+            1000, 1030, java.math.BigInteger.valueOf(100), java.math.BigInteger.valueOf(90), java.math.BigInteger.TEN)
+        val submitting = first.beginSubmission(signed, approval)
+        assertTrue(submitting.encode().size > QuantumMigrationSigningRecord.MAX_SIGNING_BYTES)
+        assertTrue(submitting.encode().size <= QuantumMigrationSigningRecord.MAX_FILE_BYTES)
+        assertArrayEquals(submitting.encode(), File(directory(root), "$hash.record").readBytes())
+        assertArrayEquals(submitting.encode(), store(context).load()!!.encode())
+        val unknown = store(context).unknown(submitting)
+        val reloaded = store(context).load()!!
+        assertArrayEquals(unknown.encode(), reloaded.encode())
+        assertArrayEquals(signed.signature(), reloaded.signature())
+        assertArrayEquals(approval, reloaded.approval())
+        assertThrows(IllegalStateException::class.java) { first.beginSubmission(reloaded, approval) }
+        assertThrows(IllegalStateException::class.java) { first.beginSigning(reloaded) }
+        assertFalse(File(directory(root), "$hash.next").exists())
+    }
 
     @Test fun realFilesRetainOneSlotAcrossAdapterReloadAndSigningTransitions() = scope { context, root ->
         val first = store(context)

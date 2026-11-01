@@ -13,8 +13,9 @@ internal class QuantumMigrationSigningSnapshot private constructor(private val b
 
     /** Historical consistency/signature only. No fresh chain state, signer or dispatch capability. */
     fun inspectSaved(entry: QuantumProbeFundingJournal.Reservation, prior: QuantumRecoveryControlJournal.Entry,
-        probe: QuantumRecoveryProbeJournal.Entry, signature: ByteArray?,
+        probe: QuantumRecoveryProbeJournal.Entry, record: QuantumMigrationSigningRecord,
     ): Saved {
+        check(record.binding.contentEquals(encode()))
         binding.requireContext(entry.walletId, entry.operation, binding.backupDigest,
             entry.encode(), prior.encode(), probe.encode())
         check(entry.phase == QuantumProbeFundingJournal.Phase.COMPLETED)
@@ -27,9 +28,19 @@ internal class QuantumMigrationSigningSnapshot private constructor(private val b
             submitted.expectedState, QuantumAuthRole.RESCUE, stored.deadline,
             network.tos.blockchain.ton.contract.QuantumSelfPayAction.Migrate(probe.successor), stored.deadline - 1)
         check(expected.request.hash() == stored.cell.hash()) { "Saved migration intent mismatch" }
-        if (signature != null) check(network.tos.security.pq.QuantumCrypto.verify(
-            network.tos.security.pq.QuantumRole.RESCUE, network.tos.security.pq.QuantumPurpose.SELF_PAY,
-            submitted.expectedState.authority.rescueKey, expected.digest, signature)) { "Saved migration signature mismatch" }
+        val signature = if (record.signatureDigest != null) record.signature() else null
+        try {
+            if (signature != null) {
+                check(network.tos.security.pq.QuantumCrypto.verify(network.tos.security.pq.QuantumRole.RESCUE,
+                    network.tos.security.pq.QuantumPurpose.SELF_PAY, submitted.expectedState.authority.rescueKey,
+                    expected.digest, signature)) { "Saved migration signature mismatch" }
+                if (record.phase in setOf(QuantumMigrationSigningRecord.Phase.SUBMITTING, QuantumMigrationSigningRecord.Phase.UNKNOWN)) {
+                    val message = BagOfCells(prior.identity.wallet.external(expected.submission(signature), false)).toByteArray()
+                    QuantumMigrationApproval.decode(record.approval()).requireBound(record.operation,
+                        QuantumPaymentOutbox.digest(message), expected.digest, stored.deadline)
+                }
+            }
+        } finally { signature?.fill(0) }
         return Saved(expected.digest.joinToString("") { "%02x".format(it) }, stored.deadline, binding.backupDigest)
     }
 

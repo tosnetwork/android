@@ -392,6 +392,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             "RESERVED" -> "Key replacement is reserved with its original deadline. No signature is saved."
             "SIGNING" -> "Key replacement signing is incomplete or uncertain. Do not sign it again."
             "SIGNED" -> "Saved key replacement signature verified. Nothing has been sent. Replacement keys are not installed; payments remain restricted."
+            "SUBMITTING", "UNKNOWN" -> "Key replacement submission is unverified. Do not send it again. Replacement keys are not installed; payments remain restricted."
             else -> error("Unknown migration signing phase")
         } + if (saved == null) "" else "\nRequest: ${saved.requestHash}\nExpires: ${java.util.Date(saved.deadline * 1000)}" +
             "\nThis checks the saved record, not current chain state or execution."

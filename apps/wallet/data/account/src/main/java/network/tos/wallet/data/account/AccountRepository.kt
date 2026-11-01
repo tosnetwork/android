@@ -821,12 +821,8 @@ class AccountRepository(
                 val prior = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(identity))
                 val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(identity))
                 require(entry.walletId.toString() == actual.id && prior.identity == identity && probe.identity == identity)
-                val signature = if (saved.phase == network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.SIGNED)
-                    saved.signature() else null
-                val metadata = try {
-                    network.tos.wallet.data.account.pq.QuantumMigrationSigningSnapshot.decode(saved.binding)
-                        .inspectSaved(entry, prior, probe, signature)
-                } finally { signature?.fill(0) }
+                val metadata = network.tos.wallet.data.account.pq.QuantumMigrationSigningSnapshot.decode(saved.binding)
+                    .inspectSaved(entry, prior, probe, saved)
                 check(checkNotNull(store.load()).encode().contentEquals(saved.encode())) { "Migration record changed during inspection" }
                 MigrationSigningStatus(saved.operation, saved.phase.name, metadata.requestHash, metadata.deadline,
                     saved.signatureDigest?.joinToString("") { "%02x".format(it) })
