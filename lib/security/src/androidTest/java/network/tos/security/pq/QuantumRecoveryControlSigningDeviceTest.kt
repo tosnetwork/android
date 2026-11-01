@@ -13,6 +13,7 @@ import java.security.MessageDigest
 import java.util.UUID
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import java.math.BigInteger
 
 /** Fixed public seeds and software AES test keys only. Not OS authentication or live chain acceptance. */
 @RunWith(AndroidJUnit4::class)
@@ -97,6 +98,63 @@ class QuantumRecoveryControlSigningDeviceTest {
         val prepared = request(inspection, state, QuantumSelfPayAction.LockPrimary)
         assertThrows(IllegalArgumentException::class.java) {
             vault.signRecoveryControl(id, inspection, key, state, BagOfCells(prepared.request).toByteArray(), 1000)
+        }
+    }
+    private class Funding(val state: QuantumSelfPayState, val successor: QuantumSelfPayAuthority,
+        val challenge: ByteArray, val primary: ByteArray, val rescue: ByteArray, val request: ByteArray,
+        val digest: ByteArray, val amount: BigInteger)
+    private fun funding(inspection: QuantumBackupInspection, body: (Funding) -> Unit) {
+        val primarySeed = ByteArray(32) { 19 }; val rescueSeed = ByteArray(48) { 29 }
+        val successor = QuantumSelfPayAuthority(3, inspection.snapshot.namespace,
+            QuantumCrypto.publicKey(QuantumRole.PRIMARY, primarySeed), QuantumCrypto.publicKey(QuantumRole.RESCUE, rescueSeed), QuantumPolicy.REQUIRED)
+        val state = QuantumSelfPayState(inspection.snapshot, seqno = 7, retired = 2, epoch = 4u, rescueNonce = 9u)
+        val challenge = ByteArray(32) { 11 }
+        val probe = TosQuantumSelfPayProbe(inspection.birth.address, successor, challenge, 1120, 1000)
+        val primary = QuantumCrypto.sign(QuantumRole.PRIMARY, QuantumPurpose.SELF_PAY_POP, primarySeed, successor.primaryKey, probe.digest)
+        val rescue = QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP, rescueSeed, successor.rescueKey, probe.digest)
+        val amount = BigInteger("10000000")
+        val request = TosQuantumSelfPayRequest(inspection.birth.address, state, QuantumAuthRole.RESCUE, 1100,
+            QuantumSelfPayAction.Execute(probe.fundingActions(probe.submission(primary, rescue), amount)), 1000)
+        try { body(Funding(state, successor, challenge, primary, rescue, BagOfCells(request.request).toByteArray(), request.digest, amount)) }
+        finally { primarySeed.fill(0); rescueSeed.fill(0); primary.fill(0); rescue.fill(0) }
+    }
+    @Test fun protectedMaterialSignsOnlyTheExactBoundProbeFunding() = fixture { vault, id, inspection, key ->
+        funding(inspection) { p ->
+            val signature = vault.signProbeFunding(id, inspection, key, p.state, p.successor, p.challenge,
+                1120, p.primary, p.rescue, p.amount, p.request, 1000)
+            try {
+                assertTrue(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY,
+                    p.state.authority.rescueKey, p.digest, signature))
+                assertFalse(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP,
+                    p.state.authority.rescueKey, p.digest, signature))
+            } finally { signature.fill(0) }
+        }
+    }
+    @Test fun probeFundingRejectsChangedIntentProofAndState() = fixture { vault, id, inspection, key ->
+        funding(inspection) { p ->
+            fun sign(amount: BigInteger = p.amount, challenge: ByteArray = p.challenge,
+                     state: QuantumSelfPayState = p.state, now: Long = 1000): ByteArray =
+                vault.signProbeFunding(id, inspection, key, state, p.successor, challenge,
+                    1120, p.primary, p.rescue, amount, p.request, now)
+            assertThrows(IllegalArgumentException::class.java) { sign(amount = p.amount + BigInteger.ONE) }
+            assertThrows(IllegalArgumentException::class.java) { sign(amount = BigInteger("100000001")) }
+            assertThrows(IllegalArgumentException::class.java) { sign(amount = BigInteger.ZERO) }
+            assertThrows(IllegalArgumentException::class.java) { sign(challenge = ByteArray(32) { 12 }) }
+            assertThrows(IllegalArgumentException::class.java) { sign(now = 1100) }
+            assertThrows(IllegalArgumentException::class.java) { sign(now = 1120) }
+            assertThrows(IllegalArgumentException::class.java) { sign(state = QuantumSelfPayState(inspection.snapshot)) }
+            assertThrows(IllegalArgumentException::class.java) { sign(state = QuantumSelfPayState(inspection.snapshot,
+                seqno = 7, retired = 2, epoch = 4u, rescueNonce = 10u)) }
+            p.primary[0] = (p.primary[0].toInt() xor 1).toByte()
+            assertThrows(IllegalArgumentException::class.java) { sign() }
+        }
+    }
+    @Test fun primaryOnlyMaterialCannotFundProbe() = fixture(setOf(QuantumRole.PRIMARY)) { vault, id, inspection, key ->
+        funding(inspection) { p ->
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.signProbeFunding(id, inspection, key, p.state, p.successor, p.challenge,
+                    1120, p.primary, p.rescue, p.amount, p.request, 1000)
+            }
         }
     }
 }

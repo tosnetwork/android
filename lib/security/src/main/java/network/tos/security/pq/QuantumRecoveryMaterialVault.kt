@@ -14,6 +14,11 @@ import network.tos.blockchain.ton.contract.QuantumSelfPayState
 import network.tos.blockchain.ton.contract.QuantumStoredSelfPayRequest
 import network.tos.blockchain.ton.contract.QuantumAuthRole
 import org.ton.boc.BagOfCells
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayProbe
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayRequest
+import network.tos.blockchain.ton.contract.QuantumSelfPayAction
+import network.tos.blockchain.ton.contract.QuantumPolicy
+import java.math.BigInteger
 
 /** Complete recovery material at rest. App authentication and durable isolation belong to the service.
  * No public plaintext getter. The caller supplies the existing device wrapping key. */
@@ -126,6 +131,39 @@ class QuantumRecoveryMaterialVault(private val prefs: SharedPreferences) {
                 // Native signing independently derives and checks the actual current public key.
                 QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, rescue.seed,
                     current.authority.rescueKey, request.cell.hash().toByteArray())
+            }
+        }
+    }
+
+    /** Restricted probe deployment only. Caller must authenticate and durably enter SIGNING first. */
+    fun signProbeFunding(id: UUID, inspection: QuantumBackupInspection, wrappingKey: SecretKey,
+                         current: QuantumSelfPayState, successor: QuantumSelfPayAuthority,
+                         challenge: ByteArray, probeDeadline: Long, primarySignature: ByteArray, rescueSignature: ByteArray,
+                         amount: BigInteger, requestBOC: ByteArray, now: Long): ByteArray {
+        require(challenge.size == 32 && primarySignature.size == 2420 && rescueSignature.size == 7856)
+        require(now in 1..0xffffffffL && current.retired == 2 && successor.policy == QuantumPolicy.REQUIRED)
+        val birth = inspection.birth
+        require(current.walletId == birth.wallet.walletId && current.authority.globalId == birth.wallet.initialAuthority.globalId &&
+            current.authority.namespace.contentEquals(birth.wallet.initialAuthority.namespace))
+        require(successor.globalId == current.authority.globalId && successor.namespace.contentEquals(current.authority.namespace))
+        require(!successor.primaryKey.contentEquals(current.authority.primaryKey) && !successor.rescueKey.contentEquals(current.authority.rescueKey))
+        val probe = TosQuantumSelfPayProbe(birth.address, successor, challenge.copyOf(), probeDeadline, now)
+        val primary = primarySignature.copyOf(); val rescue = rescueSignature.copyOf()
+        val actions = probe.fundingActions(probe.submission(primary, rescue), amount)
+        require(QuantumCrypto.verify(QuantumRole.PRIMARY, QuantumPurpose.SELF_PAY_POP, successor.primaryKey, probe.digest, primary))
+        require(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP, successor.rescueKey, probe.digest, rescue))
+        val stored = QuantumStoredSelfPayRequest.parse(requestBOC)
+        stored.requireIdentity(birth)
+        require(stored.role == QuantumAuthRole.RESCUE && stored.kind == 0 && stored.deadline <= probeDeadline)
+        val expected = TosQuantumSelfPayRequest(birth.address, current, QuantumAuthRole.RESCUE, stored.deadline,
+            QuantumSelfPayAction.Execute(actions), now)
+        require(stored.cell.hash() == expected.request.hash()) { "Probe funding intent mismatch" }
+        return withStoredPayload(id, inspection, wrappingKey) { plaintext ->
+            inspection.validatePayload(plaintext)
+            QuantumBackupPayload.parseUnverified(plaintext).use { payload ->
+                val role = requireNotNull(payload.roles.singleOrNull { it.role == QuantumRole.RESCUE.id })
+                QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, role.seed,
+                    current.authority.rescueKey, expected.digest)
             }
         }
     }

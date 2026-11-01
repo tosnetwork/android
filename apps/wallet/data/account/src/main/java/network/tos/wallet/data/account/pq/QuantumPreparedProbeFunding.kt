@@ -1,10 +1,8 @@
 package network.tos.wallet.data.account.pq
 
 import network.tos.blockchain.ton.contract.*
-import network.tos.blockchain.ton.extensions.storeAddress
 import org.ton.boc.BagOfCells
 import org.ton.cell.Cell
-import org.ton.cell.buildCell
 import java.math.BigInteger
 import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumRole
@@ -46,18 +44,8 @@ class QuantumPreparedProbeFunding internal constructor(
         expiresAt = restoredDeadline ?: minOf(time + ttl, entry.deadline)
         check(expiresAt > time && expiresAt <= entry.deadline && expiresAt <= time + 3600)
         val body = BagOfCells(entry.signedBody()).roots.single()
-        message = buildCell {
-            storeUInt(16, 6) // Internal, IHR disabled, non-bouncing, absent relaxed source.
-            storeAddress(probeAddress)
-            val count = (amount.bitLength() + 7) / 8
-            storeUInt(count, 4); storeUInt(amount, count * 8); storeBit(false)
-            storeUInt(0, 4); storeUInt(0, 4); storeUInt(0, 64); storeUInt(0, 32)
-            storeBit(true); storeBit(true); storeRef(entry.probe.stateInit) // Initial verified=0 identity.
-            storeBit(true); storeRef(body)
-        }
-        actions = buildCell {
-            storeUInt(0x0ec3c86d, 32); storeUInt(3, 8); storeRef(buildCell { }); storeRef(message)
-        }
+        message = entry.probe.fundingMessage(body, amount)
+        actions = entry.probe.fundingActions(body, amount)
         request = TosQuantumSelfPayRequest(identity.address, current, QuantumAuthRole.RESCUE, expiresAt,
             QuantumSelfPayAction.Execute(actions), time)
     }

@@ -207,6 +207,24 @@ class TosQuantumSelfPayProbe(
         require(primarySignature.size == 2420 && rescueSignature.size == 7856)
         return buildCell { storeRef(TosPqWallet.byteChain(primarySignature)); storeRef(TosPqWallet.byteChain(rescueSignature)) }
     }
+    /** Fixed local funding intent only; this helper establishes no signing authority. */
+    fun fundingMessage(body: Cell, amount: BigInteger): Cell {
+        require(amount.signum() > 0 && amount <= BigInteger("100000000"))
+        QuantumSelfPayAuthority.ordinary(body)
+        require(body.beginParse().remainingBits == 0 && body.refs.size == 2)
+        return buildCell {
+            storeUInt(16, 6) // IHR disabled, non-bouncing, absent relaxed source.
+            storeAddress(address)
+            val count = (amount.bitLength() + 7) / 8
+            storeUInt(count, 4); storeUInt(amount, count * 8); storeBit(false)
+            storeUInt(0, 4); storeUInt(0, 4); storeUInt(0, 64); storeUInt(0, 32)
+            storeBit(true); storeBit(true); storeRef(stateInit)
+            storeBit(true); storeRef(body)
+        }
+    }
+    fun fundingActions(body: Cell, amount: BigInteger): Cell = buildCell {
+        storeUInt(0x0ec3c86d, 32); storeUInt(3, 8); storeRef(buildCell { }); storeRef(fundingMessage(body, amount))
+    }
     fun requireVerified(account: AddrStd, installedCode: Cell, installedData: Cell) {
         require(account == address && installedCode.hash() == code.hash()) { "Probe birth identity mismatch" }
         QuantumSelfPayAuthority.ordinary(installedData)
