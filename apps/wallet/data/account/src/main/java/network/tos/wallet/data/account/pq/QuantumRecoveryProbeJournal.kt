@@ -49,6 +49,9 @@ internal class QuantumRecoveryProbeJournal(private val context: Context, private
             check(phase == Phase.SIGNED)
             return Pair(primary.copyOf(), rescue.copyOf())
         }
+        internal fun requireBaseState(state: QuantumSelfPayState) {
+            check(BagOfCells(stateBytes).roots.single().hash() == state.cell.hash()) { "Possession probe base state changed" }
+        }
         internal fun requireCurrent(fresh: QuantumAccountReader.Observation, now: Long) {
             require(fresh.id == walletId && fresh.identity == identity && sameProfile(fresh.profile, profile))
             fresh.requireFresh(now)

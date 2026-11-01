@@ -105,4 +105,30 @@ class QuantumProbeFundingPhaseTest {
         assertThrows(IllegalArgumentException::class.java) { QuantumProbeFundingApproval.decode(approval() + byteArrayOf(0)) }
         assertThrows(IllegalArgumentException::class.java) { QuantumProbeFundingApproval.decode(approval().copyOf(163)) }
     }
+    @Test fun historicalApprovalRequiresExactMessageRequestOperationAmountAndDeadline() {
+        val id = UUID(5, 6)
+        val message = byteArrayOf(3, 7, 9)
+        val request = ByteArray(32) { 2 }
+        val amount = BigInteger("100")
+        val approval = QuantumProbeFundingApproval.decode(QuantumProbeFundingApproval.record(id,
+            QuantumPaymentOutbox.digest(message), request, 1000, 1020, amount,
+            BigInteger("1000"), BigInteger("890"), BigInteger("20")))
+        // Past approval remains inspectable; this API intentionally has no clock or dispatch path.
+        approval.requireSubmitted(id, amount, 1020, request, message)
+        assertThrows(IllegalArgumentException::class.java) {
+            approval.requireSubmitted(UUID(7, 8), amount, 1020, request, message)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            approval.requireSubmitted(id, amount + BigInteger.ONE, 1020, request, message)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            approval.requireSubmitted(id, amount, 1019, request, message)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            approval.requireSubmitted(id, amount, 1020, request.copyOf().also { it[0] = 4 }, message)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            approval.requireSubmitted(id, amount, 1020, request, message + byteArrayOf(0))
+        }
+    }
 }

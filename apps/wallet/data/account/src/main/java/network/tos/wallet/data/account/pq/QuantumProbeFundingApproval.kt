@@ -31,6 +31,14 @@ internal class QuantumProbeFundingApproval private constructor(
             "Funding approval binding mismatch"
         }
     }
+    /** Historical binding only; does not check freshness or authorize a dispatch. */
+    internal fun requireSubmitted(operation: UUID, amount: BigInteger, deadline: Long,
+                                  requestHash: ByteArray, signedMessage: ByteArray) {
+        require(this.operation == operation && this.amount == amount && expiresAt <= deadline &&
+            request.contentEquals(requestHash) && message.contentEquals(QuantumPaymentOutbox.digest(signedMessage))) {
+            "Submitted funding approval binding mismatch"
+        }
+    }
     private fun encode(): ByteArray = ByteArrayOutputStream().also { buffer ->
         DataOutputStream(buffer).use { output ->
             output.writeInt(MAGIC); output.writeLong(operation.mostSignificantBits); output.writeLong(operation.leastSignificantBits)

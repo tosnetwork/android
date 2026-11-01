@@ -54,6 +54,12 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             check(phase == Phase.SUBMITTING || phase == Phase.UNKNOWN)
             return Reservation(operation, bytes, Phase.UNKNOWN, signatureBytes, approvalBytes)
         }
+        /** Historical message reconstruction, never a resume/sign/send capability. */
+        internal fun submission(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry):
+            QuantumProbeFundingSubmission {
+            check(phase == Phase.SUBMITTING || phase == Phase.UNKNOWN)
+            return QuantumProbeFundingSubmission.read(operation, bytes, signatureBytes, approvalBytes, prior, probe)
+        }
         internal fun signedForEstimate(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry,
                                        fresh: QuantumAccountReader.Observation, now: Long): Pair<QuantumPreparedProbeFunding, ByteArray> {
             check(phase == Phase.SIGNED) { "Funding signature is not durably available" }
