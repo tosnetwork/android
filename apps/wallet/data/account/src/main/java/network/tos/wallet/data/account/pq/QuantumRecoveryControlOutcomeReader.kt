@@ -15,7 +15,7 @@ class QuantumRecoveryControlOutcomeReader(
 ) {
     enum class Status { NotFoundInRecentHistory, IncludedWithoutSuccessfulControl, Executed }
     data class Result(val operation: UUID, val status: Status, val transactionHash: String?, val feesNano: String?,
-                      val checkpointTime: Long, val olderHistoryAvailable: Boolean)
+                      val checkpointTime: Long, val olderHistoryAvailable: Boolean, val currentStateMatchesExpected: Boolean?)
 
     suspend fun read(id: UUID, identity: TosQuantumSelfPayIdentity): Result = withContext(Dispatchers.IO) {
         val journal = QuantumRecoveryControlJournal(context)
@@ -32,10 +32,15 @@ class QuantumRecoveryControlOutcomeReader(
         if (tx != null) check(tx.inbound?.kind == "external_in" && tx.inbound.destination == QuantumAccountReader.rawAddress(identity))
         val successful = tx != null && tx.successfulExecution && !tx.otherFeeCurrencies && tx.outbound.isEmpty() &&
             tx.skippedActions == 0L && (tx.messagesCreated == null || tx.messagesCreated == 0L)
+        // This is the same fresh observation that authenticated the history head.
+        // A later operation may change state without changing this transaction's execution result.
+        val current = (QuantumSelfPayAccount.bind(identity, page.observation.proof, now(), 300).snapshot(now()).status
+            as? QuantumSelfPayAccount.Status.Active)?.state
         Result(entry.operation, when {
             tx == null -> Status.NotFoundInRecentHistory
             successful -> Status.Executed
             else -> Status.IncludedWithoutSuccessfulControl
-        }, tx?.hash, tx?.feesNano, page.checkpointTime, page.next != null)
+        }, tx?.hash, tx?.feesNano, page.checkpointTime, page.next != null,
+            if (tx == null) null else current?.cell?.hash() == entry.expectedControlState().cell.hash())
     }
 }

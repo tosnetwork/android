@@ -50,6 +50,17 @@ internal class QuantumRecoveryControlJournal(
         }
         private val authorization get() = QuantumStoredSelfPayRequest.parse(requestBytes)
         private val state get() = QuantumSelfPayState.parse(BagOfCells(stateBytes).roots.single())
+        internal fun expectedControlState(): QuantumSelfPayState {
+            val before = state
+            check(before.epoch != ULong.MAX_VALUE)
+            val configure = kind == QuantumPreparedRecoveryControl.Kind.REQUIRE_RESCUE
+            if (configure) check(before.seqno < 0xffffffffL)
+            val authority = before.authority
+            return QuantumSelfPayState(if (configure) QuantumSelfPayAuthority(authority.globalId, authority.namespace,
+                authority.primaryKey, authority.rescueKey, QuantumPolicy.REQUIRED) else authority,
+                before.walletId, before.seqno + if (configure) 1 else 0,
+                if (configure) before.retired else before.retired or 2, before.epoch + 1u, 0u, 0u)
+        }
         init {
             TosQuantumSelfPayIdentity.preflightOrdinaryBoc(stateBytes, 32768)
             val decoded = authorization

@@ -18,6 +18,26 @@ import org.ton.boc.BagOfCells
 @RunWith(AndroidJUnit4::class)
 class QuantumRecoveryControlApprovalTest {
     private val operation = UUID.randomUUID()
+    @Test fun expectedControlStateRetainsIdentityAndAppliesExactContractCounters() {
+        val authority = QuantumSelfPayAuthority(3, ByteArray(32) { 43 }, ByteArray(1312), ByteArray(32))
+        val identity = TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(authority))
+        val before = QuantumSelfPayState(authority, 0, 41, 0, 123u, ULong.MAX_VALUE, ULong.MAX_VALUE)
+        for (configure in listOf(false, true)) {
+            val action = if (configure) QuantumSelfPayAction.ConfigureRequired else QuantumSelfPayAction.LockPrimary
+            val request = TosQuantumSelfPayRequest(identity.address, before, QuantumAuthRole.RESCUE, 1120, action, 1000)
+            val entry = QuantumRecoveryControlJournal.Entry(operation, UUID.randomUUID(), identity,
+                QuantumNetworkProfile(3, "01".repeat(32), "02".repeat(32)), BagOfCells(before.cell).toByteArray(),
+                BagOfCells(request.request).toByteArray(), QuantumRecoveryControlJournal.Phase.RESERVED, ByteArray(0))
+            val expectedAuthority = if (configure) QuantumSelfPayAuthority(3, authority.namespace, authority.primaryKey,
+                authority.rescueKey, QuantumPolicy.REQUIRED) else authority
+            val expected = QuantumSelfPayState(expectedAuthority, 0, if (configure) 42 else 41,
+                if (configure) 0 else 2, 124u, 0u, 0u)
+            assertEquals(expected.cell.hash(), entry.expectedControlState().cell.hash())
+            assertNotEquals(before.cell.hash(), entry.expectedControlState().cell.hash())
+            assertEquals(identity, entry.identity)
+            assertEquals(expected.cell.hash(), QuantumRecoveryControlJournal.Entry.decode(entry.encode()).expectedControlState().cell.hash())
+        }
+    }
     private fun record(before: BigInteger = BigInteger("100"), after: BigInteger = BigInteger("90"),
                        limit: BigInteger = BigInteger("10"), start: Long = 1000, end: Long = 1030) =
         QuantumRecoveryControlApproval.record(operation, ByteArray(32) { 1 }, ByteArray(32) { 2 }, start, end, before, after, limit)
