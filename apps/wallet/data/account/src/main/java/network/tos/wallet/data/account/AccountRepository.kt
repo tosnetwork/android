@@ -724,7 +724,13 @@ class AccountRepository(
         val observed = observeCompletedRecoveryLock(wallet)
         val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context)
             .pending(requireNotNull(wallet.quantumIdentity)))
-        network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding(entry, observed, amount, System.currentTimeMillis() / 1000, 120)
+        val prior = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context)
+            .pending(requireNotNull(wallet.quantumIdentity)))
+        val now = System.currentTimeMillis() / 1000
+        val handoff = network.tos.wallet.data.account.pq.QuantumRecoveryControlHandoff.acquire(prior, observed, now)
+        network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding(entry, observed, amount, now, 120, handoff).also {
+            it.requireHandoff(prior, System.currentTimeMillis() / 1000)
+        }
     }
 
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */

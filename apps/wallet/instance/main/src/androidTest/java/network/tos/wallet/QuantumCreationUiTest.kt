@@ -721,9 +721,31 @@ class QuantumCreationUiTest {
                 assertThrows(IllegalStateException::class.java) { runBlocking { repository.signQuantumRecoveryProbe(wallet, proof.operation) } }
                 assertThrows(IllegalStateException::class.java) { runBlocking { repository.reserveQuantumRecoveryProbe(wallet) } }
                 assertEquals(proof, runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
-                successorPublic.put("probe", org.json.JSONObject().put("operation", proof.operation.toString()).put("phase", proof.phase)
+                val probePublic = org.json.JSONObject().put("operation", proof.operation.toString()).put("phase", proof.phase)
                     .put("address", proof.address).put("digest", proof.digest).put("material_digest", proof.materialDigest)
-                    .put("body_digest", proof.bodyDigest).put("deadline", proof.deadline))
+                    .put("body_digest", proof.bodyDigest).put("deadline", proof.deadline)
+                successorPublic.put("probe", probePublic)
+                if (InstrumentationRegistry.getArguments().getString("quantumPrepareProbeFunding") == "true") {
+                    val stop = android.os.SystemClock.elapsedRealtime() + 130000
+                    var prepared: network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding? = null
+                    var waitingObserved = false
+                    do {
+                        try { prepared = runBlocking { repository.prepareQuantumProbeFunding(wallet, java.math.BigInteger("10000000")) } }
+                        catch (waiting: network.tos.wallet.data.account.pq.QuantumPriorControlNotExpired) {
+                            assertTrue(waiting.provenShardTime <= waiting.authorizationDeadline)
+                            assertEquals(completed.deadline, waiting.authorizationDeadline)
+                            waitingObserved = true; android.os.SystemClock.sleep(1000)
+                        }
+                    } while (prepared == null && android.os.SystemClock.elapsedRealtime() < stop)
+                    val funding = checkNotNull(prepared)
+                    assertEquals(proof.operation, funding.probeOperation)
+                    assertEquals(network.tos.blockchain.ton.contract.QuantumAuthRole.RESCUE, funding.request.role)
+                    assertTrue(funding.expiresAt <= proof.deadline)
+                    assertEquals(proof, runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                    assertEquals(completed, runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
+                    probePublic.put("funding_prepared", true).put("handoff_wait_observed", waitingObserved)
+                        .put("funding_request_digest", hex(funding.request.digest)).put("funding_deadline", funding.expiresAt)
+                }
             }
         }
         val history = runBlocking { repository.readQuantumHistory(wallet) }

@@ -14,6 +14,7 @@ class QuantumPreparedProbeFunding internal constructor(
     val amount: BigInteger,
     now: Long,
     ttl: Long,
+    private val handoff: QuantumRecoveryControlHandoff? = null,
 ) {
     val identity = entry.identity
     val profile = entry.profile
@@ -68,6 +69,11 @@ class QuantumPreparedProbeFunding internal constructor(
         val decoded = QuantumStoredSelfPayRequest.parse(stored)
         require(decoded.role == QuantumAuthRole.RESCUE && decoded.kind == 0 &&
             decoded.cell.hash() == request.request.hash() && decoded.executeActions?.hash() == actions.hash())
+    }
+    /** Unsigned codec objects alone cannot authorize a new current-key operation. */
+    internal fun requireHandoff(prior: QuantumRecoveryControlJournal.Entry, now: Long) {
+        requireFresh(now)
+        checkNotNull(handoff) { "Authenticated prior-authorization handoff required" }.requireCurrent(prior, now)
     }
     companion object {
         val MAX_FUNDING: BigInteger = BigInteger("100000000") // Local policy: at most 0.1 TOS, excluding sender gas.

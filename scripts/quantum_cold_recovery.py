@@ -33,6 +33,7 @@ def main():
     parser.add_argument('--recovery-control-ui', action='store_true', help='Use actual recovery product screen, PIN and fee confirmation')
     parser.add_argument('--stage-successor', action='store_true', help='Generate protected successor roots through actual product UI and verify after restart')
     parser.add_argument('--sign-successor-probe', action='store_true', help='Authenticate and durably dual-sign the staged successor probe without funding it')
+    parser.add_argument('--prepare-probe-funding', action='store_true', help='Wait for authenticated prior-control expiry and prepare one unsigned probe funding request')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
     if a.recovery_control_signing and not a.encrypted_backup:
@@ -47,6 +48,8 @@ def main():
         raise ValueError('Successor staging requires recovery product UI')
     if a.sign_successor_probe and not a.stage_successor:
         raise ValueError('Successor probe signing requires staged successor journey')
+    if a.prepare_probe_funding and not a.sign_successor_probe:
+        raise ValueError('Probe funding preparation requires the signed probe journey')
     funding = urllib.parse.urlsplit(a.funding_control)
     if a.recovery_control_signing and (funding.scheme != 'http' or funding.hostname not in ('127.0.0.1', 'localhost')
             or funding.username or funding.password or funding.query or funding.fragment or funding.path not in ('', '/')):
@@ -192,6 +195,8 @@ def main():
             command[-1:-1] = ['-e', 'quantumStageSuccessor', 'true']
         if a.sign_successor_probe:
             command[-1:-1] = ['-e', 'quantumSignSuccessorProbe', 'true']
+        if a.prepare_probe_funding:
+            command[-1:-1] = ['-e', 'quantumPrepareProbeFunding', 'true']
         with (a.out / (method + '.log')).open('w') as output:
             subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=True)
         log = (a.out / (method + '.log')).read_text()
@@ -244,6 +249,8 @@ def main():
                 raise ValueError('Successor staging product evidence missing')
             if a.sign_successor_probe and status.get('successor', {}).get('probe', {}).get('phase') != 'SIGNED':
                 raise ValueError('Successor probe signing evidence missing')
+            if a.prepare_probe_funding and not status.get('successor', {}).get('probe', {}).get('funding_prepared'):
+                raise ValueError('Authenticated probe funding preparation evidence missing')
             if status['phase'] != expected_phase or not status['cancelled_before_signing']:
                 raise ValueError('Recovery signing evidence missing')
             (a.out / 'recovery-control-public.json').write_text(json.dumps(status, indent=2))
@@ -310,7 +317,8 @@ def main():
             'recovery_control_completed_and_restart_verified': a.complete_recovery_control,
             'recovery_control_product_ui_verified': a.recovery_control_ui,
             'successor_protected_material_and_restart_verified': a.stage_successor,
-            'successor_probe_signed_and_restart_verified': a.sign_successor_probe, **journey}, indent=2))
+            'successor_probe_signed_and_restart_verified': a.sign_successor_probe,
+            'probe_funding_prepared_after_authenticated_expiry': a.prepare_probe_funding, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None
