@@ -493,6 +493,11 @@ class QuantumPaymentOutboxTest {
                         QuantumRecoveryRecord(durable.id, profile, backup.birth, ByteArray(32)).save(context)
                     }
                     assertArrayEquals(originalPublicBytes, publicPath.readBytes())
+                    assertThrows(IllegalStateException::class.java) {
+                        val otherProfile = QuantumNetworkProfile(profile.globalId, "06".repeat(32), profile.fileHash)
+                        QuantumRecoveryRecord(durable.id, otherProfile, backup.birth, backup.encryptedDigest).save(context)
+                    }
+                    assertArrayEquals(originalPublicBytes, publicPath.readBytes())
                     publicPath.writeText("{")
                     assertThrows(Exception::class.java) {
                         reopened.retainBackupImportRecord(backup, profile) { retained }

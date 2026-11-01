@@ -43,7 +43,12 @@ internal class QuantumRecoveryRecord(
                 OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
         } catch (error: ErrnoException) {
             if (error.errno != OsConstants.EEXIST) throw error
-            check(load(context, id).encode().contentEquals(bytes)) { "Conflicting recovery enrollment" }
+            val retained = load(context, id)
+            check(retained.id == id && retained.identity == identity &&
+                retained.profile.globalId == profile.globalId && retained.profile.rootHash == profile.rootHash &&
+                retained.profile.fileHash == profile.fileHash && retained.digest.contentEquals(digest)) {
+                "Conflicting recovery enrollment"
+            }
             val existing = Os.open(path.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
             try { validate(existing); Os.fsync(existing) } finally { Os.close(existing) }
             syncDirectory(directory)
