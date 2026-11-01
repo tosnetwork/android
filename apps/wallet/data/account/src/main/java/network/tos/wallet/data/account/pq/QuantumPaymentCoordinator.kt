@@ -9,7 +9,6 @@ import network.tos.blockchain.ton.contract.QuantumPaymentIntent
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
 import network.tos.security.pq.QuantumProofSession
 import network.tos.security.pq.QuantumProofTransport
-import network.tos.security.pq.QuantumSeedVault
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
@@ -27,8 +26,8 @@ class QuantumPaymentCoordinator internal constructor(
         this(context.applicationContext, transport, broadcaster, { entry, id ->
             val record = QuantumCreationRecord.load(context, id)
             check(record.identity == entry.identity && sameProfile(record.profile, entry.profile))
-            val binding = QuantumSeedVault.Context(entry.identity.wallet.initialAuthority.namespace, entry.profile.globalId, 0, 0)
-            QuantumCreationCustody(context).signPayment(id, binding, entry.signingPublicKey, entry.requestHash)
+            QuantumCreationCustody(context).signRegisteredPayment(id, entry.identity.wallet.initialAuthority.namespace,
+                entry.profile.globalId, entry.signingPublicKey, entry.requestHash)
         })
     private class Job {
         private val deadline = System.nanoTime() + 60_000_000_000L

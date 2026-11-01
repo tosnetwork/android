@@ -81,6 +81,10 @@ internal class QuantumCreationCustody internal constructor(
     fun signPayment(id: UUID, context: QuantumSeedVault.Context, expectedPublicKey: ByteArray, digest: ByteArray): ByteArray =
         roles.sign(id.toString(), QuantumRole.PRIMARY, context, wrappingKey(false), expectedPublicKey, QuantumPurpose.SELF_PAY, digest)
 
+    fun signRegisteredPayment(id: UUID, network: ByteArray, globalId: Int, expectedPublicKey: ByteArray, digest: ByteArray): ByteArray =
+        roles.signRegistered(id.toString(), QuantumRole.PRIMARY, network, globalId, wrappingKey(false),
+            expectedPublicKey, QuantumPurpose.SELF_PAY, digest)
+
     fun markComplete(id: UUID) = synchronized(lock) {
         check(preferences.contains(mnemonicKey(id)))
         for (role in QuantumRole.entries) check(preferences.contains("quantum.seed.v1.${role.id}.$id"))

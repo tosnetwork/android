@@ -24,6 +24,8 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
     private fun aad(name: String, context: Context): ByteArray =
         "TOS-V5R2-SEED-v1".toByteArray(Charsets.US_ASCII) +
             byteArrayOf(name.length.toByte()) + name.toByteArray(Charsets.US_ASCII) + context.encoding()
+    private fun registeredAad(name: String): ByteArray = "TOS-ROLE-CUSTODY-v2".toByteArray(Charsets.US_ASCII) +
+        byteArrayOf(name.length.toByte()) + name.toByteArray(Charsets.US_ASCII)
 
     /** Initial key binding only. No signing handle or current-authority approval is returned.
      * Native mnemonic validation must precede this call for that input profile. */
@@ -50,9 +52,10 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
             val publicKey = QuantumCrypto.publicKey(role, seed)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, wrappingKey)
-            cipher.updateAAD(aad(name, context))
-            val ciphertext = cipher.doFinal(seed)
-            val record = byteArrayOf(1) + cipher.iv + ciphertext
+            cipher.updateAAD(registeredAad(name))
+            val plaintext = context.encoding() + seed
+            val ciphertext = try { cipher.doFinal(plaintext) } finally { plaintext.fill(0) }
+            val record = byteArrayOf(2) + cipher.iv + ciphertext
             try {
                 check(prefs.edit().putString(name, Base64.encodeToString(record, Base64.NO_WRAP)).commit())
             } finally { ciphertext.fill(0); record.fill(0) }
@@ -60,16 +63,34 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
         } finally { seed.fill(0) }
     }
     private fun <T> withSeed(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey,
-                             body: (ByteArray) -> T): T = synchronized(writerLock) {
+                             body: (ByteArray) -> T): T = withCustody(id, role, context, wrappingKey, false, body)
+    private fun <T> withCustody(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey,
+                                registered: Boolean, body: (ByteArray) -> T): T = synchronized(writerLock) {
         val name = name(id, role)
         val record = Base64.decode(checkNotNull(prefs.getString(name, null)), Base64.NO_WRAP)
         try {
-            require(record.size == 29 + role.seedSize && record[0] == 1.toByte())
+            require(record.isNotEmpty())
+            val version = record[0].toInt()
+            require((version == 1 && record.size == 29 + role.seedSize) ||
+                (version == 2 && record.size == 73 + role.seedSize))
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, wrappingKey, GCMParameterSpec(128, record.copyOfRange(1, 13)))
-            cipher.updateAAD(aad(name, context))
-            val seed = cipher.doFinal(record, 13, record.size - 13)
-            try { require(seed.size == role.seedSize); body(seed) } finally { seed.fill(0) }
+            cipher.updateAAD(if (version == 1) aad(name, context) else registeredAad(name))
+            val plaintext = cipher.doFinal(record, 13, record.size - 13)
+            try {
+                if (version == 1) {
+                    require(plaintext.size == role.seedSize)
+                    body(plaintext)
+                } else {
+                    require(plaintext.size == 44 + role.seedSize)
+                    val expected = context.encoding()
+                    val count = if (registered) 36 else 44 // Network/globalID always bind; derivation is authenticated ciphertext.
+                    if (!java.security.MessageDigest.isEqual(plaintext.copyOfRange(0, count), expected.copyOfRange(0, count)))
+                        throw javax.crypto.AEADBadTagException("Quantum custody context mismatch")
+                    val seed = plaintext.copyOfRange(44, plaintext.size)
+                    try { body(seed) } finally { seed.fill(0) }
+                }
+            } finally { plaintext.fill(0) }
         } finally { record.fill(0) }
     }
     fun publicKey(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey): ByteArray =
@@ -118,6 +139,12 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
     fun sign(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey,
              expectedPublicKey: ByteArray, purpose: QuantumPurpose, digest: ByteArray): ByteArray =
         withSeed(id, role, context, wrappingKey) {
+            QuantumCrypto.sign(role, purpose, it, expectedPublicKey, digest)
+        }
+    /** V2 resolves derivation from authenticated encrypted custody; v1 is restricted to original 0/0. */
+    fun signRegistered(id: String, role: QuantumRole, network: ByteArray, globalId: Int, wrappingKey: SecretKey,
+                       expectedPublicKey: ByteArray, purpose: QuantumPurpose, digest: ByteArray): ByteArray =
+        withCustody(id, role, Context(network, globalId, 0, 0), wrappingKey, true) {
             QuantumCrypto.sign(role, purpose, it, expectedPublicKey, digest)
         }
     companion object { private val writerLock = Any() }
