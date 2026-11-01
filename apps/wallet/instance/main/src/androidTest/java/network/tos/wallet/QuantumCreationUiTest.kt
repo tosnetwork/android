@@ -1155,6 +1155,59 @@ class QuantumCreationUiTest {
         assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
     }
 
+    private fun checkFundedSuccessorThroughProduct(cancelFirst: Boolean) {
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val saved = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals("COMPLETED", saved.phase)
+        val expected = org.json.JSONObject(File(context.cacheDir, "quantum-recovery-control-public.json").readText()).getJSONObject("successor")
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        val oldPath = assertThrows(IllegalStateException::class.java) {
+            runBlocking { repository.stageQuantumSuccessorMaterial(wallet, true) }
+        }
+        assertEquals("Check failed.", oldPath.message)
+        assertEquals("observeCompletedRecoveryLock", oldPath.stackTrace.first().methodName)
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+        resource("send").click(); pressRecovery("quantum.payment.recovery")
+        recoveryStatus("Saved recovery operation:")
+        if (cancelFirst) {
+            pressRecovery("quantum.recovery.successor.funded")
+            assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000))
+            device.pressBack(); device.waitForIdle()
+            assertEquals(saved, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        }
+        pressRecovery("quantum.recovery.successor.funded")
+        assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 10000)); pin()
+        recoveryStatus("Saved replacement keys match verified funding.")
+        val text = checkNotNull(device.findObject(By.desc("quantum.recovery.status"))).text
+        assertTrue(text.contains(expected.getString("authority_hash")) && text.contains(expected.getString("material_digest")))
+        val staged = runBlocking { repository.inspectFundedQuantumSuccessorMaterial(wallet) }
+        fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+        assertEquals(expected.getString("authority_hash"), hex(staged.inspection.snapshot.hash))
+        assertEquals(expected.getString("material_digest"), hex(staged.inspection.encryptedDigest))
+        assertEquals(requireNotNull(wallet.quantumIdentity), staged.inspection.birth)
+        assertEquals(saved, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        val after = runBlocking { repository.readQuantumAccount(wallet) }
+        assertEquals(before.balance, after.balance)
+        assertEquals((before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash(),
+            (after.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state.cell.hash())
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+        val name = if (cancelFirst) "quantum-funded-material-public.json" else "quantum-funded-material-restart-public.json"
+        File(context.cacheDir, name).writeText(org.json.JSONObject().put("operation", saved.operation.toString())
+            .put("authority_hash", hex(staged.inspection.snapshot.hash)).put("material_digest", hex(staged.inspection.encryptedDigest))
+            .put("pin_confirmed", true).put("pin_cancelled", cancelFirst).put("restart", !cancelFirst)
+            .put("isolation_retained", true).put("state_and_balance_unchanged", true).toString())
+    }
+    @Test fun fundedSuccessorMaterialChecksProductPinAndRetainsIsolation() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        checkFundedSuccessorThroughProduct(true)
+    }
+    @Test fun fundedSuccessorMaterialSurvivesRestartWithoutReplacingKeys() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        checkFundedSuccessorThroughProduct(false)
+    }
+
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
         localNetworkCreatesWithMandatoryBackupAndProtectedKeys()
         val original = runBlocking { repository.getWallets() }.single()

@@ -78,6 +78,25 @@ class QuantumSuccessorMaterialVault(private val prefs: SharedPreferences) {
                 root: ByteArray, file: ByteArray, key: SecretKey): Stage =
         withStored(id, birth, current, root, file, key) { _, inspection -> Stage(id, inspection) }
 
+    /** Caller authenticates the exact funding transaction and fresh current state before/after this read.
+     * Retains the original ciphertext/AAD. This returns no signer, installation or payment capability. */
+    fun inspectAfterFunding(id: UUID, birth: TosQuantumSelfPayIdentity, stagedState: QuantumSelfPayState,
+        fundedState: QuantumSelfPayState, root: ByteArray, file: ByteArray, key: SecretKey,
+        materialDigest: ByteArray, successor: QuantumSelfPayAuthority,
+    ): Stage {
+        require(stagedState.walletId == birth.wallet.walletId && stagedState.retired == 2 &&
+            stagedState.seqno < 0xffffffffL && stagedState.rescueNonce != ULong.MAX_VALUE)
+        val expected = QuantumSelfPayState(stagedState.authority, stagedState.walletId, stagedState.seqno + 1,
+            stagedState.retired, stagedState.epoch, stagedState.primaryNonce, stagedState.rescueNonce + 1u)
+        require(fundedState.cell.hash() == expected.cell.hash()) { "Unexpected funding state transition" }
+        require(materialDigest.size == 32 && successor.policy == QuantumPolicy.REQUIRED)
+        return withStored(id, birth, stagedState, root, file, key) { _, inspection ->
+            require(MessageDigest.isEqual(materialDigest, inspection.encryptedDigest) &&
+                MessageDigest.isEqual(successor.hash, inspection.snapshot.hash)) { "Funded successor material mismatch" }
+            Stage(id, inspection)
+        }
+    }
+
     /** Caller enters durable SIGNING first. Only new-key SELF_PAY_POP signatures are returned. */
     fun signProbe(id: UUID, birth: TosQuantumSelfPayIdentity, current: QuantumSelfPayState,
         root: ByteArray, file: ByteArray, key: SecretKey, materialDigest: ByteArray,

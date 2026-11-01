@@ -176,4 +176,16 @@ class QuantumProbeFundingPhaseTest {
         val tooLarge = QuantumProbeFundingJournal.Reservation.decode(envelope(snapshotSize = maximumSnapshot + 1))
         assertThrows(IllegalArgumentException::class.java) { tooLarge.beginSigning() }
     }
+    @Test fun completedSummaryMustMatchFreshlyAuthenticatedOutcome() {
+        val submitted = QuantumProbeFundingJournal.Reservation.decode(envelope()).beginSigning()
+            .finishSigning(ByteArray(7856)).beginSubmission(approval())
+        val completed = submitted.finishCompletion(completion())
+        completed.requireRecordedOutcome("03".repeat(32), ByteArray(32) { 4 }, 1100, "0")
+        completed.requireRecordedOutcome("03".repeat(32), ByteArray(32) { 4 }, 1200, "0")
+        assertThrows(IllegalStateException::class.java) { submitted.requireRecordedOutcome("03".repeat(32), ByteArray(32) { 4 }, 1100, "0") }
+        assertThrows(IllegalStateException::class.java) { completed.requireRecordedOutcome("05".repeat(32), ByteArray(32) { 4 }, 1100, "0") }
+        assertThrows(IllegalStateException::class.java) { completed.requireRecordedOutcome("03".repeat(32), ByteArray(32) { 5 }, 1100, "0") }
+        assertThrows(IllegalStateException::class.java) { completed.requireRecordedOutcome("03".repeat(32), ByteArray(32) { 4 }, 1099, "0") }
+        assertThrows(IllegalStateException::class.java) { completed.requireRecordedOutcome("03".repeat(32), ByteArray(32) { 4 }, 1100, "1") }
+    }
 }

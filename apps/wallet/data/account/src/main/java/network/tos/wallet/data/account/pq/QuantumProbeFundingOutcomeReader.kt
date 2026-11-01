@@ -35,6 +35,17 @@ class QuantumProbeFundingOutcomeReader(
                 submitted.identity == observation.identity && sameProfile(submitted.profile, observation.profile))
             validate(submitted, probe, observation, proof, now)
         }
+        internal fun requireRecordedFunding(entry: QuantumProbeFundingJournal.Reservation,
+                                           prior: QuantumRecoveryControlJournal.Entry,
+                                           probe: QuantumRecoveryProbeJournal.Entry, now: Long):
+            network.tos.blockchain.ton.contract.QuantumSelfPayState {
+            check(entry.phase == QuantumProbeFundingJournal.Phase.COMPLETED)
+            requireCompletion(entry, prior, probe, now)
+            val submitted = entry.submission(prior, probe)
+            entry.requireRecordedOutcome(checkNotNull(transactionHash), submitted.expectedState.cell.hash().toByteArray(),
+                checkpointTime, checkNotNull(feesNano))
+            return submitted.expectedState
+        }
         companion object {
             internal suspend fun read(reader: QuantumProbeFundingOutcomeReader, id: UUID,
                                       identity: TosQuantumSelfPayIdentity, operation: UUID): Result {

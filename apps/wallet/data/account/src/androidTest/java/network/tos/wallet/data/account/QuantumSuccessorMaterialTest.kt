@@ -108,4 +108,46 @@ class QuantumSuccessorMaterialTest {
             assertEquals(birth, QuantumSuccessorMaterialVault(prefs).inspect(id, birth, current, root, file, key).inspection.birth)
         } finally { context.deleteSharedPreferences(name) }
     }
+    @Test fun fundedInspectionRetainsOriginalCiphertextAndRejectsOtherTransitions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "successor-funded-${UUID.randomUUID()}"; val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val old = QuantumSelfPayAuthority(3, ByteArray(32) { 43 }, ByteArray(1312) { 1 }, ByteArray(32) { 2 })
+        val birth = TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(old)); val id = UUID.randomUUID()
+        val before = QuantumSelfPayState(old, seqno = 7, retired = 2, epoch = 4u, primaryNonce = 3u, rescueNonce = 9u)
+        val after = QuantumSelfPayState(old, seqno = 8, retired = 2, epoch = 4u, primaryNonce = 3u, rescueNonce = 10u)
+        val root = ByteArray(32) { 1 }; val file = ByteArray(32) { 2 }; val vault = QuantumSuccessorMaterialVault(prefs)
+        try {
+            val staged = vault.generate(id, birth, before, root, file, key)
+            val original = prefs.getString("quantum.successor.material.v1.$id", null)
+            val checked = vault.inspectAfterFunding(id, birth, before, after, root, file, key,
+                staged.inspection.encryptedDigest, staged.inspection.snapshot)
+            assertEquals(id, checked.walletId)
+            assertArrayEquals(staged.inspection.encryptedDigest, checked.inspection.encryptedDigest)
+            assertArrayEquals(staged.inspection.snapshot.hash, checked.inspection.snapshot.hash)
+            assertEquals(original, prefs.getString("quantum.successor.material.v1.$id", null))
+            assertThrows(IllegalArgumentException::class.java) { vault.inspect(id, birth, after, root, file, key) }
+            for (wrong in listOf(
+                QuantumSelfPayState(old, seqno = 9, retired = 2, epoch = 4u, primaryNonce = 3u, rescueNonce = 10u),
+                QuantumSelfPayState(old, seqno = 8, retired = 2, epoch = 4u, primaryNonce = 3u, rescueNonce = 11u),
+                QuantumSelfPayState(old, seqno = 8, retired = 2, epoch = 5u, primaryNonce = 3u, rescueNonce = 10u),
+                QuantumSelfPayState(old, seqno = 8, retired = 0, epoch = 4u, primaryNonce = 3u, rescueNonce = 10u),
+                QuantumSelfPayState(old, seqno = 8, retired = 2, epoch = 4u, primaryNonce = 4u, rescueNonce = 10u))) {
+                assertThrows(IllegalArgumentException::class.java) {
+                    vault.inspectAfterFunding(id, birth, before, wrong, root, file, key, staged.inspection.encryptedDigest, staged.inspection.snapshot)
+                }
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.inspectAfterFunding(id, birth, before, after, ByteArray(32) { 8 }, file, key, staged.inspection.encryptedDigest, staged.inspection.snapshot)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.inspectAfterFunding(id, birth, before, after, root, file, key, ByteArray(32) { 8 }, staged.inspection.snapshot)
+            }
+            val other = QuantumSelfPayAuthority(old.globalId, old.namespace, old.primaryKey, old.rescueKey, QuantumPolicy.REQUIRED)
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.inspectAfterFunding(id, birth, before, after, root, file, key, staged.inspection.encryptedDigest, other)
+            }
+            assertEquals(original, prefs.getString("quantum.successor.material.v1.$id", null))
+        } finally { context.deleteSharedPreferences(name) }
+    }
 }

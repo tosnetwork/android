@@ -69,6 +69,15 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             check(phase == Phase.SUBMITTING || phase == Phase.UNKNOWN)
             return Reservation(operation, bytes, Phase.COMPLETED, signatureBytes, approvalBytes, completion = record)
         }
+        /** Stored summary consistency only; fresh native authentication is still required by the caller. */
+        internal fun requireRecordedOutcome(transactionHash: String, stateHash: ByteArray, checkpointTime: Long, feesNano: String) {
+            check(phase == Phase.COMPLETED)
+            val record = java.nio.ByteBuffer.wrap(completionBytes)
+            check(ByteArray(32).also(record::get).contentEquals(QuantumHistoryTransaction.hex(transactionHash)))
+            check(ByteArray(32).also(record::get).contentEquals(stateHash))
+            check(record.long <= checkpointTime)
+            check(BigInteger(1, ByteArray(16).also(record::get)) == BigInteger(feesNano))
+        }
         /** Historical message reconstruction, never a resume/sign/send capability. */
         internal fun submission(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry):
             QuantumProbeFundingSubmission {

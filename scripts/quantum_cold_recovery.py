@@ -430,6 +430,21 @@ def main():
                 test('confirmedFundingCompletionRetainsIsolationAndRejectsRepeatedWrite')
                 run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
                 test('completedFundingSurvivesRestartWithoutUnlockOrDispatch')
+                test('fundedSuccessorMaterialChecksProductPinAndRetainsIsolation')
+                material = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funded-material-public.json']))
+                if not (material.get('operation') == funded['operation'] and material.get('pin_cancelled') is True
+                        and all(material.get(key) is True for key in ('pin_confirmed', 'isolation_retained', 'state_and_balance_unchanged'))
+                        and all(material.get(key) == status['successor'][key] for key in ('authority_hash', 'material_digest'))):
+                    raise ValueError('Funded protected-material product evidence missing')
+                (a.out / 'funded-material-public.json').write_text(json.dumps(material, indent=2))
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('fundedSuccessorMaterialSurvivesRestartWithoutReplacingKeys')
+                resumed = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funded-material-restart-public.json']))
+                if not (resumed.get('restart') is True
+                        and all(resumed.get(key) == material[key] for key in ('operation', 'authority_hash', 'material_digest'))
+                        and all(resumed.get(key) is True for key in ('pin_confirmed', 'isolation_retained', 'state_and_balance_unchanged'))):
+                    raise ValueError('Funded protected-material restart evidence missing')
+                (a.out / 'funded-material-restart-public.json').write_text(json.dumps(resumed, indent=2))
         journey = {}
         if a.journey_recipient:
             def recipient_state():
@@ -500,7 +515,8 @@ def main():
             'probe_funding_confirmed_and_chain_verified': a.submit_probe_funding,
             'funded_probe_verified_and_restart_isolated': a.submit_probe_funding,
             'probe_funding_completed_product_and_restart_verified': a.submit_probe_funding,
-            'probe_funding_completion_rejections_verified': a.submit_probe_funding, **journey}, indent=2))
+            'probe_funding_completion_rejections_verified': a.submit_probe_funding,
+            'funded_successor_material_product_and_restart_verified': a.submit_probe_funding, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

@@ -81,6 +81,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Reload saved operation", "quantum.recovery.reload") { reload() }
         button("Generate replacement keys", "quantum.recovery.successor.generate") { successor(false) }
         button("Verify saved replacement keys", "quantum.recovery.successor.resume") { successor(true) }
+        button("Authenticate and verify funded replacement keys", "quantum.recovery.successor.funded") { fundedSuccessor() }
         button("Prepare possession challenge", "quantum.recovery.probe.prepare") { prepareProbe() }
         button("Sign possession message", "quantum.recovery.probe.sign") { signProbe() }
         button("Reload possession message", "quantum.recovery.probe.reload") {
@@ -198,6 +199,22 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                 "\nMaterial: ${it.materialDigest}\nDeadline: ${java.util.Date(it.deadline * 1000)}" +
                 "\nThis is a local message. On-chain possession is not verified; keys are not installed and payments remain restricted."
         } ?: "No saved possession challenge. Prepare one after saving replacement keys."
+    }
+    private fun fundedSuccessor() = run {
+        if (accounts.pendingQuantumProbeFunding(wallet)?.phase != "COMPLETED") {
+            status.text = "Verify and record key-check funding before checking replacement keys."
+            return@run
+        }
+        authenticating = true
+        val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Verify funded replacement keys") }
+            finally { authenticating = false }
+        if (!accepted) return@run
+        check(viewLifecycleOwnerLiveData.value?.lifecycle?.currentState == androidx.lifecycle.Lifecycle.State.RESUMED)
+        val staged = accounts.inspectFundedQuantumSuccessorMaterial(wallet)
+        fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+        status.text = "Saved replacement keys match verified funding." +
+            "\nAuthority: ${hex(staged.inspection.snapshot.hash)}\nMaterial: ${hex(staged.inspection.encryptedDigest)}" +
+            "\nKeys are not installed. Key replacement and a new backup remain required. Payments remain restricted."
     }
     private fun prepareProbe() = run {
         accounts.requireQuantumProbePreparationReady(wallet)

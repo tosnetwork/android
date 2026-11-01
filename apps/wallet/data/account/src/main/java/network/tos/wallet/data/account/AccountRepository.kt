@@ -630,6 +630,56 @@ class AccountRepository(
         }
     }
 
+    /** Caller authenticates. Read the original protected roots after the exact recorded funding transition.
+     * This never generates/replaces roots, signs, installs keys or releases payment isolation. */
+    suspend fun inspectFundedQuantumSuccessorMaterial(wallet: WalletEntity):
+        network.tos.security.pq.QuantumSuccessorMaterialVault.Stage = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val coroutine = currentCoroutineContext()
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.type == Wallet.Type.Default && actual.identity == wallet.identity)
+            val identity = requireNotNull(actual.quantumIdentity)
+            val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+            require(record.id.toString() == actual.id && record.identity == identity)
+            val funding = network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context)
+            val controls = network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context)
+            val probes = network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context)
+            val outbox = QuantumPaymentOutbox(context)
+            val originals = outbox.withRecoveryControlIsolation(identity) {
+                val entry = checkNotNull(funding.pending(identity))
+                check(entry.phase == network.tos.wallet.data.account.pq.QuantumProbeFundingJournal.Phase.COMPLETED)
+                require(entry.walletId == record.id)
+                Triple(entry.encode(), checkNotNull(controls.pending(identity)).encode(), checkNotNull(probes.pending(identity)).encode())
+            }
+            val operation = checkNotNull(funding.pending(identity)).operation
+            fun inspect(result: network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader.Result) =
+                outbox.withRecoveryControlIsolation(identity) {
+                    coroutine.ensureActive()
+                    val entry = checkNotNull(funding.pending(identity)); val prior = checkNotNull(controls.pending(identity))
+                    val probe = checkNotNull(probes.pending(identity))
+                    check(originals.first.contentEquals(entry.encode()) && originals.second.contentEquals(prior.encode()) &&
+                        originals.third.contentEquals(probe.encode())) { "Funded material records changed" }
+                    require(entry.operation == operation && sameProfile(probe.profile, record.profile))
+                    val state = result.requireRecordedFunding(entry, prior, probe, System.currentTimeMillis() / 1000)
+                    val stage = quantumCustody.inspectFundedSuccessor(record.id, identity, prior.expectedControlState(), state,
+                        record.profile, probe.materialDigest, probe.successor)
+                    coroutine.ensureActive()
+                    check(originals.first.contentEquals(checkNotNull(funding.pending(identity)).encode()) &&
+                        originals.second.contentEquals(checkNotNull(controls.pending(identity)).encode()) &&
+                        originals.third.contentEquals(checkNotNull(probes.pending(identity)).encode()))
+                    result.requireRecordedFunding(entry, prior, probe, System.currentTimeMillis() / 1000)
+                    stage
+                }
+            val first = inspect(readQuantumProbeFundingOutcome(actual, operation))
+            coroutine.ensureActive()
+            val current = checkNotNull(database.getAccount(actual.id)); require(current.identity == actual.identity && current.type == Wallet.Type.Default)
+            val second = inspect(readQuantumProbeFundingOutcome(current, operation))
+            check(first.inspection.encryptedDigest.contentEquals(second.inspection.encryptedDigest) &&
+                first.inspection.snapshot.hash.contentEquals(second.inspection.snapshot.hash))
+            second
+        }
+    }
+
     private fun observeCompletedRecoveryLock(wallet: WalletEntity): QuantumAccountReader.Observation {
         val identity = requireNotNull(wallet.quantumIdentity)
         check(QuantumPaymentOutbox(context).requiresRecovery(identity))

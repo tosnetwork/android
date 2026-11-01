@@ -45,6 +45,15 @@ internal class QuantumCreationCustody internal constructor(
                 hex(record.profile.rootHash), hex(record.profile.fileHash), words, password)
         } finally { password.fill('\u0000') }
     }
+    fun inspectFundedSuccessor(id: UUID, birth: TosQuantumSelfPayIdentity,
+        stagedState: network.tos.blockchain.ton.contract.QuantumSelfPayState,
+        fundedState: network.tos.blockchain.ton.contract.QuantumSelfPayState, profile: QuantumNetworkProfile,
+        materialDigest: ByteArray, successor: QuantumSelfPayAuthority,
+    ): network.tos.security.pq.QuantumSuccessorMaterialVault.Stage = synchronized(lock) {
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        successors.inspectAfterFunding(id, birth, stagedState, fundedState, hex(profile.rootHash), hex(profile.fileHash),
+            wrappingKey(false), materialDigest, successor)
+    }
     fun signSuccessorProbe(id: UUID, birth: TosQuantumSelfPayIdentity,
         current: network.tos.blockchain.ton.contract.QuantumSelfPayState, profile: QuantumNetworkProfile,
         materialDigest: ByteArray, successor: QuantumSelfPayAuthority, challenge: ByteArray, deadline: Long, now: Long,
