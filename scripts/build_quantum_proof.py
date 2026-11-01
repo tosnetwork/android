@@ -13,6 +13,19 @@ import sys
 
 # Expanded immutable revision is read from the checked-in pin, never an endpoint.
 
+def require_source_checkout(source):
+    # git -C otherwise walks into the enclosing Android repository when a
+    # partially cleaned source cache has lost its own Git metadata.
+    root = subprocess.check_output(
+        ['git', '-C', str(source), 'rev-parse', '--show-toplevel'], text=True
+    ).strip()
+    if Path(root).resolve() != source.resolve():
+        raise RuntimeError(
+            'Proof source is not an independent Git checkout: ' + str(source)
+            + '. Move the incomplete cache aside and retry, or set TOS_PROOF_ROOT '
+            'to a clean checkout of the pinned TOS revision.'
+        )
+
 def build():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ndk', type=Path, required=True)
@@ -25,6 +38,8 @@ def build():
         raise RuntimeError('Expected an immutable 40-character source revision')
     default_source = (repository / '.gradle/quantum-proof-source').resolve()
     source = Path(os.environ.get('TOS_PROOF_ROOT', default_source)).resolve()
+    if source.exists():
+        require_source_checkout(source)
     if not source.exists():
         source.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(['git', 'clone', '--filter=blob:none', '--no-checkout', 'https://github.com/tosnetwork/tos.git', str(source)], check=True)
