@@ -14,6 +14,9 @@ import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
 import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl
 import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe
 import network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal
+import network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding
+import network.tos.blockchain.ton.extensions.loadAddress
+import org.ton.boc.BagOfCells
 import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumRole
 import network.tos.security.pq.QuantumPurpose
@@ -302,6 +305,29 @@ class QuantumSelfPayAccountTest {
                     assertEquals(QuantumRecoveryProbeJournal.Phase.SIGNED, signed.phase)
                     assertEquals(reserved.operation, signed.operation)
                     assertArrayEquals(signed.signedBody(), QuantumRecoveryProbeJournal.Entry.decode(signed.encode()).signedBody())
+                    val funding = QuantumPreparedProbeFunding(signed, observation, BigInteger("10000000"), now, 120)
+                    assertEquals(QuantumAuthRole.RESCUE, funding.request.role)
+                    assertTrue(funding.expiresAt <= signed.deadline)
+                    funding.requireBound(funding.request.request); funding.requireRevalidated(observation, now)
+                    val msg = funding.message.beginParse()
+                    assertEquals(16, msg.loadUInt(6).toInt()); assertEquals(signed.probe.address, msg.loadAddress())
+                    val count = msg.loadUInt(4).toInt(); assertEquals(funding.amount, msg.loadUInt(count * 8))
+                    assertFalse(msg.loadBit()); assertEquals(0, msg.loadUInt(4).toInt()); assertEquals(0, msg.loadUInt(4).toInt())
+                    assertEquals(BigInteger.ZERO, msg.loadUInt(64)); assertEquals(BigInteger.ZERO, msg.loadUInt(32))
+                    assertTrue(msg.loadBit()); assertTrue(msg.loadBit())
+                    assertEquals(signed.probe.stateInit.hash(), msg.loadRef().hash())
+                    assertTrue(msg.loadBit()); assertEquals(BagOfCells(signed.signedBody()).roots.single().hash(), msg.loadRef().hash())
+                    assertEquals(0, msg.remainingBits); assertEquals(msg.refs.size, msg.refsPosition)
+                    val action = funding.actions.beginParse()
+                    assertEquals(0x0ec3c86dL, action.loadUInt(32).toLong()); assertEquals(3, action.loadUInt(8).toInt())
+                    assertEquals(0, action.loadRef().beginParse().remainingBits); assertEquals(funding.message.hash(), action.loadRef().hash())
+                    for (amount in listOf(BigInteger.ZERO, BigInteger.valueOf(-1), QuantumPreparedProbeFunding.MAX_FUNDING + BigInteger.ONE)) {
+                        assertThrows(IllegalArgumentException::class.java) { QuantumPreparedProbeFunding(signed, observation, amount, now, 120) }
+                    }
+                    val another = QuantumPreparedProbeFunding(signed, observation, BigInteger("20000000"), now, 120)
+                    assertThrows(IllegalArgumentException::class.java) { funding.requireBound(another.request.request) }
+                    assertThrows(IllegalStateException::class.java) { funding.requireFresh(funding.expiresAt) }
+                    assertThrows(IllegalArgumentException::class.java) { funding.requireRevalidated(observation.copy(id = UUID.randomUUID()), now) }
                 } else {
                     assertThrows(IllegalStateException::class.java) { faulted.sign(plan.identity, reserved.operation, observation, now, signer) }
                     if (failure == "before_file_sync") assertThrows(IllegalStateException::class.java) { journal.pending(plan.identity) }

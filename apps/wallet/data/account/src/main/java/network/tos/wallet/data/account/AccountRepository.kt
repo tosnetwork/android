@@ -717,6 +717,16 @@ class AccountRepository(
         }
     }
 
+    /** Bounded single-probe intent only; no current RESCUE signature, quote, send or unlock. */
+    suspend fun prepareQuantumProbeFunding(wallet: WalletEntity, amount: BigInteger):
+        network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding = runInterruptible(Dispatchers.IO) {
+        network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding.requireAmount(amount)
+        val observed = observeCompletedRecoveryLock(wallet)
+        val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context)
+            .pending(requireNotNull(wallet.quantumIdentity)))
+        network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding(entry, observed, amount, System.currentTimeMillis() / 1000, 120)
+    }
+
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */
     suspend fun prepareQuantumRecoveryControl(wallet: WalletEntity,
         kind: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind,
