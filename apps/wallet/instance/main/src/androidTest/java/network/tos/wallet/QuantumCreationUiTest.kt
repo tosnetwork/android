@@ -32,6 +32,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
+import java.math.BigInteger
 
 /** Run each UI case in a cleared disposable installation. Live creation requires a fresh chain anchor. */
 @RunWith(AndroidJUnit4::class)
@@ -819,6 +820,26 @@ class QuantumCreationUiTest {
                         assertEquals(funded, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
                         probePublic.put("funding_operation", funded.operation.toString()).put("funding_phase", funded.phase)
                             .put("funding_signature_digest", funded.signatureDigest).put("funding_pin_cancelled", true)
+                        if (InstrumentationRegistry.getArguments().getString("quantumEstimateProbeFunding") == "true") {
+                            val cap = BigInteger("100000000")
+                            val quote = runBlocking { repository.estimateQuantumProbeFunding(wallet, funded.operation, cap) }
+                            assertEquals(funded.operation, quote.operation)
+                            assertEquals(resumedFunding.amount, quote.amount)
+                            assertEquals(resumedFunding.probeAddressText, quote.address)
+                            assertEquals(fundingBalance, quote.observedBalance)
+                            assertTrue(quote.estimatedFee.signum() > 0 && quote.estimatedFee <= cap)
+                            assertEquals(quote.amount + quote.estimatedFee, quote.estimatedDebit)
+                            assertEquals(quote.observedBalance - quote.estimatedDebit, quote.estimatedBalance)
+                            assertTrue(quote.expiresAt <= resumedFunding.expiresAt)
+                            val refused = assertThrows(IllegalStateException::class.java) {
+                                runBlocking { repository.estimateQuantumProbeFunding(wallet, funded.operation, BigInteger.ONE) }
+                            }
+                            assertEquals("Probe funding estimate exceeds approved limit", refused.message)
+                            assertEquals(funded, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+                            assertEquals(fundingBalance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
+                            probePublic.put("funding_quote_verified", true).put("funding_quote_fee", quote.estimatedFee.toString())
+                                .put("funding_quote_debit", quote.estimatedDebit.toString()).put("funding_quote_deadline", quote.expiresAt)
+                        }
                     }
                 }
             }
