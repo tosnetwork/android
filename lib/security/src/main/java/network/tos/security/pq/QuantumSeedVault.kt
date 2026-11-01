@@ -6,6 +6,11 @@ import java.nio.ByteBuffer
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import java.security.MessageDigest
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
+import org.ton.boc.BagOfCells
+import org.ton.mnemonic.Mnemonic
 
 /** Role-specific encrypted seed custody. Authentication and chain authorization belong to the wallet service.
  * Separate rescue custody requires storing its record on the independent device. No fee state is stored here. */
@@ -95,6 +100,37 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
     }
     fun publicKey(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey): ByteArray =
         withSeed(id, role, context, wrappingKey) { QuantumCrypto.publicKey(role, it) }
+
+    /** Original native 24-word creation only; imported/rotated roles retain their own stored provenance.
+     * Caller authenticates and proves this birth/profile/current authority before and after export.
+     * Only ciphertext leaves the vault. Both roles must exist in authenticated original 0/0 custody. */
+    fun encryptedCreationBackup(id: String, wrappingKey: SecretKey, birth: TosQuantumSelfPayIdentity,
+                                authority: QuantumSelfPayAuthority, rootHash: ByteArray, fileHash: ByteArray,
+                                words: List<String>, password: CharArray): ByteArray = synchronized(writerLock) {
+        var templateBytes = ByteArray(0)
+        val roles = mutableListOf<QuantumBackupPayload.Role>()
+        try {
+            require(password.size in 12..1024)
+            require(Character.codePointCount(password, 0, password.size) >= 12)
+            require(words.size == 24 && words.all { it.matches(Regex("[a-z]+")) })
+            require(rootHash.size == 32 && fileHash.size == 32)
+            birth.requireNetwork(authority.globalId, authority.namespace)
+            val dictionary = Mnemonic.mnemonicWords()
+            val indices = words.map { word -> dictionary.indexOf(word).also { require(it >= 0) } }.toIntArray()
+            try {
+                for (role in QuantumRole.entries) {
+                    val key = if (role == QuantumRole.PRIMARY) authority.primaryKey else authority.rescueKey
+                    roles += QuantumBackupPayload.Role(role.id, 0, 0, ByteArray(role.seedSize),
+                        MessageDigest.getInstance("SHA-256").digest(key), 2, indices.copyOf(), byteArrayOf(), byteArrayOf())
+                }
+            } finally { indices.fill(0) }
+            templateBytes = QuantumBackupPayload.encodeUnverified(authority.globalId, rootHash, fileHash,
+                authority.namespace, birth.toBoc(), BagOfCells(authority.cell).toByteArray(), roles)
+            QuantumBackupPayload.parseUnverified(templateBytes).use { template ->
+                encryptedBackup(id, wrappingKey, template, authority.primaryKey, authority.rescueKey, password)
+            }
+        } finally { templateBytes.fill(0); password.fill('\u0000'); roles.forEach { it.wipe() } }
+    }
 
     /** Internal export primitive. Caller authenticates and validates birth/snapshot before and after.
      * Template seeds are ignored: only protected custody supplies the exported role seeds.

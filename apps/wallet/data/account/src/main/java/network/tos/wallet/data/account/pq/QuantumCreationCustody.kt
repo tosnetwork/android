@@ -27,6 +27,15 @@ internal class QuantumCreationCustody internal constructor(
 
     private val roles = QuantumSeedVault(preferences)
     private val recovery = QuantumRecoveryMaterialVault(preferences)
+    fun exportCreationMaterial(record: QuantumCreationRecord, authority: QuantumSelfPayAuthority,
+                               password: CharArray): ByteArray = synchronized(lock) {
+        try {
+            val words = checkNotNull(mnemonic(record.id)) { "Original recovery phrase unavailable" }.toList()
+            fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            roles.encryptedCreationBackup(record.id.toString(), wrappingKey(false), record.identity, authority,
+                hex(record.profile.rootHash), hex(record.profile.fileHash), words, password)
+        } finally { password.fill('\u0000') }
+    }
     fun storeRecoveryMaterial(id: UUID, encrypted: ByteArray, password: CharArray, inspection: QuantumBackupInspection) = synchronized(lock) {
         try { recovery.storeValidated(encrypted, password, inspection, id, wrappingKey(true)) }
         finally { password.fill('\u0000') }

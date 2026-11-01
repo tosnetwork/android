@@ -722,6 +722,61 @@ class AccountRepository(
         return wallet
     }
 
+    /** Original local creation only. Caller authenticates; no plaintext material crosses this API.
+     * Imported/rotated records must use their retained per-role provenance, not this original 0/0 route. */
+    suspend fun exportQuantumCreationBackup(id: String, password: CharArray): ByteArray {
+        var acquired = false
+        var ownedPassword = CharArray(0)
+        var output = ByteArray(0)
+        try {
+            require(password.size in 12..1024)
+            require(Character.codePointCount(password, 0, password.size) >= 12)
+            check(quantumBackupImport.tryLock()) { "Another backup operation is in progress" }
+            acquired = true
+            ownedPassword = password.copyOf()
+            return withContext(Dispatchers.IO) {
+                quantumCreationMutex.withLock {
+                    currentCoroutineContext().ensureActive()
+                    val uuid = UUID.fromString(id)
+                    require(uuid.toString() == id)
+                    val wallet = checkNotNull(database.getAccount(id))
+                    val record = QuantumCreationRecord.load(context, uuid)
+                    require(wallet.type == Wallet.Type.Default && wallet.quantumIdentity == record.identity)
+                    check(QuantumRecoveryRecord.findIdentity(context, record.identity) == null) {
+                        "Recovered material requires its original provenance export route"
+                    }
+                    val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
+                    fun approved(observation: QuantumAccountReader.Observation): network.tos.blockchain.ton.contract.QuantumSelfPayAuthority {
+                        val now = System.currentTimeMillis() / 1000
+                        observation.requireFresh(now)
+                        require(observation.id == uuid && observation.identity == record.identity && sameProfile(observation.profile, record.profile))
+                        val namespace = QuantumSelfPayNetwork.recoveryNamespace(observation.network, record.profile.globalId, now)
+                        require(namespace.contentEquals(record.identity.wallet.initialAuthority.namespace))
+                        return when (val status = observation.snapshot.status) {
+                            is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active -> status.state.authority
+                            network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Absent,
+                            network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Uninitialized -> record.identity.wallet.initialAuthority
+                            is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Frozen -> error("Frozen authority unavailable")
+                        }
+                    }
+                    val before = reader.observe(uuid, record.identity, intArrayOf(8, 19, 48))
+                    val authority = approved(before)
+                    currentCoroutineContext().ensureActive()
+                    output = quantumCustody.exportCreationMaterial(record, authority, ownedPassword.copyOf())
+                    val after = reader.observe(uuid, record.identity, intArrayOf(8, 19, 48))
+                    check(approved(after).hash.contentEquals(authority.hash)) { "Authority changed during backup export" }
+                    before.requireFresh(System.currentTimeMillis() / 1000)
+                    currentCoroutineContext().ensureActive()
+                    output
+                }
+            }
+        } catch (error: Throwable) { output.fill(0); throw error }
+        finally {
+            password.fill('\u0000'); ownedPassword.fill('\u0000')
+            if (acquired) quantumBackupImport.unlock()
+        }
+    }
+
     /** Encrypted-file recovery preserves the birth identity and publishes with ordinary payment isolated. */
     data class QuantumBackupPreview(val address: String, val containsPrimary: Boolean, val containsRescue: Boolean)
 
