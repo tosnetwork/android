@@ -424,6 +424,51 @@ class QuantumPaymentOutboxTest {
                 assertTrue(reopened.requiresRecovery(identity))
                 assertArrayEquals(CharArray(successPassword.size), successPassword)
                 assertEquals(3, writes)
+                val retained = material.inspectStored(stored.id, backup.birth, backup.encryptedDigest, wrapping,
+                    profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+                var exportCalls = 0
+                val selection = mutableListOf(network.tos.security.pq.QuantumRole.PRIMARY)
+                val exportPassword = "public second export password".toCharArray()
+                val exported = reopened.exportBackupImport(retained, observation, selection, exportPassword, { clock }) { operation, current, roles, pass ->
+                    exportCalls += 1
+                    selection.clear(); selection.add(network.tos.security.pq.QuantumRole.RESCUE)
+                    assertEquals(listOf(network.tos.security.pq.QuantumRole.PRIMARY), roles)
+                    material.exportEncrypted(operation, retained, wrapping, current, roles, pass)
+                }
+                assertArrayEquals(CharArray(exportPassword.size), exportPassword)
+                val exportedInspection = QuantumBackupInspection.inspect(exported, "public second export password".toCharArray(),
+                    profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+                assertEquals(identity.address, exportedInspection.birth.address)
+                assertEquals(network.tos.security.pq.QuantumRole.PRIMARY, exportedInspection.roles.single().role)
+                var discarded = byteArrayOf()
+                val expiredPassword = "public second export password".toCharArray()
+                assertThrows(Exception::class.java) {
+                    reopened.exportBackupImport(retained, observation, listOf(network.tos.security.pq.QuantumRole.PRIMARY),
+                        expiredPassword, { clock }) { operation, current, roles, pass ->
+                        exportCalls += 1
+                        material.exportEncrypted(operation, retained, wrapping, current, roles, pass).also {
+                            discarded = it; clock += 301
+                        }
+                    }
+                }
+                assertEquals(now + 301, clock)
+                assertTrue(discarded.isNotEmpty() && discarded.all { it == 0.toByte() })
+                assertArrayEquals(CharArray(expiredPassword.size), expiredPassword)
+                clock = now
+                assertThrows(IllegalArgumentException::class.java) {
+                    reopened.exportBackupImport(retained, observation, listOf(network.tos.security.pq.QuantumRole.RESCUE),
+                        "public second export password".toCharArray(), { clock }) { _, _, _, _ ->
+                        exportCalls += 1; error("Unavailable role reached custody")
+                    }
+                }
+                assertEquals(2, exportCalls)
+                assertTrue(reopened.requiresRecovery(identity))
+                val marker = File(journal.parentFile, journal.nameWithoutExtension + ".recovery")
+                assertTrue(marker.delete())
+                assertTrue(reopened.requiresRecovery(identity))
+                assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
+                assertEquals(stored.id, reopened.prepareBackupImport(backup, profile).id)
+                assertTrue(marker.exists())
             } finally { check(materialPrefs.edit().clear().commit()) }
         } finally {
             journal.delete()

@@ -8,15 +8,62 @@ import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
+import org.ton.boc.BagOfCells
 
 /** Complete recovery material at rest. App authentication and durable isolation belong to the service.
  * No public plaintext getter. The caller supplies the existing device wrapping key. */
 class QuantumRecoveryMaterialVault(private val prefs: SharedPreferences) {
     private fun name(id: UUID) = "quantum.recovery.material.v1.$id"
-    private fun aad(id: UUID, inspection: QuantumBackupInspection) =
-        "TOSQAM01".toByteArray(Charsets.US_ASCII) + ByteBuffer.allocate(16)
+    private fun aad(id: UUID, birthHash: ByteArray, digest: ByteArray): ByteArray {
+        require(birthHash.size == 32 && digest.size == 32)
+        return "TOSQAM01".toByteArray(Charsets.US_ASCII) + ByteBuffer.allocate(16)
             .putLong(id.mostSignificantBits).putLong(id.leastSignificantBits).array() +
-            inspection.birth.cell.hash().toByteArray() + inspection.encryptedDigest
+            birthHash + digest
+    }
+    private fun aad(id: UUID, inspection: QuantumBackupInspection) =
+        aad(id, inspection.birth.cell.hash().toByteArray(), inspection.encryptedDigest)
+
+    /** Returns only verified public metadata. Does not need the original file password. */
+    fun inspectStored(id: UUID, birth: TosQuantumSelfPayIdentity, originalDigest: ByteArray, wrappingKey: SecretKey,
+                      globalId: Int, root: ByteArray, file: ByteArray, namespace: ByteArray): QuantumBackupInspection {
+        require(originalDigest.size == 32)
+        val digest = originalDigest.copyOf()
+        return withStoredRecord(id, birth.cell.hash().toByteArray(), digest, wrappingKey) { plaintext ->
+            QuantumBackupInspection.inspectPlaintext(plaintext, digest, globalId, root, file, namespace).also {
+                require(it.birth == birth)
+            }
+        }
+    }
+
+    /** Service supplies fresh verified authority and explicitly selects matching declared roles.
+     * Birth bytes and original provenance are retained. Only ciphertext crosses the boundary. */
+    fun exportEncrypted(id: UUID, inspection: QuantumBackupInspection, wrappingKey: SecretKey,
+                        authority: QuantumSelfPayAuthority, selected: List<QuantumRole>, password: CharArray): ByteArray {
+        try {
+            require(selected.size in 1..2)
+            val selection = selected.toList()
+            require(selection.size in 1..2 && selection.toSet().size == selection.size)
+            return withStoredPayload(id, inspection, wrappingKey) { plaintext ->
+                inspection.validatePayload(plaintext)
+                QuantumBackupPayload.parseUnverified(plaintext).use { original ->
+                    require(authority.globalId == original.globalId && authority.namespace.contentEquals(original.namespace))
+                    val roles = original.roles.filter { role -> selection.any { it.id == role.role } }
+                    require(roles.size == selection.size) { "Selected role is not stored" }
+                    val output = QuantumBackupPayload.encodeUnverified(original.globalId, original.rootHash, original.fileHash,
+                        original.namespace, original.birthBoc, BagOfCells(authority.cell).toByteArray(), roles)
+                    try {
+                        QuantumBackupPayload.parseUnverified(output).use { bound ->
+                            bound.validateSnapshotKeys(authority.primaryKey, authority.rescueKey)
+                            bound.validateProvenance()
+                        }
+                        QuantumBackupCipher.encrypt(output, password)
+                    } finally { output.fill(0) }
+                }
+            }
+        } finally { password.fill('\u0000') }
+    }
 
     fun storeValidated(encrypted: ByteArray, password: CharArray, inspection: QuantumBackupInspection,
                        id: UUID, wrappingKey: SecretKey) {
@@ -53,7 +100,11 @@ class QuantumRecoveryMaterialVault(private val prefs: SharedPreferences) {
 
     /** Internal custody scope only; never exposed to wallet UI or as a general seed getter. */
     internal fun <T> withStoredPayload(id: UUID, inspection: QuantumBackupInspection, wrappingKey: SecretKey,
-                                       body: (ByteArray) -> T): T = synchronized(lock) {
+                                       body: (ByteArray) -> T): T =
+        withStoredRecord(id, inspection.birth.cell.hash().toByteArray(), inspection.encryptedDigest, wrappingKey, body)
+
+    private fun <T> withStoredRecord(id: UUID, birthHash: ByteArray, digest: ByteArray, wrappingKey: SecretKey,
+                                     body: (ByteArray) -> T): T = synchronized(lock) {
         val text = checkNotNull(prefs.getString(name(id), null))
         require(text.length <= 4 * ((262173 + 2) / 3))
         val record = Base64.decode(text, Base64.NO_WRAP)
@@ -61,7 +112,7 @@ class QuantumRecoveryMaterialVault(private val prefs: SharedPreferences) {
             require(record.size in 30..262173 && record[0] == 1.toByte())
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, wrappingKey, GCMParameterSpec(128, record.copyOfRange(1, 13)))
-            cipher.updateAAD(aad(id, inspection))
+            cipher.updateAAD(aad(id, birthHash, digest))
             val plaintext = cipher.doFinal(record, 13, record.size - 13)
             try { body(plaintext) } finally { plaintext.fill(0) }
         } finally { record.fill(0) }

@@ -41,17 +41,23 @@ class QuantumBackupInspection private constructor(
                 // Bind the journal digest to exactly the owned ciphertext bytes that were authenticated.
                 val record = encrypted.copyOf()
                 plaintext = QuantumBackupCipher.decrypt(record, password)
-                return QuantumBackupPayload.parseUnverified(plaintext).use { payload ->
-                    val identity = payload.validateIdentity(expectedGlobalId, expectedRoot, expectedFile, expectedNamespace)
-                    payload.validateSnapshotKeys(identity.snapshot.primaryKey, identity.snapshot.rescueKey)
-                    payload.validateProvenance()
-                    QuantumBackupInspection(identity.birth, identity.snapshot, payload.roles.map {
-                        Role(if (it.role == 1) QuantumRole.PRIMARY else QuantumRole.RESCUE,
-                            it.account, it.generation, it.sourceProfile)
-                    }, payload.rootHash.copyOf(), payload.fileHash.copyOf(),
-                        java.security.MessageDigest.getInstance("SHA-256").digest(record))
-                }
+                return inspectPlaintext(plaintext, java.security.MessageDigest.getInstance("SHA-256").digest(record),
+                    expectedGlobalId, expectedRoot, expectedFile, expectedNamespace)
             } finally { plaintext.fill(0); password.fill('\u0000') }
+        }
+        internal fun inspectPlaintext(plaintext: ByteArray, digest: ByteArray, expectedGlobalId: Int,
+                                      expectedRoot: ByteArray, expectedFile: ByteArray,
+                                      expectedNamespace: ByteArray): QuantumBackupInspection {
+            require(digest.size == 32)
+            return QuantumBackupPayload.parseUnverified(plaintext).use { payload ->
+                val identity = payload.validateIdentity(expectedGlobalId, expectedRoot, expectedFile, expectedNamespace)
+                payload.validateSnapshotKeys(identity.snapshot.primaryKey, identity.snapshot.rescueKey)
+                payload.validateProvenance()
+                QuantumBackupInspection(identity.birth, identity.snapshot, payload.roles.map {
+                    Role(if (it.role == 1) QuantumRole.PRIMARY else QuantumRole.RESCUE,
+                        it.account, it.generation, it.sourceProfile)
+                }, payload.rootHash.copyOf(), payload.fileHash.copyOf(), digest.copyOf())
+            }
         }
     }
 }

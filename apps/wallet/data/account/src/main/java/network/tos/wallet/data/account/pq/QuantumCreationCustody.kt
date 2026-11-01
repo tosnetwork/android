@@ -10,6 +10,8 @@ import network.tos.security.pq.QuantumSeedVault
 import network.tos.security.pq.QuantumPurpose
 import network.tos.security.pq.QuantumRecoveryMaterialVault
 import network.tos.security.pq.QuantumBackupInspection
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
 import java.util.UUID
 import javax.crypto.SecretKey
 
@@ -27,6 +29,17 @@ internal class QuantumCreationCustody internal constructor(
     private val recovery = QuantumRecoveryMaterialVault(preferences)
     fun storeRecoveryMaterial(id: UUID, encrypted: ByteArray, password: CharArray, inspection: QuantumBackupInspection) = synchronized(lock) {
         try { recovery.storeValidated(encrypted, password, inspection, id, wrappingKey(true)) }
+        finally { password.fill('\u0000') }
+    }
+    fun inspectRecoveryMaterial(id: UUID, birth: TosQuantumSelfPayIdentity, digest: ByteArray,
+                                profile: QuantumNetworkProfile): QuantumBackupInspection = synchronized(lock) {
+        fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        recovery.inspectStored(id, birth, digest, wrappingKey(false), profile.globalId,
+            hex(profile.rootHash), hex(profile.fileHash), birth.wallet.initialAuthority.namespace)
+    }
+    fun exportRecoveryMaterial(id: UUID, inspection: QuantumBackupInspection, authority: QuantumSelfPayAuthority,
+                               selected: List<QuantumRole>, password: CharArray): ByteArray = synchronized(lock) {
+        try { recovery.exportEncrypted(id, inspection, wrappingKey(false), authority, selected, password) }
         finally { password.fill('\u0000') }
     }
     private fun mnemonicKey(id: UUID) = "quantum.mnemonic.v1.$id"

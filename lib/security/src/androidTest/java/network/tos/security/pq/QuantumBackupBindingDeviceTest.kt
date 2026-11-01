@@ -13,6 +13,7 @@ import java.util.UUID
 import javax.crypto.KeyGenerator
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayWallet
@@ -59,6 +60,52 @@ class QuantumBackupBindingDeviceTest {
                     restored.validateProvenance()
                 }
             }
+            encrypted.fill(0); plaintext.fill(0) // Re-export must not require the original file/password.
+            val retained = vault.inspectStored(id, inspection.birth, inspection.encryptedDigest, wrapping,
+                -239, ByteArray(32) { 3 }, ByteArray(32) { 4 }, network)
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.inspectStored(id, inspection.birth, ByteArray(31), wrapping,
+                    -239, ByteArray(32) { 3 }, ByteArray(32) { 4 }, network)
+            }
+            val refreshed = QuantumSelfPayAuthority(-239, network, primary,
+                QuantumCrypto.publicKey(QuantumRole.RESCUE, ByteArray(48) { 9 }))
+            val newPassword = "new public material password".toCharArray()
+            val exported = vault.exportEncrypted(id, retained, wrapping, refreshed, listOf(QuantumRole.PRIMARY), newPassword)
+            assertArrayEquals(CharArray(newPassword.size), newPassword)
+            for (selection in listOf(emptyList(), listOf(QuantumRole.PRIMARY, QuantumRole.PRIMARY), listOf(QuantumRole.RESCUE))) {
+                val rejected = "new public material password".toCharArray()
+                assertThrows(IllegalArgumentException::class.java) {
+                    vault.exportEncrypted(id, retained, wrapping, refreshed, selection, rejected)
+                }
+                assertArrayEquals(CharArray(rejected.size), rejected)
+            }
+            val wrongPrimary = QuantumSelfPayAuthority(-239, network,
+                QuantumCrypto.publicKey(QuantumRole.PRIMARY, ByteArray(32) { 77 }), refreshed.rescueKey)
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.exportEncrypted(id, retained, wrapping, wrongPrimary, listOf(QuantumRole.PRIMARY),
+                    "new public material password".toCharArray())
+            }
+            check(prefs.edit().clear().commit())
+            val cold = QuantumBackupInspection.inspect(exported, "new public material password".toCharArray(),
+                -239, ByteArray(32) { 3 }, ByteArray(32) { 4 }, network)
+            assertEquals(inspection.birth.address, cold.birth.address)
+            assertArrayEquals(refreshed.hash, cold.snapshot.hash)
+            assertNotEquals(TosQuantumSelfPayWallet(refreshed).address, cold.birth.address)
+            val coldPrefs = app.getSharedPreferences("cold-material-${UUID.randomUUID()}", 0)
+            try {
+                val coldVault = QuantumRecoveryMaterialVault(coldPrefs)
+                val coldKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+                val coldId = UUID.randomUUID()
+                coldVault.storeValidated(exported, "new public material password".toCharArray(), cold, coldId, coldKey)
+                coldVault.withStoredPayload(coldId, cold, coldKey) { stored ->
+                    QuantumBackupPayload.parseUnverified(stored).use { restored ->
+                        assertArrayEquals(indices, restored.roles.single().wordIndices)
+                        assertArrayEquals(phrasePassword, restored.roles.single().phrasePassword)
+                        assertArrayEquals(seed, restored.roles.single().seed)
+                        restored.validateProvenance()
+                    }
+                }
+            } finally { check(coldPrefs.edit().clear().commit()) }
         } finally {
             plaintext.fill(0); entry.wipe(); master.fill(0); seed.fill(0); phrasePassword.fill(0); indices.fill(0)
             check(prefs.edit().clear().commit())

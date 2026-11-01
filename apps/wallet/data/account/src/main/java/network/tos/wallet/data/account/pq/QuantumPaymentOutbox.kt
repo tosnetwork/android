@@ -82,7 +82,14 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
             }
         }
     }
-    fun requiresRecovery(identity: TosQuantumSelfPayIdentity): Boolean = locked { recoveryIsolated(identity) }
+    fun requiresRecovery(identity: TosQuantumSelfPayIdentity): Boolean = locked { recoveryIsolated(identity) || hasImportState(identity) }
+    private fun hasImportState(identity: TosQuantumSelfPayIdentity): Boolean {
+        val canonical = importPath(identity)
+        return listOf(canonical, File(canonical.absolutePath + ".next")).any { file ->
+            try { Os.lstat(file.absolutePath); true }
+            catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) false else throw e }
+        }
+    }
 
     internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES, PROTECTED_STORED }
     internal class ImportCheckpoint(val id: UUID, val phase: ImportPhase)
@@ -138,6 +145,38 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         return result
     }
     private fun importPath(identity: TosQuantumSelfPayIdentity) = File(directory, path(identity).nameWithoutExtension + ".import")
+    internal fun exportBackupImport(backup: QuantumBackupInspection, observation: QuantumAccountReader.Observation,
+                                    selected: List<QuantumRole>, password: CharArray, now: () -> Long): ByteArray =
+        exportBackupImport(backup, observation, selected, password, now) { id, authority, roles, pass ->
+            QuantumCreationCustody(custodyContext).exportRecoveryMaterial(id, backup, authority, roles, pass)
+        }
+
+    internal fun exportBackupImport(backup: QuantumBackupInspection, observation: QuantumAccountReader.Observation,
+                                    selected: List<QuantumRole>, password: CharArray, now: () -> Long,
+                                    export: (UUID, QuantumSelfPayAuthority, List<QuantumRole>, CharArray) -> ByteArray): ByteArray {
+        var result = ByteArray(0)
+        try {
+            require(selected.size in 1..2)
+            val selection = selected.toList()
+            require(selection.size in 1..2 && selection.toSet().size == selection.size)
+            val observed = QuantumBackupRoleObservation.classify(backup, observation, now())
+            require(selection.all { role -> observed.any { it.role == role && it.match == QuantumBackupRoleObservation.Match.MATCHES_CURRENT } })
+            val authority = (observation.snapshot.status as? QuantumSelfPayAccount.Status.Active)?.state?.authority
+                ?: error("No installed authority for export")
+            val checkpoint = locked {
+                check(recoveryIsolated(backup.birth)) { "Import isolation marker is missing" }
+                checkNotNull(readImport(importPath(backup.birth), backup, observation.profile)).also {
+                    check(importPhase(it) == ImportPhase.PROTECTED_STORED)
+                }
+            }
+            observation.requireFresh(now())
+            val operation = UUID.fromString(checkpoint.getString("id"))
+            result = export(operation, authority, selection, password)
+            observation.requireFresh(now())
+            return result
+        } catch (error: Throwable) { result.fill(0); throw error }
+        finally { password.fill('\u0000') }
+    }
     internal fun storeBackupImport(encrypted: ByteArray, password: CharArray, profile: QuantumNetworkProfile,
                                    namespace: ByteArray, observation: QuantumAccountReader.Observation,
                                    now: () -> Long): ImportCheckpoint =
@@ -233,7 +272,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         return true
     }
     private fun requireKnownHistory(identity: TosQuantumSelfPayIdentity) {
-        check(!recoveryIsolated(identity)) { "Recovered wallet authorization history is unknown" }
+        check(!recoveryIsolated(identity) && !hasImportState(identity)) { "Recovered wallet authorization history is unknown" }
     }
     /** Separate lease allows pending-state reads while serializing import isolation with key access. */
     private fun <T> recoveryGate(body: () -> T): T = synchronized(recoveryMutex) {
