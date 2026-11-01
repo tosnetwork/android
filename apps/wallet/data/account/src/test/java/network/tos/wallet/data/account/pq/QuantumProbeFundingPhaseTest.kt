@@ -9,13 +9,13 @@ import java.math.BigInteger
 
 /** Envelope/phase tests only; an opaque payload never simulates authenticated restore. */
 class QuantumProbeFundingPhaseTest {
-    private fun envelope(phase: Int? = null, signature: ByteArray = ByteArray(0)): ByteArray =
+    private fun envelope(phase: Int? = null, signature: ByteArray = ByteArray(0), snapshotSize: Int = 1): ByteArray =
         ByteArrayOutputStream().also { buffer -> DataOutputStream(buffer).use { out ->
             val id = UUID(1, 2)
             out.writeInt(if (phase == null) 0x51504631 else 0x51504632)
             out.writeLong(id.mostSignificantBits); out.writeLong(id.leastSignificantBits)
             if (phase != null) out.writeByte(phase)
-            out.writeInt(1); out.writeByte(7)
+            out.writeInt(snapshotSize); out.write(ByteArray(snapshotSize) { 7 })
             if (phase != null) { out.writeInt(signature.size); out.write(signature) }
         } }.toByteArray()
     @Test fun oldReservedEncodingIsRetainedForExactCompareAndUpdate() {
@@ -166,5 +166,14 @@ class QuantumProbeFundingPhaseTest {
             completion().also { it[72] = 1 })) {
             assertThrows(IllegalArgumentException::class.java) { submitting.finishCompletion(record) }
         }
+    }
+    @Test fun signingBudgetReservesApprovalAndCompletionBeforeAnySignature() {
+        val maximumSnapshot = 262144 - 29 - 7856 - 4 - 164 - 4 - 88
+        val reserved = QuantumProbeFundingJournal.Reservation.decode(envelope(snapshotSize = maximumSnapshot))
+        val completed = reserved.beginSigning().finishSigning(ByteArray(7856)).beginSubmission(approval())
+            .finishCompletion(completion())
+        assertEquals(262144, completed.encode().size)
+        val tooLarge = QuantumProbeFundingJournal.Reservation.decode(envelope(snapshotSize = maximumSnapshot + 1))
+        assertThrows(IllegalArgumentException::class.java) { tooLarge.beginSigning() }
     }
 }

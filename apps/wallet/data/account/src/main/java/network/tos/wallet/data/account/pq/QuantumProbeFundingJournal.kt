@@ -263,7 +263,8 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
         }
     companion object {
         private const val MAX_FILE = 262144
-        private const val MAX_SNAPSHOT = MAX_FILE - 29 - 7856
+        // Reserve every later envelope field before entering durable SIGNING.
+        private const val MAX_SNAPSHOT = MAX_FILE - 29 - 7856 - 4 - QuantumProbeFundingApproval.SIZE - 4 - 88
     }
 }
 
