@@ -1000,6 +1000,13 @@ class QuantumCreationUiTest {
         assertEquals(quote.amount.toString(), output.amountNano); assertEquals(quote.probeBodyHash, output.bodyHash)
         assertFalse(output.bounced || output.otherCurrencies); assertEquals(false, output.bounce)
         val probe = checkNotNull(verified); assertTrue(probe.verified); assertEquals(quote.address, probe.address)
+        val fundingOutcome = runBlocking { repository.readQuantumProbeFundingOutcome(wallet, saved.operation) }
+        assertEquals(network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader.Status.Verified, fundingOutcome.status)
+        assertEquals(tx.hash, fundingOutcome.transactionHash)
+        assertEquals(true, fundingOutcome.currentStateMatchesExpected)
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { repository.readQuantumProbeFundingOutcome(wallet, java.util.UUID.randomUUID()) }
+        }
         val after = runBlocking { repository.readQuantumAccount(wallet) }
         val state = (after.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
         val expected = network.tos.blockchain.ton.contract.QuantumSelfPayState(prior.authority, prior.walletId,

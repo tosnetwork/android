@@ -807,6 +807,20 @@ class AccountRepository(
 
     data class RecoveryProbeVerification(val address: String, val exists: Boolean, val verified: Boolean,
                                          val checkpointTime: Long, val balance: BigInteger?)
+    /** Historical funding outcome only; leaves the journal and payment isolation unchanged. */
+    suspend fun readQuantumProbeFundingOutcome(wallet: WalletEntity, operation: UUID):
+        network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader.Result = withContext(Dispatchers.IO) {
+        val actual = checkNotNull(database.getAccount(wallet.id))
+        require(actual.type == Wallet.Type.Default && actual.identity == wallet.identity)
+        val identity = requireNotNull(actual.quantumIdentity)
+        val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+        require(record.id.toString() == actual.id && record.identity == identity)
+        val endpoint = quantumPaymentEndpoint()
+        val transport = QuantumProofHttpTransport(endpoint, quantumHttpClient)
+        val history = QuantumHistoryReader(QuantumAccountReader(context, transport), QuantumHistoryHttpTransport(endpoint, quantumHttpClient))
+        network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader(context, history, transport)
+            .read(record.id, identity, operation)
+    }
     /** Fresh same-checkpoint observation only. This does not install keys or permit migration/payment. */
     suspend fun readQuantumRecoveryProbeVerification(wallet: WalletEntity): RecoveryProbeVerification = withContext(Dispatchers.IO) {
         val actual = checkNotNull(database.getAccount(wallet.id))
