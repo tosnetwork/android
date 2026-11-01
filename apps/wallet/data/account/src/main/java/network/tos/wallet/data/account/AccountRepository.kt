@@ -652,6 +652,30 @@ class AccountRepository(
         }
     }
 
+    /** Native local estimate only. Caller must separately confirm before any future broadcast. */
+    suspend fun estimateQuantumRecoveryControl(wallet: WalletEntity, maximumEstimatedFee: BigInteger):
+        network.tos.wallet.data.account.pq.QuantumRecoveryControlQuote = runInterruptible(Dispatchers.IO) {
+        require(maximumEstimatedFee.signum() > 0 && maximumEstimatedFee.bitLength() <= 120)
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+        check(record.id.toString() == wallet.id)
+        val journal = network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context)
+        val entry = checkNotNull(journal.pending(identity))
+        check(entry.walletId == record.id && sameProfile(entry.profile, record.profile))
+        check(QuantumPaymentOutbox(context).requiresRecovery(identity))
+        val transport = QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient)
+        val observation = QuantumAccountReader(context, transport).observe(record.id, identity, intArrayOf(8, 19))
+        entry.requireCurrent(observation, System.currentTimeMillis() / 1000)
+        val request = org.json.JSONObject().put("mode", "live").put("account", "0:" + identity.address.address.toByteArray()
+            .joinToString("") { "%02x".format(it) }).put("max_age_seconds", 300).toString().toByteArray()
+        val simulation = network.tos.security.pq.QuantumProofSession(context, record.id, record.profile.anchor())
+            .simulate(request, System.currentTimeMillis() / 1000, entry.signedMessage(), transport)
+        network.tos.wallet.data.account.pq.QuantumRecoveryControlQuote(entry, simulation, request,
+            System.currentTimeMillis() / 1000, maximumEstimatedFee).also {
+            it.requireFresh(checkNotNull(journal.pending(identity)), System.currentTimeMillis() / 1000)
+        }
+    }
+
     private fun quantumPaymentEndpoint() = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
 
     private fun quantumPayments(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumPaymentCoordinator {

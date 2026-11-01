@@ -272,7 +272,8 @@ def main():
         (a.out / 'result.json').write_text(json.dumps({'passed': True, 'same_apk': True,
             'actual_uninstall': True, 'same_address_identity_and_keys': True,
             'encrypted_file': a.encrypted_backup, 'recovery_isolation_retained': a.encrypted_backup,
-            'recovery_control_signed_and_restart_verified': a.recovery_control_signing, **journey}, indent=2))
+            'recovery_control_signed_and_restart_verified': a.recovery_control_signing,
+            'recovery_control_quote_verified': a.recovery_control_signing, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

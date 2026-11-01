@@ -416,7 +416,7 @@ class QuantumCreationUiTest {
         assertFalse(runBlocking { GlobalContext.get().get<PasscodeManager>().hasPinCode() })
         assertFalse(File(context.noBackupFilesDir, "quantum-creation").exists())
         assertFalse(File(context.noBackupFilesDir, "quantum-recovery-records").exists())
-        assertThrows(Exception::class.java) { QuantumDeviceKey.get(false) }
+        assertEquals("R2 device wrapping key absent", assertThrows(IllegalStateException::class.java) { QuantumDeviceKey.get(false) }.message)
         val args = InstrumentationRegistry.getArguments()
         val profile = QuantumNetworkProfile(requireNotNull(args.getString("quantumGlobalId")).toInt(),
             requireNotNull(args.getString("quantumRootHash")), requireNotNull(args.getString("quantumFileHash")))
@@ -533,6 +533,11 @@ class QuantumCreationUiTest {
         val signed = checkNotNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
         assertEquals("SIGNED", signed.phase); assertEquals(operation, signed.operation)
         assertEquals(plan.request.digest.joinToString("") { "%02x".format(it) }, signed.requestHash)
+        val estimate = runBlocking { repository.estimateQuantumRecoveryControl(wallet, java.math.BigInteger("1000000000")) }
+        assertEquals(operation, estimate.operation); assertEquals(signed.requestHash, estimate.requestHash)
+        assertEquals(before.balance, estimate.observedBalance)
+        assertEquals(estimate.observedBalance - estimate.estimatedBalance, estimate.estimatedFee)
+        assertTrue(estimate.estimatedFee.signum() >= 0 && estimate.estimatedFee <= java.math.BigInteger("1000000000"))
         assertThrows(IllegalStateException::class.java) { runBlocking { repository.signQuantumRecoveryControl(plan, operation) } }
         val after = runBlocking { repository.readQuantumAccount(wallet) }
         val afterState = (after.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
@@ -542,7 +547,8 @@ class QuantumCreationUiTest {
         File(context.cacheDir, "quantum-recovery-control-public.json").writeText(org.json.JSONObject()
             .put("operation", operation.toString()).put("request_hash", signed.requestHash).put("phase", signed.phase)
             .put("state_hash", afterState.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
-            .put("balance", after.balance.toString()).put("cancelled_before_signing", true).toString())
+            .put("balance", after.balance.toString()).put("cancelled_before_signing", true)
+            .put("estimated_fee", estimate.estimatedFee.toString()).put("quote_expires", estimate.expiresAt).toString())
     }
 
     @Test fun signedRecoveryControlSurvivesProcessRestartWithoutUnlockOrBroadcast() {

@@ -9,6 +9,7 @@ import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumPurpose
 import network.tos.security.pq.QuantumRole
 import org.ton.boc.BagOfCells
+import org.ton.cell.buildCell
 import java.io.*
 import java.nio.channels.OverlappingFileLockException
 import java.util.UUID
@@ -30,6 +31,22 @@ internal class QuantumRecoveryControlJournal(
         private val signatureBytes = signature.copyOf()
         val requestHash: ByteArray get() = authorization.cell.hash().toByteArray()
         val deadline: Long get() = authorization.deadline
+        val kind: QuantumPreparedRecoveryControl.Kind get() = if (authorization.kind == 3)
+            QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY else QuantumPreparedRecoveryControl.Kind.REQUIRE_RESCUE
+        internal fun signedMessage(): ByteArray {
+            check(phase == Phase.SIGNED)
+            val body = buildCell { storeRef(authorization.cell); storeRef(TosPqWallet.byteChain(signatureBytes)) }
+            return BagOfCells(identity.wallet.external(body, false)).toByteArray()
+        }
+        internal fun requireCurrent(observation: QuantumAccountReader.Observation, now: Long) {
+            require(observation.id == walletId && observation.identity == identity && sameProfile(observation.profile, profile))
+            observation.requireFresh(now)
+            QuantumSelfPayNetwork.requireRecoveryBase(observation.network, profile.globalId, now)
+            observation.network.requireSameCheckpoint(observation.proof)
+            val current = (QuantumSelfPayAccount.bind(identity, observation.proof, now, 300).snapshot(now).status
+                as? QuantumSelfPayAccount.Status.Active)?.state ?: error("Recovery control account no longer active")
+            check(current.cell.hash() == state.cell.hash() && now in 1 until deadline) { "Recovery control state or deadline changed" }
+        }
         private val authorization get() = QuantumStoredSelfPayRequest.parse(requestBytes)
         private val state get() = QuantumSelfPayState.parse(BagOfCells(stateBytes).roots.single())
         init {
