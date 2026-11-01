@@ -594,6 +594,17 @@ class QuantumCreationUiTest {
             assertEquals(network.tos.wallet.data.account.pq.QuantumRecoveryControlOutcomeReader.Status.Executed, controlOutcome.status)
             assertEquals(transaction.hash, controlOutcome.transactionHash)
             assertEquals(transaction.feesNano, controlOutcome.feesNano)
+            assertEquals(true, controlOutcome.currentStateMatchesExpected)
+            if (InstrumentationRegistry.getArguments().getString("quantumCompleteRecoveryControl") == "true") {
+                runBlocking { repository.completeQuantumRecoveryControl(wallet, controlOutcome) }
+                finalStatus = checkNotNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
+                assertEquals("COMPLETED", finalStatus.phase)
+                assertEquals(signed.operation, finalStatus.operation)
+                assertEquals(signed.requestHash, finalStatus.requestHash)
+                assertEquals(signed.messageRootHash, finalStatus.messageRootHash)
+                assertThrows(IllegalStateException::class.java) { runBlocking { repository.submitQuantumRecoveryControl(estimate) } }
+                assertThrows(IllegalStateException::class.java) { runBlocking { repository.completeQuantumRecoveryControl(wallet, controlOutcome) } }
+            }
             assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(identity))
         }
         File(context.cacheDir, "quantum-recovery-control-public.json").writeText(org.json.JSONObject()
@@ -616,6 +627,11 @@ class QuantumCreationUiTest {
         val state = (actual.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
         assertEquals(expected.getString("state_hash"), state.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
         assertEquals(expected.getString("balance"), actual.balance.toString())
+        if (signed.phase == "COMPLETED") {
+            val replacement = runBlocking { repository.prepareQuantumRecoveryControl(wallet,
+                network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY) }
+            assertThrows(IllegalStateException::class.java) { runBlocking { repository.reserveQuantumRecoveryControl(replacement) } }
+        }
     }
 
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
