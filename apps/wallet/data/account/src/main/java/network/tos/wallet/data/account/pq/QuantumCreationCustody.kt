@@ -97,6 +97,11 @@ internal class QuantumCreationCustody internal constructor(
         state: network.tos.blockchain.ton.contract.QuantumSelfPayState, request: ByteArray, now: Long): ByteArray = synchronized(lock) {
         recovery.signRecoveryControl(id, inspection, wrappingKey(false), state, request, now)
     }
+    fun signSuccessorMigration(id: UUID, inspection: QuantumBackupInspection,
+        state: network.tos.blockchain.ton.contract.QuantumSelfPayState, successor: QuantumSelfPayAuthority,
+        request: ByteArray, now: Long): ByteArray = synchronized(lock) {
+        recovery.signSuccessorMigration(id, inspection, wrappingKey(false), state, successor, request, now)
+    }
     fun signProbeFunding(id: UUID, inspection: QuantumBackupInspection,
         state: network.tos.blockchain.ton.contract.QuantumSelfPayState, successor: QuantumSelfPayAuthority,
         challenge: ByteArray, probeDeadline: Long, primary: ByteArray, rescue: ByteArray,

@@ -135,6 +135,34 @@ class QuantumRecoveryMaterialVault(private val prefs: SharedPreferences) {
         }
     }
 
+    /** Restricted same-address migration only. Caller must authenticate, verify fresh funding/probe
+     * and confirmed successor backup, then durably enter SIGNING before using this primitive. */
+    fun signSuccessorMigration(id: UUID, inspection: QuantumBackupInspection, wrappingKey: SecretKey,
+        current: QuantumSelfPayState, successor: QuantumSelfPayAuthority, requestBOC: ByteArray, now: Long,
+    ): ByteArray {
+        val birth = inspection.birth
+        require(now in 1..0xffffffffL && current.retired == 2 && successor.policy == QuantumPolicy.REQUIRED)
+        require(current.walletId == birth.wallet.walletId && current.authority.globalId == birth.wallet.initialAuthority.globalId &&
+            current.authority.namespace.contentEquals(birth.wallet.initialAuthority.namespace))
+        require(successor.globalId == current.authority.globalId && successor.namespace.contentEquals(current.authority.namespace))
+        require(!successor.primaryKey.contentEquals(current.authority.primaryKey) &&
+            !successor.rescueKey.contentEquals(current.authority.rescueKey))
+        val stored = QuantumStoredSelfPayRequest.parse(requestBOC)
+        stored.requireIdentity(birth)
+        require(stored.role == QuantumAuthRole.RESCUE && stored.kind == 4 && stored.deadline - now in 1..120)
+        val expected = TosQuantumSelfPayRequest(birth.address, current, QuantumAuthRole.RESCUE,
+            stored.deadline, QuantumSelfPayAction.Migrate(successor), now)
+        require(stored.cell.hash() == expected.request.hash()) { "Successor migration intent mismatch" }
+        return withStoredPayload(id, inspection, wrappingKey) { plaintext ->
+            inspection.validatePayload(plaintext)
+            QuantumBackupPayload.parseUnverified(plaintext).use { payload ->
+                val rescue = requireNotNull(payload.roles.singleOrNull { it.role == QuantumRole.RESCUE.id })
+                QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY, rescue.seed,
+                    current.authority.rescueKey, expected.digest)
+            }
+        }
+    }
+
     /** Restricted probe deployment only. Caller must authenticate and durably enter SIGNING first. */
     fun signProbeFunding(id: UUID, inspection: QuantumBackupInspection, wrappingKey: SecretKey,
                          current: QuantumSelfPayState, successor: QuantumSelfPayAuthority,

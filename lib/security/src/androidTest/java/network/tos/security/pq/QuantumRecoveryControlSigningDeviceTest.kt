@@ -149,6 +149,50 @@ class QuantumRecoveryControlSigningDeviceTest {
             assertThrows(IllegalArgumentException::class.java) { sign() }
         }
     }
+    @Test fun migrationSignsExactReplacementInSelfPayDomain() = fixture { vault, id, inspection, key ->
+        funding(inspection) { p ->
+            val prepared = request(inspection, p.state, QuantumSelfPayAction.Migrate(p.successor))
+            val signature = vault.signSuccessorMigration(id, inspection, key, p.state, p.successor,
+                BagOfCells(prepared.request).toByteArray(), 1000)
+            try {
+                assertTrue(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY,
+                    p.state.authority.rescueKey, prepared.digest, signature))
+                assertFalse(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP,
+                    p.state.authority.rescueKey, prepared.digest, signature))
+            } finally { signature.fill(0) }
+        }
+    }
+
+    @Test fun migrationRejectsChangedReplacementStateDeadlineAndControlRequest() = fixture { vault, id, inspection, key ->
+        funding(inspection) { p ->
+            val prepared = request(inspection, p.state, QuantumSelfPayAction.Migrate(p.successor))
+            val bytes = BagOfCells(prepared.request).toByteArray()
+            fun sign(state: QuantumSelfPayState = p.state, successor: QuantumSelfPayAuthority = p.successor,
+                request: ByteArray = bytes, now: Long = 1000) =
+                vault.signSuccessorMigration(id, inspection, key, state, successor, request, now)
+            assertThrows(IllegalArgumentException::class.java) { sign(now = 1120) }
+            assertThrows(IllegalArgumentException::class.java) { sign(now = 999) }
+            assertThrows(IllegalArgumentException::class.java) { sign(state = QuantumSelfPayState(inspection.snapshot)) }
+            assertThrows(IllegalArgumentException::class.java) { sign(state = QuantumSelfPayState(inspection.snapshot,
+                seqno = 7, retired = 2, epoch = 4u, rescueNonce = 10u)) }
+            val changed = QuantumSelfPayAuthority(3, p.successor.namespace, ByteArray(1312) { 45 },
+                p.successor.rescueKey, QuantumPolicy.REQUIRED)
+            assertThrows(IllegalArgumentException::class.java) { sign(successor = changed) }
+            val lock = request(inspection, p.state, QuantumSelfPayAction.LockPrimary)
+            assertThrows(IllegalArgumentException::class.java) { sign(request = BagOfCells(lock.request).toByteArray()) }
+        }
+    }
+
+    @Test fun primaryOnlyMaterialCannotSignMigration() = fixture(setOf(QuantumRole.PRIMARY)) { vault, id, inspection, key ->
+        funding(inspection) { p ->
+            val prepared = request(inspection, p.state, QuantumSelfPayAction.Migrate(p.successor))
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.signSuccessorMigration(id, inspection, key, p.state, p.successor,
+                    BagOfCells(prepared.request).toByteArray(), 1000)
+            }
+        }
+    }
+
     @Test fun primaryOnlyMaterialCannotFundProbe() = fixture(setOf(QuantumRole.PRIMARY)) { vault, id, inspection, key ->
         funding(inspection) { p ->
             assertThrows(IllegalArgumentException::class.java) {
