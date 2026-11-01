@@ -216,13 +216,23 @@ def main():
             command[-1:-1] = ['-e', 'quantumPrepareProbeFunding', 'true']
         def collect_failure():
             if a.prepare_probe_funding:
-                public_checkpoint = run(['shell', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-proof-failure-public.json'])
-                if len(public_checkpoint) <= 2097152:
-                    json.loads(public_checkpoint)
-                    (a.out / 'quantum-proof-failure-public.json').write_bytes(public_checkpoint)
+                for name, limit, is_json in [('quantum-proof-failure-public.json', 2097152, True),
+                                             ('quantum-ui-failure-status.txt', 65536, False)]:
+                    try:
+                        evidence = run(['shell', 'run-as', 'network.tos.wallet', 'cat', 'cache/' + name])
+                        if len(evidence) > limit:
+                            raise ValueError('Public evidence exceeds limit')
+                        if is_json:
+                            json.loads(evidence)
+                        else:
+                            evidence.decode('utf-8')
+                        (a.out / name).write_bytes(evidence)
+                    except (subprocess.SubprocessError, ValueError):
+                        pass
         if a.prepare_probe_funding:
             # A previous phase's checkpoint is not evidence for this invocation.
-            run(['shell', 'run-as', 'network.tos.wallet', 'rm', '-f', 'cache/quantum-proof-failure-public.json'])
+            run(['shell', 'run-as', 'network.tos.wallet', 'rm', '-f', 'cache/quantum-proof-failure-public.json',
+                 'cache/quantum-ui-failure-status.txt'])
         run_instrumentation(command, a.out / (method + '.log'), collect_failure)
     try:
         install()

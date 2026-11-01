@@ -80,8 +80,14 @@ class QuantumCreationUiTest {
             val statuses = matches.filter { it.contentDescription?.toString() == "quantum.payment.status" }
                 .filterIsInstance<android.widget.TextView>()
             if (statuses.isNotEmpty()) text = statuses.joinToString("\n") { it.text.toString() }
+            val recoveryViews = arrayListOf<android.view.View>()
+            activities.forEach { it.window.decorView.findViewsWithText(recoveryViews, "quantum.recovery.status",
+                android.view.View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION) }
+            val recovery = recoveryViews.filter { it.contentDescription?.toString() == "quantum.recovery.status" }
+                .filterIsInstance<android.widget.TextView>()
+            if (recovery.isNotEmpty()) text += "\nRecovery: " + recovery.joinToString("\n") { it.text.toString() }
         }
-        File(context.cacheDir, "quantum-ui-failure-status.txt").writeText(text)
+        File(context.cacheDir, "quantum-ui-failure-status.txt").writeText(text.take(16384))
     }
     private fun launch(pending: Boolean = false) {
         if (!pending) assertTrue(runBlocking { repository.getWallets().isEmpty() })

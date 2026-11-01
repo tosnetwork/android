@@ -68,6 +68,28 @@ def serve(port, upstream, output):
                             'status': status, 'request_sha256': hashlib.sha256(body).hexdigest(),
                             'response_sha256': hashlib.sha256(reply).hexdigest()}) + '\n')
                     retained += len(body) + len(reply)
+                if isinstance(parsed, dict) and parsed.get('method') in ('sendBoc', 'sendBocReturnHash'):
+                    # Submission diagnostics retain no request, BOC, response values or error text.
+                    event = {'time_ns': time.time_ns(), 'method': parsed['method'], 'http_status': status}
+                    try:
+                        if len(reply) > 65536:
+                            raise ValueError('submission response size')
+                        value = json.loads(reply)
+                        if not isinstance(value, dict):
+                            raise ValueError('not an object')
+                        error = value.get('error')
+                        code = error.get('code') if isinstance(error, dict) else None
+                        event.update({'valid_object': True, 'id_matches': value.get('id') == parsed.get('id'),
+                            'has_error': 'error' in value, 'has_result': 'result' in value,
+                            'error_code': code if type(code) is int else None})
+                    except (ValueError, TypeError):
+                        event['valid_object'] = False
+                    encoded_event = (json.dumps(event) + '\n').encode()
+                    if retained + len(encoded_event) > MAX_CAPTURE:
+                        raise ValueError('capture budget exhausted; stop trial')
+                    with (output / 'submission-metadata.jsonl').open('ab') as index:
+                        index.write(encoded_event)
+                    retained += len(encoded_event)
                 self.send_response(status)
                 self.send_header('Content-Type', content_type)
                 self.send_header('Content-Length', str(len(reply)))
