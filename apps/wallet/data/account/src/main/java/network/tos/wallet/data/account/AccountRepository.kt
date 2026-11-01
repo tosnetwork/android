@@ -605,10 +605,32 @@ class AccountRepository(
             .read(UUID.fromString(wallet.id), identity)
     }
 
-    /** Unsigned random challenge only. Secret generation, durable signing and funded verification follow separately. */
-    suspend fun prepareQuantumRecoveryProbe(wallet: WalletEntity,
-        successor: network.tos.blockchain.ton.contract.QuantumSelfPayAuthority,
-    ): network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe = runInterruptible(Dispatchers.IO) {
+    /** Caller authenticates. Stages independent roots without installing them or changing current custody. */
+    suspend fun stageQuantumSuccessorMaterial(wallet: WalletEntity, resume: Boolean = false):
+        network.tos.security.pq.QuantumSuccessorMaterialVault.Stage = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val coroutine = currentCoroutineContext()
+            coroutine.ensureActive()
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            val observed = observeCompletedRecoveryLock(actual)
+            val identity = requireNotNull(actual.quantumIdentity)
+            val state = (network.tos.wallet.data.account.pq.QuantumSelfPayAccount.bind(identity, observed.proof,
+                System.currentTimeMillis() / 1000, 300).snapshot(System.currentTimeMillis() / 1000).status
+                as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+            val staged = QuantumPaymentOutbox(context).withRecoveryControlIsolation(identity) {
+                coroutine.ensureActive()
+                quantumCustody.successorMaterial(UUID.fromString(actual.id), identity, state, observed.profile, resume)
+            }
+            // A failed final proof leaves staged material intact; explicit resume never replaces roots.
+            val fresh = observeCompletedRecoveryLock(actual)
+            require(sameProfile(observed.profile, fresh.profile))
+            coroutine.ensureActive()
+            staged
+        }
+    }
+
+    private fun observeCompletedRecoveryLock(wallet: WalletEntity): QuantumAccountReader.Observation {
         val identity = requireNotNull(wallet.quantumIdentity)
         check(QuantumPaymentOutbox(context).requiresRecovery(identity))
         val completed = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(identity))
@@ -618,10 +640,21 @@ class AccountRepository(
         val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
         val observed = reader.observe(UUID.fromString(wallet.id), identity, intArrayOf(8, 19))
         val now = System.currentTimeMillis() / 1000
+        require(sameProfile(observed.profile, completed.profile))
+        network.tos.wallet.data.account.pq.QuantumSelfPayNetwork.requireRecoveryBase(observed.network, observed.profile.globalId, now)
         val state = (network.tos.wallet.data.account.pq.QuantumSelfPayAccount.bind(identity, observed.proof, now, 300)
             .snapshot(now).status as? network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active)?.state
             ?: error("Recovery wallet no longer active")
         check(state.cell.hash() == completed.expectedControlState().cell.hash())
+        return observed
+    }
+
+    /** Unsigned random challenge only. Durable signing and funded verification follow separately. */
+    suspend fun prepareQuantumRecoveryProbe(wallet: WalletEntity,
+        successor: network.tos.blockchain.ton.contract.QuantumSelfPayAuthority,
+    ): network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe = runInterruptible(Dispatchers.IO) {
+        val observed = observeCompletedRecoveryLock(wallet)
+        val now = System.currentTimeMillis() / 1000
         val challenge = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
         network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe(observed, successor, challenge, now, 120)
     }
