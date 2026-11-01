@@ -25,6 +25,7 @@ internal class QuantumRecoveryProbeJournal(private val context: Context, private
         private val primary = primarySignature.copyOf()
         private val rescue = rescueSignature.copyOf()
         val materialDigest get() = materialBytes.copyOf()
+        val challenge get() = challengeBytes.copyOf()
         val probe: TosQuantumSelfPayProbe
         init {
             require(deadline in 1..0xffffffffL && materialBytes.size == 32 && materialBytes.any { it != 0.toByte() })

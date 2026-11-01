@@ -75,7 +75,34 @@ class QuantumSuccessorMaterialVault(private val prefs: SharedPreferences) {
 
     /** Revalidates retained derivation and retries durability after an uncertain preferences commit. */
     fun inspect(id: UUID, birth: TosQuantumSelfPayIdentity, current: QuantumSelfPayState,
-                root: ByteArray, file: ByteArray, key: SecretKey): Stage = synchronized(lock) {
+                root: ByteArray, file: ByteArray, key: SecretKey): Stage =
+        withStored(id, birth, current, root, file, key) { _, inspection -> Stage(id, inspection) }
+
+    /** Caller enters durable SIGNING first. Only new-key SELF_PAY_POP signatures are returned. */
+    fun signProbe(id: UUID, birth: TosQuantumSelfPayIdentity, current: QuantumSelfPayState,
+        root: ByteArray, file: ByteArray, key: SecretKey, materialDigest: ByteArray,
+        successor: QuantumSelfPayAuthority, challenge: ByteArray, deadline: Long, now: Long,
+    ): Pair<ByteArray, ByteArray> {
+        require(current.retired and 2 != 0 && now in 1..0xffffffffL && deadline - now in 1..3600)
+        val expectedDigest = materialDigest.copyOf(); val nonce = challenge.copyOf()
+        return withStored(id, birth, current, root, file, key) { payload, inspection ->
+            require(MessageDigest.isEqual(expectedDigest, inspection.encryptedDigest) &&
+                MessageDigest.isEqual(successor.hash, inspection.snapshot.hash)) { "Successor signing material mismatch" }
+            val probe = TosQuantumSelfPayProbe(birth.address, inspection.snapshot, nonce, deadline, now)
+            val primary = payload.roles.single { it.role == QuantumRole.PRIMARY.id }
+            val rescue = payload.roles.single { it.role == QuantumRole.RESCUE.id }
+            val first = QuantumCrypto.sign(QuantumRole.PRIMARY, QuantumPurpose.SELF_PAY_POP,
+                primary.seed, inspection.snapshot.primaryKey, probe.digest)
+            try { Pair(first, QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP,
+                rescue.seed, inspection.snapshot.rescueKey, probe.digest)) }
+            catch (error: Throwable) { first.fill(0); throw error }
+        }
+    }
+
+    private fun <T> withStored(id: UUID, birth: TosQuantumSelfPayIdentity, current: QuantumSelfPayState,
+        root: ByteArray, file: ByteArray, key: SecretKey,
+        body: (QuantumBackupPayload, QuantumBackupInspection) -> T,
+    ): T = synchronized(lock) {
         val encoded = checkNotNull(prefs.getString(name(id), null))
         require(encoded.length <= 350000)
         val record = Base64.decode(encoded, Base64.NO_WRAP)
@@ -93,7 +120,7 @@ class QuantumSuccessorMaterialVault(private val prefs: SharedPreferences) {
             require(inspection.birth == birth && inspection.snapshot.policy == QuantumPolicy.REQUIRED &&
                 inspection.roles.size == 2 && inspection.roles.all { it.sourceProfile == 3 })
             check(prefs.edit().putString(name(id), encoded).commit()) { "Successor material persistence uncertain" }
-            Stage(id, inspection)
+            QuantumBackupPayload.parseUnverified(plaintext).use { body(it, inspection) }
         } finally { record.fill(0); plaintext.fill(0) }
     }
     companion object { private val lock = Any() }

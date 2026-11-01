@@ -45,6 +45,14 @@ internal class QuantumCreationCustody internal constructor(
                 hex(record.profile.rootHash), hex(record.profile.fileHash), words, password)
         } finally { password.fill('\u0000') }
     }
+    fun signSuccessorProbe(id: UUID, birth: TosQuantumSelfPayIdentity,
+        current: network.tos.blockchain.ton.contract.QuantumSelfPayState, profile: QuantumNetworkProfile,
+        materialDigest: ByteArray, successor: QuantumSelfPayAuthority, challenge: ByteArray, deadline: Long, now: Long,
+    ): Pair<ByteArray, ByteArray> = synchronized(lock) {
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        successors.signProbe(id, birth, current, hex(profile.rootHash), hex(profile.fileHash), wrappingKey(false),
+            materialDigest, successor, challenge, deadline, now)
+    }
     fun storeRecoveryMaterial(id: UUID, encrypted: ByteArray, password: CharArray, inspection: QuantumBackupInspection) = synchronized(lock) {
         try { recovery.storeValidated(encrypted, password, inspection, id, wrappingKey(true)) }
         finally { password.fill('\u0000') }

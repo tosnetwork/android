@@ -7,6 +7,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import network.tos.blockchain.ton.contract.*
 import network.tos.security.pq.QuantumSuccessorMaterialVault
+import network.tos.security.pq.QuantumCrypto
+import network.tos.security.pq.QuantumRole
+import network.tos.security.pq.QuantumPurpose
 import network.tos.wallet.data.account.pq.QuantumCreationCustody
 import org.junit.Assert.*
 import org.junit.Test
@@ -38,6 +41,26 @@ class QuantumSuccessorMaterialTest {
             val reload = vault.inspect(id, birth, current, root, file, key)
             assertArrayEquals(authority.hash, reload.inspection.snapshot.hash)
             assertArrayEquals(staged.inspection.encryptedDigest, reload.inspection.encryptedDigest)
+            val challenge = ByteArray(32) { 7 }
+            val probe = TosQuantumSelfPayProbe(birth.address, authority, challenge, 1120, 1000)
+            val signatures = vault.signProbe(id, birth, current, root, file, key, staged.inspection.encryptedDigest,
+                authority, challenge, 1120, 1000)
+            try {
+                assertTrue(QuantumCrypto.verify(QuantumRole.PRIMARY, QuantumPurpose.SELF_PAY_POP, authority.primaryKey, probe.digest, signatures.first))
+                assertTrue(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP, authority.rescueKey, probe.digest, signatures.second))
+                assertFalse(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.POP, authority.rescueKey, probe.digest, signatures.second))
+                val other = TosQuantumSelfPayProbe(birth.address, authority, ByteArray(32) { 8 }, 1120, 1000)
+                assertFalse(QuantumCrypto.verify(QuantumRole.PRIMARY, QuantumPurpose.SELF_PAY_POP, authority.primaryKey, other.digest, signatures.first))
+            } finally { signatures.first.fill(0); signatures.second.fill(0) }
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.signProbe(id, birth, current, root, file, key, ByteArray(32) { 8 }, authority, challenge, 1120, 1000)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.signProbe(id, birth, current, root, file, key, staged.inspection.encryptedDigest, old, challenge, 1120, 1000)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                vault.signProbe(id, birth, current, root, file, key, staged.inspection.encryptedDigest, authority, challenge, 1120, 1120)
+            }
             assertThrows(IllegalStateException::class.java) { vault.generate(id, birth, current, root, file, key) }
             assertThrows(IllegalArgumentException::class.java) {
                 vault.inspect(id, birth, QuantumSelfPayState(old, retired = 2, epoch = 2u), root, file, key)
