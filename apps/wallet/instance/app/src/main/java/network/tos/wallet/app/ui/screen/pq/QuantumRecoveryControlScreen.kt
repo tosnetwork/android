@@ -23,7 +23,7 @@ import org.koin.androidx.viewmodel.ext.android.viewModel
 import uikit.navigation.NavigationActivity
 import java.math.BigInteger
 
-/** First recovery step only. Completion never permits ordinary payment or replaces keys. */
+/** Recovery controls and replacement signing. No operation here installs keys or permits payment. */
 class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_pq_wallets, wallet) {
     override val fragmentName = "QuantumRecoveryControlScreen"
     override val viewModel: BaseWalletVM.EmptyViewViewModel by viewModel()
@@ -36,6 +36,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
     private var plan: QuantumPreparedRecoveryControl? = null
     private var quote: QuantumRecoveryControlQuote? = null
     private var fundingPlan: QuantumPreparedProbeFunding? = null
+    private var migrationPlan: QuantumPreparedSuccessorMigration? = null
     private var fundingOperation: java.util.UUID? = null
     private var fundingQuote: QuantumProbeFundingQuote? = null
     private var confirmation: AlertDialog? = null
@@ -98,17 +99,39 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         }
         button("Review same-address key replacement", "quantum.recovery.migration.review") {
             run {
+                migrationPlan = null
                 authenticating = true
                 val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Review key replacement") }
                     finally { authenticating = false }
                 if (!accepted) return@run
                 check(viewLifecycleOwnerLiveData.value?.lifecycle?.currentState == androidx.lifecycle.Lifecycle.State.RESUMED)
                 val migration = accounts.prepareFundedQuantumSuccessorMigration(wallet)
+                migrationPlan = migration
                 fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
                 status.text = "Unsigned key replacement prepared.\nOriginal address: ${wallet.accountId}" +
                     "\nReplacement authority: ${hex(migration.successor.hash)}\nSaved backup SHA-256: ${hex(migration.confirmedBackupDigest)}" +
                     "\nNew epoch: ${migration.expectedState.epoch}\nExpires: ${java.util.Date(migration.expiresAt * 1000)}" +
                     "\nNothing has been signed or sent. Replacement keys are not installed; payments remain restricted."
+            }
+        }
+        button("Authenticate and sign key replacement", "quantum.recovery.migration.sign") {
+            run {
+                val reviewed = checkNotNull(migrationPlan) { "Review key replacement first" }
+                authenticating = true
+                val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Sign reviewed key replacement") }
+                    finally { authenticating = false }
+                if (!accepted) return@run
+                check(migrationPlan === reviewed && viewLifecycleOwnerLiveData.value?.lifecycle?.currentState ==
+                    androidx.lifecycle.Lifecycle.State.RESUMED)
+                try { accounts.signFundedQuantumSuccessorMigration(wallet, reviewed) }
+                finally { migrationPlan = null }
+                showMigration(accounts.pendingFundedQuantumSuccessorMigration(wallet))
+            }
+        }
+        button("Reload saved key replacement", "quantum.recovery.migration.reload") {
+            run {
+                migrationPlan = null
+                showMigration(accounts.pendingFundedQuantumSuccessorMigration(wallet))
             }
         }
         button("Prepare possession challenge", "quantum.recovery.probe.prepare") { prepareProbe() }
@@ -347,16 +370,27 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                 }
             }.create().also { it.show() }
     }
+    private fun showMigration(saved: AccountRepository.MigrationSigningStatus?) {
+        status.text = when (saved?.phase) {
+            null -> "No key replacement is saved. Review it before authenticating."
+            "RESERVED" -> "Key replacement is reserved with its original deadline. No signature is saved."
+            "SIGNING" -> "Key replacement signing is incomplete or uncertain. Do not sign it again."
+            "SIGNED" -> "Saved key replacement signature verified. Nothing has been sent. Replacement keys are not installed; payments remain restricted."
+            else -> error("Unknown migration signing phase")
+        } + if (saved == null) "" else "\nRequest: ${saved.requestHash}\nExpires: ${java.util.Date(saved.deadline * 1000)}" +
+            "\nThis checks the saved record, not current chain state or execution."
+    }
     override fun onPause() {
         if (fundingQuote != null) {
             fundingQuote = null
             status.text = "Funding estimate cleared. Estimate the saved funding again before continuing."
         }
-        if (!authenticating) { operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null }
+        if (!authenticating) { operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null; migrationPlan = null }
         super.onPause()
     }
     override fun onDestroyView() {
         diagnosticFailureStack = null
+        migrationPlan = null
         operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null; fundingPlan = null; fundingOperation = null; fundingQuote = null; actions.clear()
         super.onDestroyView()
     }

@@ -802,6 +802,38 @@ class AccountRepository(
         fundedQuantumSuccessorMigration(wallet, reviewed, sign = true)
     }
 
+    data class MigrationSigningStatus(val operation: UUID, val phase: String, val requestHash: String,
+        val deadline: Long, val signatureDigest: String?)
+
+    /** Local historical consistency only. SIGNED also verifies its original native signature.
+     * No fresh chain execution, delivery, current backup confirmation or retry permission is inferred. */
+    suspend fun pendingFundedQuantumSuccessorMigration(wallet: WalletEntity): MigrationSigningStatus? = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            val identity = requireNotNull(actual.quantumIdentity)
+            QuantumPaymentOutbox(context).withRecoveryControlIsolation(identity) {
+                val key = identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
+                val store = network.tos.wallet.data.account.pq.QuantumMigrationSigningStore(
+                    network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO(context, key))
+                val saved = store.load() ?: return@withRecoveryControlIsolation null
+                val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).pending(identity))
+                val prior = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(identity))
+                val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(identity))
+                require(entry.walletId.toString() == actual.id && prior.identity == identity && probe.identity == identity)
+                val signature = if (saved.phase == network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.SIGNED)
+                    saved.signature() else null
+                val metadata = try {
+                    network.tos.wallet.data.account.pq.QuantumMigrationSigningSnapshot.decode(saved.binding)
+                        .inspectSaved(entry, prior, probe, signature)
+                } finally { signature?.fill(0) }
+                check(checkNotNull(store.load()).encode().contentEquals(saved.encode())) { "Migration record changed during inspection" }
+                MigrationSigningStatus(saved.operation, saved.phase.name, metadata.requestHash, metadata.deadline,
+                    saved.signatureDigest?.joinToString("") { "%02x".format(it) })
+            }
+        }
+    }
+
     private suspend fun fundedQuantumSuccessorMigration(wallet: WalletEntity,
         reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration?, sign: Boolean = false):
         network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration = withContext(Dispatchers.IO) {
@@ -820,16 +852,18 @@ class AccountRepository(
                 val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(record.identity))
                 check(entry.operation == operation)
                 val now = System.currentTimeMillis() / 1000
-                val plan = if (reviewed == null) result.prepareMigration(entry, prior, probe, backup, now, 120) else {
-                    reviewed.requireRecords(entry, prior, probe, backup)
-                    reviewed.requireFresh(now)
-                    val key = record.identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
-                    val store = network.tos.wallet.data.account.pq.QuantumMigrationSigningStore(
-                        network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO(context, key))
-                    val journal = network.tos.wallet.data.account.pq.QuantumMigrationSigningJournal(store)
-                    if (store.load() == null) {
-                        val prepared = result.prepareMigration(entry, prior, probe, backup, now, 120, reviewed.expiresAt)
-                        check(prepared.request.request.hash() == reviewed.request.request.hash()) { "Reviewed migration changed" }
+                val key = record.identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
+                val store = network.tos.wallet.data.account.pq.QuantumMigrationSigningStore(
+                    network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO(context, key))
+                val journal = network.tos.wallet.data.account.pq.QuantumMigrationSigningJournal(store)
+                val retained = store.load()
+                val plan = if (reviewed == null && retained == null) result.prepareMigration(entry, prior, probe, backup, now, 120) else {
+                    reviewed?.requireRecords(entry, prior, probe, backup)
+                    reviewed?.requireFresh(now)
+                    if (retained == null) {
+                        val original = checkNotNull(reviewed)
+                        val prepared = result.prepareMigration(entry, prior, probe, backup, now, 120, original.expiresAt)
+                        check(prepared.request.request.hash() == original.request.request.hash()) { "Reviewed migration changed" }
                         coroutine.ensureActive()
                         journal.reserve(prepared, entry, prior, probe, now)
                     }
@@ -838,7 +872,7 @@ class AccountRepository(
                     check(saved.phase == network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.RESERVED) {
                         "Migration signing already started or uncertain"
                     }
-                    check(restored.request.request.hash() == reviewed.request.request.hash()) { "Reviewed migration differs from reservation" }
+                    if (reviewed != null) check(restored.request.request.hash() == reviewed.request.request.hash()) { "Reviewed migration differs from reservation" }
                     if (sign) {
                         coroutine.ensureActive()
                         // Any cancellation/exception from this point retains SIGNING. Never reset
