@@ -12,6 +12,10 @@ import android.content.Context
 import java.util.UUID
 import javax.crypto.KeyGenerator
 import org.junit.Assert.assertArrayEquals
+import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayWallet
+import network.tos.blockchain.ton.extensions.toByteArray
 
 /** Public test-only seeds; never use these for funds. */
 @RunWith(AndroidJUnit4::class)
@@ -29,8 +33,10 @@ class QuantumBackupBindingDeviceTest {
         val context = QuantumSeedVault.Context(network, -239, 1, 3)
         val entry = QuantumBackupPayload.Role(1, 1, 3, ByteArray(32),
             MessageDigest.getInstance("SHA-256").digest(primary), 3, intArrayOf(), byteArrayOf(), master.copyOf())
+        val authority = QuantumSelfPayAuthority(-239, network, primary, rescue)
+        val birth = TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(authority)).toBoc()
         val bytes = QuantumBackupPayload.encodeUnverified(-239, ByteArray(32), ByteArray(32), network,
-            byteArrayOf(1), byteArrayOf(1), listOf(entry))
+            birth, authority.cell.toByteArray(), listOf(entry))
         try {
             vault.importAndWipe("test", QuantumRole.PRIMARY, context, wrapping, seed.copyOf())
             QuantumBackupPayload.parseUnverified(bytes).use { template ->

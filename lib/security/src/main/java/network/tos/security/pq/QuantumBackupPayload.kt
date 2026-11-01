@@ -5,6 +5,9 @@ import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
 import network.tos.blockchain.TosQuantumMnemonic
 import org.ton.mnemonic.Mnemonic
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
+import org.ton.boc.BagOfCells
 
 /** Wire structure only, never a signing context or an authenticated current-role capability. */
 internal class QuantumBackupPayload private constructor(
@@ -26,6 +29,29 @@ internal class QuantumBackupPayload private constructor(
     }
 
     override fun close() { roles.forEach { it.wipe() } }
+
+    class FileIdentity internal constructor(
+        val birth: TosQuantumSelfPayIdentity, val snapshot: QuantumSelfPayAuthority,
+    )
+
+    /** Expected trust identity must come from an independently approved network profile.
+     * Returned snapshot is historical file data, never authenticated current chain state. */
+    fun validateIdentity(expectedGlobalId: Int, expectedRoot: ByteArray, expectedFile: ByteArray,
+                         expectedNamespace: ByteArray): FileIdentity {
+        require(expectedRoot.size == 32 && expectedFile.size == 32 && expectedNamespace.size == 32)
+        require(globalId == expectedGlobalId && MessageDigest.isEqual(rootHash, expectedRoot) &&
+            MessageDigest.isEqual(fileHash, expectedFile) && MessageDigest.isEqual(namespace, expectedNamespace)) {
+            "Backup belongs to another trusted network profile"
+        }
+        val birth = TosQuantumSelfPayIdentity.fromBoc(birthBoc)
+        birth.requireNetwork(globalId, namespace)
+        TosQuantumSelfPayIdentity.preflightOrdinaryBoc(authorityBoc, 16384)
+        val snapshot = QuantumSelfPayAuthority.parse(BagOfCells(authorityBoc).roots.single())
+        require(snapshot.globalId == globalId && MessageDigest.isEqual(snapshot.namespace, namespace)) {
+            "Backup authority belongs to another network"
+        }
+        return FileIdentity(birth, snapshot)
+    }
 
     /** Snapshot identity, provenance and fresh chain-role checks are still required separately. */
     fun validateSnapshotKeys(primary: ByteArray, rescue: ByteArray) {

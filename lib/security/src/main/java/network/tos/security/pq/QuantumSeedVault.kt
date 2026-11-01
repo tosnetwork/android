@@ -84,6 +84,13 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
             val roles = mutableListOf<QuantumBackupPayload.Role>()
             var plaintext = ByteArray(0)
             try {
+                // Structural consistency only. Trust-profile approval remains the service's responsibility.
+                val identity = template.validateIdentity(template.globalId, template.rootHash,
+                    template.fileHash, template.namespace)
+                require(java.security.MessageDigest.isEqual(primary, identity.snapshot.primaryKey) &&
+                    java.security.MessageDigest.isEqual(rescue, identity.snapshot.rescueKey)) {
+                    "Export snapshot differs from expected authority"
+                }
                 for (entry in template.roles) {
                     val role = when (entry.role) {
                         1 -> QuantumRole.PRIMARY
