@@ -1801,9 +1801,8 @@ class QuantumCreationUiTest {
             androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true))
                 .setMaxSearchSwipes(8).scrollIntoView(androidx.test.uiautomator.UiSelector().description(description))
         }
-        scrollTo("quantum.payment.verify")
-        val verify = checkNotNull(device.wait(Until.findObject(By.desc("quantum.payment.verify").enabled(true)), 30000))
-        device.waitForIdle(3000); verify.click()
+        // loadJournal authenticates the retained payment automatically after restart.
+        // Wait for that result before scrolling: its proof details resize the page.
         androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true)).scrollToBeginning(8)
         assertTrue("Restart must authenticate the original sender result",
             device.wait(Until.hasObject(By.textContains("The wallet sent the exact transfer.")), 30000))

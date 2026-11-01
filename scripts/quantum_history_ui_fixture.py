@@ -52,7 +52,7 @@ def main():
     faucet_attempted = False
     poisoned = False
     corrupt_history = False
-    counts = {'proofs': 0, 'ordinary': 0, 'transactions': 0, 'legacy_history': 0}
+    counts = {'proofs': 0, 'ordinary': 0, 'transactions': 0, 'legacy_history': 0, 'submissions': 0}
     traffic = []
     funded = None
     funded_boc = None
@@ -147,6 +147,10 @@ def main():
             self.send_response(code)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(raw)))
+            # This relay serves one request per connection. Explicitly retire
+            # pooled proof connections before the no-retry payment exchange.
+            self.send_header('Connection', 'close')
+            self.close_connection = True
             self.end_headers()
             self.wfile.write(raw)
 
@@ -198,6 +202,8 @@ def main():
                     counts['transactions'] += 1
                 elif method == 'getAccountEvents':
                     counts['legacy_history'] += 1
+                elif method in ('sendBoc', 'sendBocReturnHash'):
+                    counts['submissions'] += 1
                 if method == 'getProofQuery':
                     counts['proofs'] += 1
                     if poisoned:
