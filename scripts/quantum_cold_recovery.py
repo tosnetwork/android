@@ -330,6 +330,19 @@ def main():
         if a.sign_successor_migration:
             command[-1:-1] = ['-e', 'quantumSignSuccessorMigration', 'true']
         def collect_failure():
+            if method in ('journeyPaysFromRestoredWallet', 'journeyPaysFromActiveRestoredWallet',
+                          'localNetworkRestoresSubmittedPaymentAfterProcessRestart'):
+                try:
+                    # The test watcher reads only named payment/recovery status views.
+                    # Never export a generic view hierarchy or wallet custody here.
+                    status = run(['shell', 'run-as', 'network.tos.wallet', 'cat',
+                                  'cache/quantum-ui-failure-status.txt'])
+                    if len(status) > 65536:
+                        raise ValueError('Public payment status exceeds limit')
+                    status.decode('utf-8')
+                    (a.out / (method + '.payment-status.txt')).write_bytes(status)
+                except (subprocess.SubprocessError, ValueError):
+                    pass
             try:
                 crash = redact_failure_logcat(run(['logcat', '-b', 'crash', '-b', 'events', '-b', 'main', '-b', 'system', '-d', '-t', '200', '-v', 'brief'], timeout=10))
                 crash['buffers_cleared_before_stage'] = cleared_crash_buffers
