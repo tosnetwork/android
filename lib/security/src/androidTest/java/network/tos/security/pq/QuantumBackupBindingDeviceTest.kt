@@ -12,6 +12,7 @@ import android.content.Context
 import java.util.UUID
 import javax.crypto.KeyGenerator
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayWallet
@@ -43,6 +44,17 @@ class QuantumBackupBindingDeviceTest {
                 val password = "public export password".toCharArray()
                 val encrypted = vault.encryptedBackup("test", wrapping, template, primary, rescue, password)
                 assertArrayEquals(CharArray(password.size), password)
+                val inspectPassword = "public export password".toCharArray()
+                val inspected = QuantumBackupInspection.inspect(encrypted, inspectPassword, -239,
+                    ByteArray(32), ByteArray(32), network)
+                assertEquals(TosQuantumSelfPayIdentity.fromBoc(birth).address, inspected.birth.address)
+                assertEquals(QuantumRole.PRIMARY, inspected.roles.single().role)
+                assertEquals(3L, inspected.roles.single().generation)
+                assertArrayEquals(CharArray(inspectPassword.size), inspectPassword)
+                assertThrows(IllegalArgumentException::class.java) {
+                    QuantumBackupInspection.inspect(encrypted, "public export password".toCharArray(),
+                        -238, ByteArray(32), ByteArray(32), network)
+                }
                 val plaintext = QuantumBackupCipher.decrypt(encrypted, "public export password".toCharArray())
                 try {
                     QuantumBackupPayload.parseUnverified(plaintext).use { restored ->
