@@ -38,12 +38,14 @@ import javax.crypto.spec.SecretKeySpec
 import org.bouncycastle.crypto.generators.PKCS5S2ParametersGenerator
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.params.KeyParameter
+import network.tos.security.pq.QuantumRecoveryMaterialVault
+import javax.crypto.KeyGenerator
 
 @RunWith(AndroidJUnit4::class)
 class QuantumPaymentOutboxTest {
     /** Independent wire encoder using public fixture seed only; never use this material for funds. */
-    private fun inspection(identity: TosQuantumSelfPayIdentity, authority: QuantumSelfPayAuthority,
-                           profile: QuantumNetworkProfile, nonceOffset: Int = 0): QuantumBackupInspection {
+    private fun encryptedFixture(identity: TosQuantumSelfPayIdentity, authority: QuantumSelfPayAuthority,
+                                 profile: QuantumNetworkProfile, nonceOffset: Int = 0): ByteArray {
         fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         val output = ByteArrayOutputStream()
         DataOutputStream(output).use { data ->
@@ -67,9 +69,14 @@ class QuantumPaymentOutboxTest {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
             cipher.updateAAD(header)
-            return QuantumBackupInspection.inspect(header + cipher.doFinal(plaintext), "public journal password".toCharArray(),
-                profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+            return header + cipher.doFinal(plaintext)
         } finally { key.fill(0); password.fill(0); plaintext.fill(0) }
+    }
+    private fun inspection(identity: TosQuantumSelfPayIdentity, authority: QuantumSelfPayAuthority,
+                           profile: QuantumNetworkProfile, nonceOffset: Int = 0): QuantumBackupInspection {
+        fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        return QuantumBackupInspection.inspect(encryptedFixture(identity, authority, profile, nonceOffset),
+            "public journal password".toCharArray(), profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
     }
     @Test fun cancellationInsideCustodySigningKeepsDurableSlotAndNeverBroadcasts() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -338,7 +345,10 @@ class QuantumPaymentOutboxTest {
             assertTrue(journal.delete())
             val isolatedEntry = outbox.reserve(payment, now)
             val authority = (observation.snapshot.status as QuantumSelfPayAccount.Status.Active).state.authority
-            val backup = inspection(identity, authority, profile)
+            val encryptedFile = encryptedFixture(identity, authority, profile)
+            fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val backup = QuantumBackupInspection.inspect(encryptedFile, "public journal password".toCharArray(),
+                profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
             val importStage = File(journal.parentFile, journal.nameWithoutExtension + ".import.next")
             val failImport = QuantumPaymentOutbox(context) { point ->
                 if (point == "import_before_rename") throw IOException("Injected import rename interruption")
@@ -376,6 +386,45 @@ class QuantumPaymentOutboxTest {
             assertTrue(outbox.requiresRecovery(identity))
             assertTrue(importStage.delete())
             assertThrows(Exception::class.java) { reopened.observeBackupImport(backup, observation, now + 301) }
+            var clock = now
+            var writes = 0
+            val materialPrefs = context.getSharedPreferences("import-material-$id", 0)
+            val wrapping = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+            val material = QuantumRecoveryMaterialVault(materialPrefs)
+            try {
+                val failedPassword = "public journal password".toCharArray()
+                assertThrows(IOException::class.java) {
+                    reopened.storeBackupImport(encryptedFile, failedPassword, profile, authority.namespace, observation, { clock }) { operation, file, pass, inspected ->
+                        writes += 1
+                        assertEquals(checkpoint.id, operation)
+                        assertTrue(reopened.requiresRecovery(identity))
+                        assertEquals(QuantumPaymentOutbox.ImportPhase.OBSERVED_ROLES, reopened.prepareBackupImport(backup, profile).phase)
+                        throw IOException("Injected protected material failure")
+                    }
+                }
+                assertArrayEquals(CharArray(failedPassword.size), failedPassword)
+                assertEquals(QuantumPaymentOutbox.ImportPhase.OBSERVED_ROLES, reopened.prepareBackupImport(backup, profile).phase)
+                assertThrows(Exception::class.java) {
+                    reopened.storeBackupImport(encryptedFile, "public journal password".toCharArray(), profile,
+                        authority.namespace, observation, { clock }) { operation, file, pass, inspected ->
+                        writes += 1; material.storeValidated(file, pass, inspected, operation, wrapping); clock += 301
+                    }
+                }
+                assertEquals(now + 301, clock)
+                assertTrue(materialPrefs.contains("quantum.recovery.material.v1.${checkpoint.id}"))
+                assertEquals(QuantumPaymentOutbox.ImportPhase.OBSERVED_ROLES, reopened.prepareBackupImport(backup, profile).phase)
+                clock = now
+                val successPassword = "public journal password".toCharArray()
+                val stored = reopened.storeBackupImport(encryptedFile, successPassword, profile,
+                    authority.namespace, observation, { clock }) { operation, file, pass, inspected ->
+                    writes += 1; material.storeValidated(file, pass, inspected, operation, wrapping)
+                }
+                assertEquals(checkpoint.id, stored.id)
+                assertEquals(QuantumPaymentOutbox.ImportPhase.PROTECTED_STORED, stored.phase)
+                assertTrue(reopened.requiresRecovery(identity))
+                assertArrayEquals(CharArray(successPassword.size), successPassword)
+                assertEquals(3, writes)
+            } finally { check(materialPrefs.edit().clear().commit()) }
         } finally {
             journal.delete()
             File(journal.parentFile, journal.nameWithoutExtension + ".recovery").delete()

@@ -21,6 +21,14 @@ class QuantumBackupInspection private constructor(
             java.security.MessageDigest.isEqual(file, fileHash) &&
             java.security.MessageDigest.isEqual(snapshot.namespace, namespace)) { "Backup observation profile mismatch" }
     }
+    internal fun validatePayload(plaintext: ByteArray) {
+        QuantumBackupPayload.parseUnverified(plaintext).use { payload ->
+            val identity = payload.validateIdentity(snapshot.globalId, root, file, snapshot.namespace)
+            require(identity.birth == birth && identity.snapshot.hash.contentEquals(snapshot.hash))
+            payload.validateSnapshotKeys(snapshot.primaryKey, snapshot.rescueKey)
+            payload.validateProvenance()
+        }
+    }
 
     companion object {
         /** Trust fields must come from an independently approved profile. Password is consumed. */

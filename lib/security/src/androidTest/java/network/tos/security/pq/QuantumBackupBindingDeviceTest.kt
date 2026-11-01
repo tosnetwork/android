@@ -21,6 +21,50 @@ import network.tos.blockchain.ton.extensions.toByteArray
 /** Public test-only seeds; never use these for funds. */
 @RunWith(AndroidJUnit4::class)
 class QuantumBackupBindingDeviceTest {
+    @Test fun completeMnemonicMaterialRetainsOriginalWordsPasswordAndDerivation() {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = app.getSharedPreferences("mnemonic-material-${UUID.randomUUID()}", 0)
+        val wrapping = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val network = ByteArray(32) { (it + 32).toByte() }
+        val words = List(23) { "abandon" } + "chicken" // Public frozen native vector.
+        val phrasePassword = " public test password ".toByteArray()
+        val master = TosQuantumMnemonic.masterAndWipePassword(words, " public test password ".toCharArray())
+        val seed = QuantumKdf.deriveAndWipe(QuantumKdf.Material.PRIMARY, master.copyOf(), network, -239, 1, 19)
+        val primary = QuantumCrypto.publicKey(QuantumRole.PRIMARY, seed)
+        val rescue = QuantumCrypto.publicKey(QuantumRole.RESCUE, ByteArray(48) { 8 })
+        val authority = QuantumSelfPayAuthority(-239, network, primary, rescue)
+        val birth = TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(authority)).toBoc()
+        val dictionary = Mnemonic.mnemonicWords()
+        val indices = words.map { dictionary.indexOf(it) }.toIntArray()
+        val entry = QuantumBackupPayload.Role(1, 1, 19, seed.copyOf(), MessageDigest.getInstance("SHA-256").digest(primary),
+            2, indices.copyOf(), phrasePassword.copyOf(), byteArrayOf())
+        val plaintext = QuantumBackupPayload.encodeUnverified(-239, ByteArray(32) { 3 }, ByteArray(32) { 4 },
+            network, birth, authority.cell.toByteArray(), listOf(entry))
+        try {
+            val encrypted = QuantumBackupCipher.encrypt(plaintext, "public material password".toCharArray())
+            val inspection = QuantumBackupInspection.inspect(encrypted, "public material password".toCharArray(),
+                -239, ByteArray(32) { 3 }, ByteArray(32) { 4 }, network)
+            val id = UUID.randomUUID()
+            val vault = QuantumRecoveryMaterialVault(prefs)
+            vault.storeValidated(encrypted, "public material password".toCharArray(), inspection, id, wrapping)
+            vault.withStoredPayload(id, inspection, wrapping) { stored ->
+                assertArrayEquals(plaintext, stored)
+                QuantumBackupPayload.parseUnverified(stored).use { restored ->
+                    val role = restored.roles.single()
+                    assertArrayEquals(indices, role.wordIndices)
+                    assertArrayEquals(phrasePassword, role.phrasePassword)
+                    assertArrayEquals(seed, role.seed)
+                    assertEquals(1L, role.account); assertEquals(19L, role.generation)
+                    restored.validateSnapshotKeys(primary, rescue)
+                    restored.validateProvenance()
+                }
+            }
+        } finally {
+            plaintext.fill(0); entry.wipe(); master.fill(0); seed.fill(0); phrasePassword.fill(0); indices.fill(0)
+            check(prefs.edit().clear().commit())
+        }
+    }
+
     @Test fun exportReadsProtectedCustodyInsteadOfTemplateSeedAndConsumesPassword() {
         val app = ApplicationProvider.getApplicationContext<Context>()
         val prefs = app.getSharedPreferences("quantum-backup-${UUID.randomUUID()}", 0)
@@ -51,6 +95,54 @@ class QuantumBackupBindingDeviceTest {
                 assertEquals(QuantumRole.PRIMARY, inspected.roles.single().role)
                 assertEquals(3L, inspected.roles.single().generation)
                 assertArrayEquals(CharArray(inspectPassword.size), inspectPassword)
+                val material = QuantumRecoveryMaterialVault(prefs)
+                val materialId = UUID.randomUUID()
+                val materialPassword = "public export password".toCharArray()
+                material.storeValidated(encrypted, materialPassword, inspected, materialId, wrapping)
+                assertArrayEquals(CharArray(materialPassword.size), materialPassword)
+                val materialName = "quantum.recovery.material.v1.$materialId"
+                val firstMaterial = prefs.getString(materialName, null)
+                material.storeValidated(encrypted, "public export password".toCharArray(), inspected, materialId, wrapping)
+                assertEquals(firstMaterial, prefs.getString(materialName, null))
+                material.withStoredPayload(materialId, inspected, wrapping) { stored ->
+                    QuantumBackupPayload.parseUnverified(stored).use { recovered ->
+                        assertArrayEquals(master, recovered.roles.single().master)
+                        assertArrayEquals(seed, recovered.roles.single().seed)
+                        assertEquals(3L, recovered.roles.single().generation)
+                        recovered.validateProvenance()
+                    }
+                }
+                val uncertainId = UUID.randomUUID()
+                val uncertainPrefs = object : android.content.SharedPreferences by prefs {
+                    override fun edit(): android.content.SharedPreferences.Editor {
+                        val delegate = prefs.edit()
+                        return object : android.content.SharedPreferences.Editor by delegate {
+                            override fun putString(key: String?, value: String?): android.content.SharedPreferences.Editor {
+                                delegate.putString(key, value); return this
+                            }
+                            override fun commit(): Boolean { delegate.commit(); return false }
+                        }
+                    }
+                }
+                val uncertainPassword = "public export password".toCharArray()
+                assertThrows(IllegalStateException::class.java) {
+                    QuantumRecoveryMaterialVault(uncertainPrefs).storeValidated(encrypted, uncertainPassword, inspected, uncertainId, wrapping)
+                }
+                assertArrayEquals(CharArray(uncertainPassword.size), uncertainPassword)
+                val uncertainName = "quantum.recovery.material.v1.$uncertainId"
+                val retained = prefs.getString(uncertainName, null)
+                material.storeValidated(encrypted, "public export password".toCharArray(), inspected, uncertainId, wrapping)
+                assertEquals(retained, prefs.getString(uncertainName, null))
+                val corrupt = android.util.Base64.decode(firstMaterial, android.util.Base64.NO_WRAP)
+                corrupt[corrupt.lastIndex] = (corrupt.last().toInt() xor 1).toByte()
+                val corruptText = android.util.Base64.encodeToString(corrupt, android.util.Base64.NO_WRAP)
+                check(prefs.edit().putString(materialName, corruptText).commit())
+                val badPassword = "public export password".toCharArray()
+                assertThrows(javax.crypto.AEADBadTagException::class.java) {
+                    material.storeValidated(encrypted, badPassword, inspected, materialId, wrapping)
+                }
+                assertArrayEquals(CharArray(badPassword.size), badPassword)
+                assertEquals(corruptText, prefs.getString(materialName, null))
                 assertThrows(IllegalArgumentException::class.java) {
                     QuantumBackupInspection.inspect(encrypted, "public export password".toCharArray(),
                         -238, ByteArray(32), ByteArray(32), network)

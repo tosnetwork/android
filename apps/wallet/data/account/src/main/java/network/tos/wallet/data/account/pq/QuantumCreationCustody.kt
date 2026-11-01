@@ -8,6 +8,8 @@ import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumRole
 import network.tos.security.pq.QuantumSeedVault
 import network.tos.security.pq.QuantumPurpose
+import network.tos.security.pq.QuantumRecoveryMaterialVault
+import network.tos.security.pq.QuantumBackupInspection
 import java.util.UUID
 import javax.crypto.SecretKey
 
@@ -22,6 +24,11 @@ internal class QuantumCreationCustody internal constructor(
         { create -> QuantumDeviceKey.get(create) })
 
     private val roles = QuantumSeedVault(preferences)
+    private val recovery = QuantumRecoveryMaterialVault(preferences)
+    fun storeRecoveryMaterial(id: UUID, encrypted: ByteArray, password: CharArray, inspection: QuantumBackupInspection) = synchronized(lock) {
+        try { recovery.storeValidated(encrypted, password, inspection, id, wrappingKey(true)) }
+        finally { password.fill('\u0000') }
+    }
     private fun mnemonicKey(id: UUID) = "quantum.mnemonic.v1.$id"
 
     fun saveMnemonic(id: UUID, words: List<String>) = synchronized(lock) {
@@ -93,6 +100,7 @@ internal class QuantumCreationCustody internal constructor(
 
     fun delete(id: UUID) = synchronized(lock) {
         val editor = preferences.edit().remove(mnemonicKey(id)).remove("quantum.creation.complete.v1.$id")
+            .remove("quantum.recovery.material.v1.$id")
         for (role in QuantumRole.entries) editor.remove("quantum.seed.v1.${role.id}.$id")
         check(editor.commit()) { "Quantum key deletion uncertain" }
     }
@@ -100,7 +108,7 @@ internal class QuantumCreationCustody internal constructor(
     fun deleteAll() = synchronized(lock) {
         // Clear failed enrollment attempts too, without touching other wallet services.
         val editor = preferences.edit()
-        preferences.all.keys.filter { it.startsWith("quantum.mnemonic.v1.") || it.startsWith("quantum.seed.v1.") || it.startsWith("quantum.creation.complete.v1.") }
+        preferences.all.keys.filter { it.startsWith("quantum.mnemonic.v1.") || it.startsWith("quantum.seed.v1.") || it.startsWith("quantum.creation.complete.v1.") || it.startsWith("quantum.recovery.material.v1.") }
             .forEach(editor::remove)
         check(editor.commit()) { "Quantum key deletion uncertain" }
     }

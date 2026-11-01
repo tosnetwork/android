@@ -54,6 +54,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         companion object { internal fun parse(value: JSONObject) = Entry(JSONObject(value.toString())) }
     }
     internal val directory = File(context.noBackupFilesDir, "quantum-payment-outbox")
+    private val custodyContext = context.applicationContext
     private val retirement by lazy { QuantumAuthorizationRetirement(this, fault) }
     init {
         try { Os.mkdir(directory.absolutePath, 0x1c0) }
@@ -83,7 +84,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     }
     fun requiresRecovery(identity: TosQuantumSelfPayIdentity): Boolean = locked { recoveryIsolated(identity) }
 
-    internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES }
+    internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES, PROTECTED_STORED }
     internal class ImportCheckpoint(val id: UUID, val phase: ImportPhase)
 
     /** Retry journal only; the same original encrypted file is required again after restart. */
@@ -137,6 +138,44 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         return result
     }
     private fun importPath(identity: TosQuantumSelfPayIdentity) = File(directory, path(identity).nameWithoutExtension + ".import")
+    internal fun storeBackupImport(encrypted: ByteArray, password: CharArray, profile: QuantumNetworkProfile,
+                                   namespace: ByteArray, observation: QuantumAccountReader.Observation,
+                                   now: () -> Long): ImportCheckpoint =
+        storeBackupImport(encrypted, password, profile, namespace, observation, now) { id, file, pass, backup ->
+            QuantumCreationCustody(custodyContext).storeRecoveryMaterial(id, file, pass, backup)
+        }
+
+    /** Scoped persistence seam for fault/order tests; production always uses encrypted device custody. */
+    internal fun storeBackupImport(encrypted: ByteArray, password: CharArray, profile: QuantumNetworkProfile,
+                                   namespace: ByteArray, observation: QuantumAccountReader.Observation,
+                                   now: () -> Long,
+                                   persist: (UUID, ByteArray, CharArray, QuantumBackupInspection) -> Unit): ImportCheckpoint {
+        try {
+            require(encrypted.size in 58..262201)
+            val input = encrypted.copyOf()
+            fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val backup = QuantumBackupInspection.inspect(input, password.copyOf(), profile.globalId,
+                hex(profile.rootHash), hex(profile.fileHash), namespace)
+            observeBackupImport(backup, observation, now())
+            val checkpoint = prepareBackupImport(backup, profile)
+            check(checkpoint.phase in setOf(ImportPhase.OBSERVED_ROLES, ImportPhase.PROTECTED_STORED))
+            observation.requireFresh(now())
+            val storePassword = password.copyOf()
+            try { persist(checkpoint.id, input, storePassword, backup) } finally { storePassword.fill('\u0000') }
+            return locked {
+                check(recoveryIsolated(backup.birth))
+                val value = checkNotNull(readImport(importPath(backup.birth), backup, profile))
+                check(UUID.fromString(value.getString("id")) == checkpoint.id &&
+                    importPhase(value) in setOf(ImportPhase.OBSERVED_ROLES, ImportPhase.PROTECTED_STORED))
+                observation.requireFresh(now())
+                if (importPhase(value) == ImportPhase.OBSERVED_ROLES) {
+                    value.put("phase", ImportPhase.PROTECTED_STORED.ordinal)
+                    writeImport(backup.birth, value)
+                }
+                ImportCheckpoint(checkpoint.id, importPhase(value))
+            }
+        } finally { password.fill('\u0000') }
+    }
     private fun importPhase(value: JSONObject): ImportPhase {
         val phase = value.get("phase")
         check(phase is Int && phase in ImportPhase.entries.indices)
