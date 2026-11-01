@@ -107,6 +107,7 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
         endAuthorization = button("Verify expiry and end this authorization", "quantum.payment.end") { endExpired() }
         newPayment = button("Start another payment", "quantum.payment.new") { startAnotherPayment() }
         button("Reload pending payment", "quantum.payment.reload") { loadJournal() }
+        button("Secure recovered wallet", "quantum.payment.recovery") { navigation?.add(QuantumRecoveryControlScreen(wallet)) }
         button("Show local authorization history", "quantum.payment.localHistory") { showLocalHistory() }
         localHistory = label("", "quantum.payment.localHistory.details")
         button("Close", "quantum.payment.close") { finish() }

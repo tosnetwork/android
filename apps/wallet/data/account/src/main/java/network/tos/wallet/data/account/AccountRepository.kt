@@ -611,6 +611,10 @@ class AccountRepository(
     ): network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl = runInterruptible(Dispatchers.IO) {
         val identity = requireNotNull(wallet.quantumIdentity)
         check(QuantumPaymentOutbox(context).requiresRecovery(identity)) { "Recovery isolation required" }
+        val recovery = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity)) {
+            "Recovery control requires retained encrypted-backup material"
+        }
+        require(recovery.id.toString() == wallet.id)
         val reader = QuantumAccountReader(context, QuantumProofHttpTransport(quantumPaymentEndpoint(), quantumHttpClient))
         val observed = reader.observe(UUID.fromString(wallet.id), identity, intArrayOf(8, 19))
         network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl(observed, kind, System.currentTimeMillis() / 1000, 120)
