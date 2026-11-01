@@ -25,6 +25,7 @@ def serve(port, upstream, output):
     retained = 0
 
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
         def log_message(self, *_):
             pass
 
@@ -93,6 +94,9 @@ def serve(port, upstream, output):
                 self.send_response(status)
                 self.send_header('Content-Type', content_type)
                 self.send_header('Content-Length', str(len(reply)))
+                # Do not offer a pooled connection that this single-request relay closes.
+                self.send_header('Connection', 'close')
+                self.close_connection = True
                 self.end_headers()
                 self.wfile.write(reply)
             except (ValueError, OSError, urllib.error.URLError):

@@ -16,7 +16,9 @@ jobs:
       - name: Verify proof source checkout boundaries
         run: python3 scripts/test_quantum_proof_source.py
       - name: Verify cold recovery runner failure handling
-        run: python3 -m unittest discover -s scripts -p test_quantum_cold_recovery_runner.py -v
+        run: |
+          python3 -m unittest discover -s scripts -p test_quantum_cold_recovery_runner.py -v
+          python3 -m unittest discover -s scripts -p test_quantum_proof_recording_proxy.py -v
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
