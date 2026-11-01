@@ -785,6 +785,18 @@ class AccountRepository(
     /** Caller authenticates. Backup confirmation is mandatory before preparing any new authorization.
      * This creates no signature, journal slot, network message or installation authority. */
     suspend fun prepareFundedQuantumSuccessorMigration(wallet: WalletEntity):
+        network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration =
+        fundedQuantumSuccessorMigration(wallet, reviewed = null)
+
+    /** Caller authenticates and reviews the prepared request before reserving. No key is used.
+     * Existing reservations retain their original deadline; uncertain signing cannot restart. */
+    suspend fun reserveFundedQuantumSuccessorMigration(wallet: WalletEntity,
+        reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration):
+        network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration =
+        fundedQuantumSuccessorMigration(wallet, reviewed)
+
+    private suspend fun fundedQuantumSuccessorMigration(wallet: WalletEntity,
+        reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration?):
         network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration = withContext(Dispatchers.IO) {
         val stage = inspectFundedQuantumSuccessorMaterial(wallet)
         val operation = checkNotNull(pendingQuantumProbeFunding(wallet)).operation
@@ -800,7 +812,29 @@ class AccountRepository(
                 val entry = checkNotNull(network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).pending(record.identity))
                 val probe = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(record.identity))
                 check(entry.operation == operation)
-                result.prepareMigration(entry, prior, probe, backup, System.currentTimeMillis() / 1000, 120).also {
+                val now = System.currentTimeMillis() / 1000
+                val plan = if (reviewed == null) result.prepareMigration(entry, prior, probe, backup, now, 120) else {
+                    reviewed.requireRecords(entry, prior, probe, backup)
+                    reviewed.requireFresh(now)
+                    val key = record.identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
+                    val store = network.tos.wallet.data.account.pq.QuantumMigrationSigningStore(
+                        network.tos.wallet.data.account.pq.QuantumMigrationSigningAndroidIO(context, key))
+                    val journal = network.tos.wallet.data.account.pq.QuantumMigrationSigningJournal(store)
+                    if (store.load() == null) {
+                        val prepared = result.prepareMigration(entry, prior, probe, backup, now, 120, reviewed.expiresAt)
+                        check(prepared.request.request.hash() == reviewed.request.request.hash()) { "Reviewed migration changed" }
+                        coroutine.ensureActive()
+                        journal.reserve(prepared, entry, prior, probe, now)
+                    }
+                    val (saved, restored) = journal.restore(entry, prior, probe, result, backup,
+                        System.currentTimeMillis() / 1000)
+                    check(saved.phase == network.tos.wallet.data.account.pq.QuantumMigrationSigningRecord.Phase.RESERVED) {
+                        "Migration signing already started or uncertain"
+                    }
+                    check(restored.request.request.hash() == reviewed.request.request.hash()) { "Reviewed migration differs from reservation" }
+                    restored
+                }
+                plan.also {
                     it.requireRecords(entry, prior, probe, backup)
                     it.requireFresh(System.currentTimeMillis() / 1000)
                     coroutine.ensureActive()
