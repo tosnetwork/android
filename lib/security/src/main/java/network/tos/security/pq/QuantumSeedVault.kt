@@ -74,6 +74,40 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
     }
     fun publicKey(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey): ByteArray =
         withSeed(id, role, context, wrappingKey) { QuantumCrypto.publicKey(role, it) }
+
+    /** Internal export primitive. Caller authenticates and validates birth/snapshot before and after.
+     * Template seeds are ignored: only protected custody supplies the exported role seeds.
+     * No plaintext or general seed getter crosses this boundary; password input is consumed. */
+    internal fun encryptedBackup(id: String, wrappingKey: SecretKey, template: QuantumBackupPayload,
+                                 primary: ByteArray, rescue: ByteArray, password: CharArray): ByteArray =
+        synchronized(writerLock) {
+            val roles = mutableListOf<QuantumBackupPayload.Role>()
+            var plaintext = ByteArray(0)
+            try {
+                for (entry in template.roles) {
+                    val role = when (entry.role) {
+                        1 -> QuantumRole.PRIMARY
+                        2 -> QuantumRole.RESCUE
+                        else -> throw IllegalArgumentException("Unsupported backup role")
+                    }
+                    val context = Context(template.namespace, template.globalId, entry.account, entry.generation)
+                    withSeed(id, role, context, wrappingKey) { seed ->
+                        roles += QuantumBackupPayload.Role(entry.role, entry.account, entry.generation,
+                            seed.copyOf(), entry.publicKeyHash.copyOf(), entry.sourceProfile,
+                            entry.wordIndices.copyOf(), entry.phrasePassword.copyOf(), entry.master.copyOf())
+                    }
+                }
+                plaintext = QuantumBackupPayload.encodeUnverified(template.globalId, template.rootHash,
+                    template.fileHash, template.namespace, template.birthBoc, template.authorityBoc, roles)
+                QuantumBackupPayload.parseUnverified(plaintext).use { bound ->
+                    bound.validateSnapshotKeys(primary, rescue)
+                    bound.validateProvenance()
+                }
+                QuantumBackupCipher.encrypt(plaintext, password)
+            } finally {
+                plaintext.fill(0); password.fill('\u0000'); roles.forEach { it.wipe() }
+            }
+        }
     fun sign(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey,
              expectedPublicKey: ByteArray, purpose: QuantumPurpose, digest: ByteArray): ByteArray =
         withSeed(id, role, context, wrappingKey) {
