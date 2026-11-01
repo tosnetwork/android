@@ -10,7 +10,9 @@ class QuantumBackupInspection private constructor(
     val roles: List<Role>,
     private val root: ByteArray,
     private val file: ByteArray,
+    private val digest: ByteArray,
 ) {
+    val encryptedDigest: ByteArray get() = digest.copyOf()
     class Role internal constructor(val role: QuantumRole, val account: Long,
                                     val generation: Long, val sourceProfile: Int)
 
@@ -27,7 +29,10 @@ class QuantumBackupInspection private constructor(
                     expectedNamespace: ByteArray): QuantumBackupInspection {
             var plaintext = ByteArray(0)
             try {
-                plaintext = QuantumBackupCipher.decrypt(encrypted, password)
+                require(encrypted.size in 58..(QuantumBackupEnvelope.HEADER_SIZE + QuantumBackupEnvelope.MAX_CIPHERTEXT_SIZE + 16))
+                // Bind the journal digest to exactly the owned ciphertext bytes that were authenticated.
+                val record = encrypted.copyOf()
+                plaintext = QuantumBackupCipher.decrypt(record, password)
                 return QuantumBackupPayload.parseUnverified(plaintext).use { payload ->
                     val identity = payload.validateIdentity(expectedGlobalId, expectedRoot, expectedFile, expectedNamespace)
                     payload.validateSnapshotKeys(identity.snapshot.primaryKey, identity.snapshot.rescueKey)
@@ -35,7 +40,8 @@ class QuantumBackupInspection private constructor(
                     QuantumBackupInspection(identity.birth, identity.snapshot, payload.roles.map {
                         Role(if (it.role == 1) QuantumRole.PRIMARY else QuantumRole.RESCUE,
                             it.account, it.generation, it.sourceProfile)
-                    }, payload.rootHash.copyOf(), payload.fileHash.copyOf())
+                    }, payload.rootHash.copyOf(), payload.fileHash.copyOf(),
+                        java.security.MessageDigest.getInstance("SHA-256").digest(record))
                 }
             } finally { plaintext.fill(0); password.fill('\u0000') }
         }

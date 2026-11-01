@@ -15,6 +15,7 @@ android {
 
 dependencies {
     testImplementation(libs.junit)
+    androidTestImplementation(libs.bcprovjdk)
     androidTestImplementation(libs.androidX.test)
     androidTestImplementation(libs.androidX.test.core)
     androidTestImplementation("androidx.test:runner:1.7.0")

@@ -82,6 +82,102 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         }
     }
     fun requiresRecovery(identity: TosQuantumSelfPayIdentity): Boolean = locked { recoveryIsolated(identity) }
+
+    internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES }
+    internal class ImportCheckpoint(val id: UUID, val phase: ImportPhase)
+
+    /** Retry journal only; the same original encrypted file is required again after restart. */
+    internal fun prepareBackupImport(backup: QuantumBackupInspection, profile: QuantumNetworkProfile): ImportCheckpoint {
+        fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        backup.requireProfile(profile.globalId, hex(profile.rootHash), hex(profile.fileHash), backup.snapshot.namespace)
+        isolateRecoveredIdentity(backup.birth)
+        return locked {
+            val canonical = importPath(backup.birth)
+            val stage = File(canonical.absolutePath + ".next")
+            var current = readImport(canonical, backup, profile)
+            readImport(stage, backup, profile)?.let { next ->
+                if (current == null) check(importPhase(next) == ImportPhase.VALIDATED_FILE)
+                else {
+                    check(next.getString("id") == current!!.getString("id"))
+                    val before = importPhase(current!!).ordinal
+                    check(importPhase(next).ordinal in before..before + 1) { "Import phase cannot regress or skip" }
+                }
+                sync(stage); sync(directory)
+                Os.rename(stage.absolutePath, canonical.absolutePath); sync(directory)
+                current = next
+            }
+            if (current == null) {
+                val initial = JSONObject().put("version", 1).put("id", UUID.randomUUID().toString())
+                    .put("identity", WalletIdentity.Quantum(backup.birth).toBase64()).put("profile", profile.json())
+                    .put("encrypted_digest", encode(backup.encryptedDigest)).put("phase", ImportPhase.VALIDATED_FILE.ordinal)
+                writeImport(backup.birth, initial)
+                current = initial
+            }
+            val value = checkNotNull(current)
+            if (importPhase(value) == ImportPhase.VALIDATED_FILE) {
+                value.put("phase", ImportPhase.BOUND_SECRETS.ordinal)
+                writeImport(backup.birth, value)
+            }
+            ImportCheckpoint(UUID.fromString(value.getString("id")), importPhase(value))
+        }
+    }
+    internal fun observeBackupImport(backup: QuantumBackupInspection, observation: QuantumAccountReader.Observation,
+                                     now: Long): List<QuantumBackupRoleObservation.Role> {
+        val result = QuantumBackupRoleObservation.classify(backup, observation, now)
+        prepareBackupImport(backup, observation.profile)
+        locked {
+            check(recoveryIsolated(backup.birth))
+            val value = checkNotNull(readImport(importPath(backup.birth), backup, observation.profile))
+            observation.requireFresh(now)
+            if (importPhase(value) == ImportPhase.BOUND_SECRETS) {
+                value.put("phase", ImportPhase.OBSERVED_ROLES.ordinal)
+                writeImport(backup.birth, value)
+            }
+        }
+        return result
+    }
+    private fun importPath(identity: TosQuantumSelfPayIdentity) = File(directory, path(identity).nameWithoutExtension + ".import")
+    private fun importPhase(value: JSONObject): ImportPhase {
+        val phase = value.get("phase")
+        check(phase is Int && phase in ImportPhase.entries.indices)
+        return ImportPhase.entries[phase]
+    }
+    private fun readImport(file: File, backup: QuantumBackupInspection, profile: QuantumNetworkProfile): JSONObject? {
+        val fd = try { Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0) }
+        catch (e: ErrnoException) { if (e.errno == OsConstants.ENOENT) return null else throw e }
+        val bytes = FileInputStream(fd).use { stream ->
+            val st = Os.fstat(fd)
+            check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() &&
+                st.st_nlink == 1L && st.st_mode and 0x3f == 0 && st.st_size in 1..65536L)
+            ByteArray(st.st_size.toInt()).also { DataInputStream(stream).readFully(it); check(stream.read() == -1) }
+        }
+        val value = JSONObject(bytes.toString(Charsets.UTF_8))
+        check(value.keys().asSequence().toSet() == setOf("version", "id", "identity", "profile", "encrypted_digest", "phase"))
+        check(value.get("version") == 1)
+        val id = QuantumPaymentQuote.string(value, "id")
+        check(UUID.fromString(id).toString() == id)
+        check(WalletIdentity.quantumFromBase64(QuantumPaymentQuote.string(value, "identity")) == backup.birth)
+        check(sameProfile(QuantumNetworkProfile.parse(value.getJSONObject("profile")), profile))
+        check(decode(QuantumPaymentQuote.string(value, "encrypted_digest")).contentEquals(backup.encryptedDigest))
+        importPhase(value)
+        return value
+    }
+    private fun writeImport(identity: TosQuantumSelfPayIdentity, value: JSONObject) {
+        val bytes = value.toString().toByteArray(Charsets.UTF_8)
+        check(bytes.size <= 65536 && names().size < 254)
+        val canonical = importPath(identity)
+        val stage = File(canonical.absolutePath + ".next")
+        val fd = Os.open(stage.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or
+            OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
+        FileOutputStream(fd).use { stream ->
+            stream.write(bytes); fault?.invoke("import_before_file_sync"); stream.fd.sync()
+        }
+        sync(directory)
+        fault?.invoke("import_before_rename")
+        Os.rename(stage.absolutePath, canonical.absolutePath)
+        fault?.invoke("import_before_directory_sync")
+        sync(directory)
+    }
     private fun recoveryPath(identity: TosQuantumSelfPayIdentity) = File(directory, path(identity).nameWithoutExtension + ".recovery")
     private fun recoveryMarker(identity: TosQuantumSelfPayIdentity) = "TOSQRG01".toByteArray(Charsets.US_ASCII) + identity.cell.hash().toByteArray()
     private fun recoveryIsolated(identity: TosQuantumSelfPayIdentity): Boolean {
@@ -314,7 +410,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
     internal fun names(): List<String> = QuantumLocalDirectory.names(directory.absolutePath, 256).also { names ->
         check(names.count { it.endsWith(".json") } <= 64)
         check(names.all { it == ".lock" || it == ".custody-lock" || it == ".retirement-history" || it.startsWith(".retiring-") ||
-            it.endsWith(".pending") || it.matches(Regex("[0-9a-f]{64}\\.(json|recovery)")) }) { "Unexpected outbox storage entry" }
+            it.endsWith(".pending") || it.matches(Regex("[0-9a-f]{64}\\.(json|recovery|import(?:\\.next)?)")) }) { "Unexpected outbox storage entry" }
     }
     private fun <T> locked(recovery: Boolean = false, allowPending: Boolean = false, body: () -> T): T = synchronized(mutex) {
         val fd = Os.open(File(directory, ".lock").absolutePath, OsConstants.O_RDWR or OsConstants.O_CREAT or OsConstants.O_NOFOLLOW, 0x180)
