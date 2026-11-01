@@ -73,6 +73,8 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             }
         }
         button("Reload saved operation", "quantum.recovery.reload") { reload() }
+        button("Generate replacement keys", "quantum.recovery.successor.generate") { successor(false) }
+        button("Verify saved replacement keys", "quantum.recovery.successor.resume") { successor(true) }
         button("Close", "quantum.recovery.close") { finish() }
         reload()
     }
@@ -129,6 +131,22 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                     status.text = "Lock submitted; its outcome is unverified. Verify the saved result. Do not send it again."
                 }
             }.create().also { it.show() }
+    }
+    private fun successor(resume: Boolean) = run {
+        if (accounts.pendingQuantumRecoveryControl(wallet)?.phase != "COMPLETED") {
+            status.text = "Verify and record the primary-key lock before preparing replacement keys."
+            return@run
+        }
+        authenticating = true
+        val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity,
+            if (resume) "Verify saved replacement keys" else "Generate replacement keys") }
+            finally { authenticating = false }
+        if (!accepted) return@run
+        val staged = accounts.stageQuantumSuccessorMaterial(wallet, resume)
+        fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+        status.text = (if (resume) "Saved replacement keys verified." else "Replacement keys saved on this device.") +
+            "\nAuthority: ${hex(staged.inspection.snapshot.hash)}\nMaterial: ${hex(staged.inspection.encryptedDigest)}" +
+            "\nThese keys are not installed. Recovery and payments remain restricted. Keep this app data until the new backup is complete."
     }
     override fun onPause() {
         if (!authenticating) { operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null }

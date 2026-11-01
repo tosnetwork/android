@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--submit-recovery-control', action='store_true', help='Explicit test confirmation sends the one recovery control; verify linked history and exact lock state')
     parser.add_argument('--complete-recovery-control', action='store_true', help='Persist authenticated completion and verify retained isolation after restart')
     parser.add_argument('--recovery-control-ui', action='store_true', help='Use actual recovery product screen, PIN and fee confirmation')
+    parser.add_argument('--stage-successor', action='store_true', help='Generate protected successor roots through actual product UI and verify after restart')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
     if a.recovery_control_signing and not a.encrypted_backup:
@@ -41,6 +42,8 @@ def main():
         raise ValueError('Recovery completion requires the submission journey')
     if a.recovery_control_ui and not a.complete_recovery_control:
         raise ValueError('Recovery product UI requires completion mode')
+    if a.stage_successor and not a.recovery_control_ui:
+        raise ValueError('Successor staging requires recovery product UI')
     funding = urllib.parse.urlsplit(a.funding_control)
     if a.recovery_control_signing and (funding.scheme != 'http' or funding.hostname not in ('127.0.0.1', 'localhost')
             or funding.username or funding.password or funding.query or funding.fragment or funding.path not in ('', '/')):
@@ -182,6 +185,8 @@ def main():
             command[-1:-1] = ['-e', 'quantumCompleteRecoveryControl', 'true']
         if a.recovery_control_ui:
             command[-1:-1] = ['-e', 'quantumRecoveryControlUI', 'true']
+        if a.stage_successor:
+            command[-1:-1] = ['-e', 'quantumStageSuccessor', 'true']
         with (a.out / (method + '.log')).open('w') as output:
             subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=True)
         log = (a.out / (method + '.log')).read_text()
@@ -230,6 +235,8 @@ def main():
             expected_phase = 'COMPLETED' if a.complete_recovery_control else ('UNKNOWN' if a.submit_recovery_control else 'SIGNED')
             if a.recovery_control_ui and not (status.get('product_ui') and status.get('background_quote_cleared')):
                 raise ValueError('Recovery product UI evidence missing')
+            if a.stage_successor and not status.get('successor', {}).get('pin_cancelled_without_storage'):
+                raise ValueError('Successor staging product evidence missing')
             if status['phase'] != expected_phase or not status['cancelled_before_signing']:
                 raise ValueError('Recovery signing evidence missing')
             (a.out / 'recovery-control-public.json').write_text(json.dumps(status, indent=2))
@@ -294,7 +301,8 @@ def main():
             'recovery_control_quote_verified': a.recovery_control_signing,
             'recovery_control_sent_and_chain_verified': a.submit_recovery_control,
             'recovery_control_completed_and_restart_verified': a.complete_recovery_control,
-            'recovery_control_product_ui_verified': a.recovery_control_ui, **journey}, indent=2))
+            'recovery_control_product_ui_verified': a.recovery_control_ui,
+            'successor_protected_material_and_restart_verified': a.stage_successor, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

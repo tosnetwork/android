@@ -678,6 +678,29 @@ class QuantumCreationUiTest {
         val completed = checkNotNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
         assertEquals("COMPLETED", completed.phase); assertEquals(signed.operation, completed.operation)
         assertEquals(signed.messageRootHash, completed.messageRootHash)
+        var successorPublic: org.json.JSONObject? = null
+        if (InstrumentationRegistry.getArguments().getString("quantumStageSuccessor") == "true") {
+            val prefs = Security.pref(context, "_network_tos_quantum_creation_key_", "quantum_creation_custody", requireUnlockedDevice = true)
+            val stageKey = "quantum.successor.material.v1.${wallet.id}"
+            assertFalse(prefs.contains(stageKey))
+            press("quantum.recovery.successor.generate")
+            assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 15000))
+            device.pressBack(); status("Recovery control verified and recorded")
+            assertFalse(prefs.contains(stageKey))
+            press("quantum.recovery.successor.generate"); pin(); status("Replacement keys saved on this device")
+            val staged = runBlocking { repository.stageQuantumSuccessorMaterial(wallet, resume = true) }
+            assertFalse(staged.inspection.snapshot.primaryKey.contentEquals(beforeState.authority.primaryKey))
+            assertFalse(staged.inspection.snapshot.rescueKey.contentEquals(beforeState.authority.rescueKey))
+            assertEquals(network.tos.blockchain.ton.contract.QuantumPolicy.REQUIRED, staged.inspection.snapshot.policy)
+            assertTrue(staged.inspection.roles.all { it.sourceProfile == 3 })
+            assertThrows(IllegalStateException::class.java) { runBlocking { repository.stageQuantumSuccessorMaterial(wallet) } }
+            press("quantum.recovery.successor.resume"); pin(); status("Saved replacement keys verified")
+            val resumed = runBlocking { repository.stageQuantumSuccessorMaterial(wallet, resume = true) }
+            assertArrayEquals(staged.inspection.encryptedDigest, resumed.inspection.encryptedDigest)
+            fun hex(value: ByteArray) = value.joinToString("") { "%02x".format(it) }
+            successorPublic = org.json.JSONObject().put("authority_hash", hex(staged.inspection.snapshot.hash))
+                .put("material_digest", hex(staged.inspection.encryptedDigest)).put("pin_cancelled_without_storage", true)
+        }
         val history = runBlocking { repository.readQuantumHistory(wallet) }
         val tx = history.transactions.single { it.inbound?.hash == completed.messageRootHash }
         assertEquals(result.transactionHash, tx.hash); assertEquals(result.feesNano, tx.feesNano)
@@ -693,7 +716,7 @@ class QuantumCreationUiTest {
             .put("state_hash", state.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
             .put("balance", after.balance.toString()).put("cancelled_before_signing", true)
             .put("transaction_hash", tx.hash).put("actual_fee", tx.feesNano).put("estimated_fee", fee)
-            .put("product_ui", true).put("background_quote_cleared", true).toString())
+            .put("product_ui", true).put("background_quote_cleared", true).put("successor", successorPublic).toString())
     }
 
     @Test fun recoveryControlJournalSurvivesProcessRestartWithoutUnlockOrResubmit() {
@@ -708,6 +731,13 @@ class QuantumCreationUiTest {
         val state = (actual.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
         assertEquals(expected.getString("state_hash"), state.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
         assertEquals(expected.getString("balance"), actual.balance.toString())
+        if (expected.has("successor") && !expected.isNull("successor")) {
+            assertTrue(authenticateRecoveryTest("Verify saved replacement keys after restart"))
+            val staged = runBlocking { repository.stageQuantumSuccessorMaterial(wallet, resume = true) }
+            fun hex(value: ByteArray) = value.joinToString("") { "%02x".format(it) }
+            assertEquals(expected.getJSONObject("successor").getString("authority_hash"), hex(staged.inspection.snapshot.hash))
+            assertEquals(expected.getJSONObject("successor").getString("material_digest"), hex(staged.inspection.encryptedDigest))
+        }
         if (signed.phase == "COMPLETED") {
             val replacement = runBlocking { repository.prepareQuantumRecoveryControl(wallet,
                 network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY) }
