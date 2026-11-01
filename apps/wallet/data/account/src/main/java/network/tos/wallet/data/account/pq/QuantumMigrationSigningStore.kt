@@ -29,6 +29,17 @@ internal class QuantumMigrationSigningStore(private val io: IO) {
         next
     }
 
+    /** Durable uncertainty precedes key use. Failures never reset the slot or retain a caller buffer. */
+    fun signOnce(expected: QuantumMigrationSigningRecord, signer: () -> ByteArray,
+        verify: (ByteArray) -> Unit): QuantumMigrationSigningRecord {
+        val signing = beginSigning(expected)
+        val signature = signer()
+        try {
+            verify(signature)
+            return finishSigning(signing, signature)
+        } finally { signature.fill(0) }
+    }
+
     /** Caller verifies the exact signature first. No signature/key operation runs inside this store. */
     fun finishSigning(expected: QuantumMigrationSigningRecord, signature: ByteArray): QuantumMigrationSigningRecord = io.locked {
         val actual = requireCurrent(expected)

@@ -36,6 +36,55 @@ class QuantumMigrationSigningStoreTest {
         override fun syncDirectory() { hit("directory_sync") }
     }
 
+    @Test fun signingDurabilityFailureNeverInvokesKey() {
+        val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+        val reserved = store.reserve(byteArrayOf(1)); var calls = 0
+        io.state.fail = "file_sync"
+        assertThrows(IOException::class.java) {
+            store.signOnce(reserved, { calls++; ByteArray(7856) }, {})
+        }
+        assertEquals(0, calls)
+        assertThrows(IllegalStateException::class.java) { store.load() }
+    }
+
+    @Test fun failedSignerOrVerifierRetainsSigningAndNeverInvokesKeyAgain() {
+        for (failSigner in listOf(false, true)) {
+            val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+            val reserved = store.reserve(byteArrayOf(1)); var calls = 0
+            val signature = ByteArray(7856) { 7 }
+            assertThrows(IllegalStateException::class.java) {
+                store.signOnce(reserved, {
+                    calls++
+                    assertEquals(QuantumMigrationSigningRecord.Phase.SIGNING, store.load()!!.phase)
+                    if (failSigner) error("Injected signer failure")
+                    signature
+                }, { error("Injected verification failure") })
+            }
+            assertEquals(QuantumMigrationSigningRecord.Phase.SIGNING, store.load()!!.phase)
+            if (!failSigner) assertTrue(signature.all { it == 0.toByte() })
+            val restarted = QuantumMigrationSigningStore(MemoryIO(io.state))
+            assertThrows(IllegalStateException::class.java) {
+                restarted.signOnce(reserved, { calls++; ByteArray(7856) }, {})
+            }
+            assertEquals(1, calls)
+        }
+    }
+
+    @Test fun successfulSigningVerifiesBeforePublicationAndWipesCallerBuffer() {
+        val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
+        val reserved = store.reserve(byteArrayOf(1)); val signature = ByteArray(7856) { 7 }
+        var verified = false
+        val signed = store.signOnce(reserved, { signature }, {
+            assertEquals(QuantumMigrationSigningRecord.Phase.SIGNING, store.load()!!.phase)
+            assertArrayEquals(ByteArray(7856) { 7 }, it)
+            verified = true
+        })
+        assertTrue(verified)
+        assertEquals(QuantumMigrationSigningRecord.Phase.SIGNED, signed.phase)
+        assertArrayEquals(ByteArray(7856) { 7 }, store.load()!!.signature())
+        assertTrue(signature.all { it == 0.toByte() })
+    }
+
     @Test fun oneSlotCasSurvivesNewStoreAndRejectsDuplicateOrStaleUpdates() {
         val io = MemoryIO(); val store = QuantumMigrationSigningStore(io)
         assertNull(store.load())

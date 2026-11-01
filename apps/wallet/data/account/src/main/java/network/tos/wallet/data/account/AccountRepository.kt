@@ -795,8 +795,15 @@ class AccountRepository(
         network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration =
         fundedQuantumSuccessorMigration(wallet, reviewed)
 
+    /** Caller authenticates the reviewed migration. Durable SIGNING precedes protected key use.
+     * No broadcast, material installation or recovery unlock occurs. */
+    suspend fun signFundedQuantumSuccessorMigration(wallet: WalletEntity,
+        reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration) {
+        fundedQuantumSuccessorMigration(wallet, reviewed, sign = true)
+    }
+
     private suspend fun fundedQuantumSuccessorMigration(wallet: WalletEntity,
-        reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration?):
+        reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration?, sign: Boolean = false):
         network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration = withContext(Dispatchers.IO) {
         val stage = inspectFundedQuantumSuccessorMaterial(wallet)
         val operation = checkNotNull(pendingQuantumProbeFunding(wallet)).operation
@@ -832,6 +839,22 @@ class AccountRepository(
                         "Migration signing already started or uncertain"
                     }
                     check(restored.request.request.hash() == reviewed.request.request.hash()) { "Reviewed migration differs from reservation" }
+                    if (sign) {
+                        coroutine.ensureActive()
+                        // Any cancellation/exception from this point retains SIGNING. Never reset
+                        // the slot even when the native signer may not have returned a result.
+                        store.signOnce(saved, signer = {
+                            coroutine.ensureActive()
+                            val inspection = quantumCustody.inspectRecoveryMaterial(record.id, record.identity,
+                                record.encryptedDigest, record.profile)
+                            coroutine.ensureActive()
+                            restored.signProtected(quantumCustody, inspection, System.currentTimeMillis() / 1000)
+                        }, verify = { signature ->
+                            restored.requireSignature(signature)
+                            restored.requireFresh(System.currentTimeMillis() / 1000)
+                            coroutine.ensureActive()
+                        })
+                    }
                     restored
                 }
                 plan.also {

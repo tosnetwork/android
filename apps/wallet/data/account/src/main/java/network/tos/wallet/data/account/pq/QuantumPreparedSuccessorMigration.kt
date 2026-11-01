@@ -28,6 +28,7 @@ class QuantumPreparedSuccessorMigration internal constructor(
     private val material = probe.materialDigest.copyOf()
     private val stateHash = submitted.expectedState.cell.hash().toByteArray()
     private val stateBytes = BagOfCells(submitted.expectedState.cell).toByteArray()
+    private val signingState = submitted.expectedState
     internal val boundStateBOC: ByteArray get() = stateBytes.copyOf()
     val confirmedBackupDigest: ByteArray get() = savedBackup.copyOf()
     val materialDigest: ByteArray get() = material.copyOf()
@@ -88,6 +89,21 @@ class QuantumPreparedSuccessorMigration internal constructor(
         probe: QuantumRecoveryProbeJournal.Entry, backupDigest: ByteArray) {
         check(fundingBytes.contentEquals(entry.encode()) && priorBytes.contentEquals(prior.encode()) &&
             probeBytes.contentEquals(probe.encode()) && savedBackup.contentEquals(backupDigest)) { "Migration recovery binding changed" }
+    }
+
+    internal fun requireSignature(signature: ByteArray) {
+        check(network.tos.security.pq.QuantumCrypto.verify(network.tos.security.pq.QuantumRole.RESCUE,
+            network.tos.security.pq.QuantumPurpose.SELF_PAY, signingState.authority.rescueKey,
+            request.digest, signature)) { "Migration signature mismatch" }
+    }
+
+    /** Account service calls only after durable SIGNING. Does not install replacement material. */
+    internal fun signProtected(custody: QuantumCreationCustody,
+        inspection: network.tos.security.pq.QuantumBackupInspection, now: Long): ByteArray {
+        requireFresh(now)
+        require(inspection.birth == identity)
+        return custody.signSuccessorMigration(walletId, inspection, signingState, successor,
+            BagOfCells(request.request).toByteArray(), now)
     }
 
     companion object {
