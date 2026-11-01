@@ -75,6 +75,11 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         button("Reload saved operation", "quantum.recovery.reload") { reload() }
         button("Generate replacement keys", "quantum.recovery.successor.generate") { successor(false) }
         button("Verify saved replacement keys", "quantum.recovery.successor.resume") { successor(true) }
+        button("Prepare possession challenge", "quantum.recovery.probe.prepare") { prepareProbe() }
+        button("Sign possession message", "quantum.recovery.probe.sign") { signProbe() }
+        button("Reload possession message", "quantum.recovery.probe.reload") {
+            run { showProbe(accounts.pendingQuantumRecoveryProbe(wallet)) }
+        }
         button("Close", "quantum.recovery.close") { finish() }
         reload()
     }
@@ -147,6 +152,30 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         status.text = (if (resume) "Saved replacement keys verified." else "Replacement keys saved on this device.") +
             "\nAuthority: ${hex(staged.inspection.snapshot.hash)}\nMaterial: ${hex(staged.inspection.encryptedDigest)}" +
             "\nThese keys are not installed. Recovery and payments remain restricted. Keep this app data until the new backup is complete."
+    }
+    private fun showProbe(probe: AccountRepository.RecoveryProbeStatus?) {
+        status.text = probe?.let {
+            "Possession message: ${it.phase}\nOperation: ${it.operation}\nProbe: ${it.address}\nChallenge digest: ${it.digest}" +
+                "\nMaterial: ${it.materialDigest}\nDeadline: ${java.util.Date(it.deadline * 1000)}" +
+                "\nThis is a local message. On-chain possession is not verified; keys are not installed and payments remain restricted."
+        } ?: "No saved possession challenge. Prepare one after saving replacement keys."
+    }
+    private fun prepareProbe() = run {
+        authenticating = true
+        val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Prepare possession challenge") }
+            finally { authenticating = false }
+        if (!accepted) return@run
+        showProbe(accounts.reserveQuantumRecoveryProbe(wallet))
+    }
+    private fun signProbe() = run {
+        val saved = accounts.pendingQuantumRecoveryProbe(wallet)
+        if (saved?.phase != "RESERVED") { showProbe(saved); return@run }
+        authenticating = true
+        val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Sign replacement-key possession message") }
+            finally { authenticating = false }
+        if (!accepted) return@run
+        accounts.signQuantumRecoveryProbe(wallet, saved.operation)
+        showProbe(accounts.pendingQuantumRecoveryProbe(wallet))
     }
     override fun onPause() {
         if (!authenticating) { operation?.cancel(); confirmation?.dismiss(); confirmation = null; plan = null; quote = null }

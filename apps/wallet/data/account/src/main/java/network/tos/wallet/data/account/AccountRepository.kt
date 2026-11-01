@@ -660,12 +660,14 @@ class AccountRepository(
     }
 
     data class RecoveryProbeStatus(val operation: UUID, val phase: String, val address: String,
-        val digest: String, val materialDigest: String, val deadline: Long)
+        val digest: String, val materialDigest: String, val deadline: Long, val bodyDigest: String?)
 
     private fun probeStatus(entry: network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal.Entry): RecoveryProbeStatus {
         fun hex(value: ByteArray) = value.joinToString("") { "%02x".format(it) }
         return RecoveryProbeStatus(entry.operation, entry.phase.name, QuantumAccountReader.rawAddressFor(entry.probe.address),
-            hex(entry.probe.digest), hex(entry.materialDigest), entry.deadline)
+            hex(entry.probe.digest), hex(entry.materialDigest), entry.deadline,
+            if (entry.phase == network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal.Phase.SIGNED)
+                hex(QuantumPaymentOutbox.digest(entry.signedBody())) else null)
     }
 
     suspend fun pendingQuantumRecoveryProbe(wallet: WalletEntity): RecoveryProbeStatus? = runInterruptible(Dispatchers.IO) {
@@ -688,6 +690,7 @@ class AccountRepository(
             val challenge = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
             val plan = network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe(observed, staged.inspection.snapshot,
                 challenge, System.currentTimeMillis() / 1000, 120)
+            currentCoroutineContext().ensureActive()
             probeStatus(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context)
                 .reserve(plan, staged.inspection.encryptedDigest, System.currentTimeMillis() / 1000))
         }
@@ -703,6 +706,7 @@ class AccountRepository(
             val identity = requireNotNull(actual.quantumIdentity); val now = System.currentTimeMillis() / 1000
             val state = (network.tos.wallet.data.account.pq.QuantumSelfPayAccount.bind(identity, observed.proof, now, 300)
                 .snapshot(now).status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+            coroutine.ensureActive()
             network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).sign(identity, operation, observed, now) { entry ->
                 coroutine.ensureActive()
                 val signingNow = System.currentTimeMillis() / 1000

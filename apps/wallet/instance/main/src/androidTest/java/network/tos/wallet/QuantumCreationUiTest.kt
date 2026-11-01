@@ -700,6 +700,31 @@ class QuantumCreationUiTest {
             fun hex(value: ByteArray) = value.joinToString("") { "%02x".format(it) }
             successorPublic = org.json.JSONObject().put("authority_hash", hex(staged.inspection.snapshot.hash))
                 .put("material_digest", hex(staged.inspection.encryptedDigest)).put("pin_cancelled_without_storage", true)
+            if (InstrumentationRegistry.getArguments().getString("quantumSignSuccessorProbe") == "true") {
+                assertNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                press("quantum.recovery.probe.prepare")
+                assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 15000))
+                device.pressBack(); status("Saved replacement keys verified")
+                assertNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                press("quantum.recovery.probe.prepare"); pin(); status("Possession message: RESERVED")
+                val reserved = checkNotNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                assertNull(reserved.bodyDigest)
+                press("quantum.recovery.probe.sign")
+                assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 15000))
+                device.pressBack(); status("Possession message: RESERVED")
+                assertEquals(reserved, runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                press("quantum.recovery.probe.sign"); pin(); status("Possession message: SIGNED")
+                val proof = checkNotNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                assertEquals(reserved.operation, proof.operation); assertEquals(reserved.digest, proof.digest)
+                assertEquals(reserved.address, proof.address); assertEquals(reserved.materialDigest, proof.materialDigest)
+                assertEquals(hex(staged.inspection.encryptedDigest), proof.materialDigest); assertNotNull(proof.bodyDigest)
+                assertThrows(IllegalStateException::class.java) { runBlocking { repository.signQuantumRecoveryProbe(wallet, proof.operation) } }
+                assertThrows(IllegalStateException::class.java) { runBlocking { repository.reserveQuantumRecoveryProbe(wallet) } }
+                assertEquals(proof, runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                successorPublic.put("probe", org.json.JSONObject().put("operation", proof.operation.toString()).put("phase", proof.phase)
+                    .put("address", proof.address).put("digest", proof.digest).put("material_digest", proof.materialDigest)
+                    .put("body_digest", proof.bodyDigest).put("deadline", proof.deadline))
+            }
         }
         val history = runBlocking { repository.readQuantumHistory(wallet) }
         val tx = history.transactions.single { it.inbound?.hash == completed.messageRootHash }
@@ -742,6 +767,15 @@ class QuantumCreationUiTest {
             fun hex(value: ByteArray) = value.joinToString("") { "%02x".format(it) }
             assertEquals(expected.getJSONObject("successor").getString("authority_hash"), hex(staged.inspection.snapshot.hash))
             assertEquals(expected.getJSONObject("successor").getString("material_digest"), hex(staged.inspection.encryptedDigest))
+            if (expected.getJSONObject("successor").has("probe")) {
+                val saved = expected.getJSONObject("successor").getJSONObject("probe")
+                val proof = checkNotNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                assertEquals("SIGNED", proof.phase); assertEquals(saved.getString("operation"), proof.operation.toString())
+                assertEquals(saved.getString("address"), proof.address); assertEquals(saved.getString("digest"), proof.digest)
+                assertEquals(saved.getString("material_digest"), proof.materialDigest); assertEquals(saved.getString("body_digest"), proof.bodyDigest)
+                assertEquals(saved.getLong("deadline"), proof.deadline)
+                assertThrows(IllegalStateException::class.java) { runBlocking { repository.signQuantumRecoveryProbe(wallet, proof.operation) } }
+            }
         }
         if (signed.phase == "COMPLETED") {
             val replacement = runBlocking { repository.prepareQuantumRecoveryControl(wallet,
