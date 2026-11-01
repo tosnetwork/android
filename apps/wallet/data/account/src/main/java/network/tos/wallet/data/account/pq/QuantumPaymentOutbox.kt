@@ -91,7 +91,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         }
     }
 
-    internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES, PROTECTED_STORED }
+    internal enum class ImportPhase { VALIDATED_FILE, BOUND_SECRETS, OBSERVED_ROLES, PROTECTED_STORED, PUBLIC_RECORD_DURABLE }
     internal class ImportCheckpoint(val id: UUID, val phase: ImportPhase)
 
     /** Retry journal only; the same original encrypted file is required again after restart. */
@@ -166,7 +166,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
             val checkpoint = locked {
                 check(recoveryIsolated(backup.birth)) { "Import isolation marker is missing" }
                 checkNotNull(readImport(importPath(backup.birth), backup, observation.profile)).also {
-                    check(importPhase(it) == ImportPhase.PROTECTED_STORED)
+                    check(importPhase(it).ordinal >= ImportPhase.PROTECTED_STORED.ordinal)
                 }
             }
             observation.requireFresh(now())
@@ -197,7 +197,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
                 hex(profile.rootHash), hex(profile.fileHash), namespace)
             observeBackupImport(backup, observation, now())
             val checkpoint = prepareBackupImport(backup, profile)
-            check(checkpoint.phase in setOf(ImportPhase.OBSERVED_ROLES, ImportPhase.PROTECTED_STORED))
+            check(checkpoint.phase.ordinal >= ImportPhase.OBSERVED_ROLES.ordinal)
             observation.requireFresh(now())
             val storePassword = password.copyOf()
             try { persist(checkpoint.id, input, storePassword, backup) } finally { storePassword.fill('\u0000') }
@@ -205,7 +205,7 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
                 check(recoveryIsolated(backup.birth))
                 val value = checkNotNull(readImport(importPath(backup.birth), backup, profile))
                 check(UUID.fromString(value.getString("id")) == checkpoint.id &&
-                    importPhase(value) in setOf(ImportPhase.OBSERVED_ROLES, ImportPhase.PROTECTED_STORED))
+                    importPhase(value).ordinal >= ImportPhase.OBSERVED_ROLES.ordinal)
                 observation.requireFresh(now())
                 if (importPhase(value) == ImportPhase.OBSERVED_ROLES) {
                     value.put("phase", ImportPhase.PROTECTED_STORED.ordinal)
@@ -215,6 +215,34 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
             }
         } finally { password.fill('\u0000') }
     }
+    internal fun retainBackupImportRecord(backup: QuantumBackupInspection, profile: QuantumNetworkProfile): ImportCheckpoint =
+        retainBackupImportRecord(backup, profile) { id ->
+            QuantumCreationCustody(custodyContext).inspectRecoveryMaterial(id, backup.birth, backup.encryptedDigest, profile)
+        }
+
+    /** Re-read protected material before retaining a public enrollment; publication is a separate step. */
+    internal fun retainBackupImportRecord(backup: QuantumBackupInspection, profile: QuantumNetworkProfile,
+                                          inspectStored: (UUID) -> QuantumBackupInspection): ImportCheckpoint {
+        val checkpoint = prepareBackupImport(backup, profile)
+        check(checkpoint.phase.ordinal >= ImportPhase.PROTECTED_STORED.ordinal)
+        val stored = inspectStored(checkpoint.id)
+        check(stored.birth == backup.birth && stored.encryptedDigest.contentEquals(backup.encryptedDigest))
+        fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        stored.requireProfile(profile.globalId, hex(profile.rootHash), hex(profile.fileHash), backup.snapshot.namespace)
+        return locked {
+            check(recoveryIsolated(backup.birth))
+            val value = checkNotNull(readImport(importPath(backup.birth), backup, profile))
+            check(UUID.fromString(value.getString("id")) == checkpoint.id &&
+                importPhase(value).ordinal >= ImportPhase.PROTECTED_STORED.ordinal)
+            QuantumRecoveryRecord(checkpoint.id, profile, backup.birth, backup.encryptedDigest).save(custodyContext)
+            if (importPhase(value) == ImportPhase.PROTECTED_STORED) {
+                value.put("phase", ImportPhase.PUBLIC_RECORD_DURABLE.ordinal)
+                writeImport(backup.birth, value)
+            }
+            ImportCheckpoint(checkpoint.id, importPhase(value))
+        }
+    }
+
     private fun importPhase(value: JSONObject): ImportPhase {
         val phase = value.get("phase")
         check(phase is Int && phase in ImportPhase.entries.indices)

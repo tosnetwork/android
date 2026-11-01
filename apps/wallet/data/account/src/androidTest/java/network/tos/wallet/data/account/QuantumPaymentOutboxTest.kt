@@ -462,6 +462,46 @@ class QuantumPaymentOutboxTest {
                     }
                 }
                 assertEquals(2, exportCalls)
+                val publicPath = File(context.noBackupFilesDir, "quantum-recovery-records/${stored.id}.json")
+                try {
+                    assertThrows(IOException::class.java) {
+                        reopened.retainBackupImportRecord(backup, profile) { throw IOException("Protected read failed") }
+                    }
+                    assertFalse(publicPath.exists())
+                    assertThrows(IOException::class.java) {
+                        failImport.retainBackupImportRecord(backup, profile) { retained }
+                    }
+                    assertTrue(publicPath.exists())
+                    assertEquals(QuantumPaymentOutbox.ImportPhase.PROTECTED_STORED.ordinal,
+                        JSONObject(importFile.readText()).getInt("phase"))
+                    assertTrue(importStage.exists())
+                    assertTrue(reopened.requiresRecovery(identity))
+                    val durable = reopened.retainBackupImportRecord(backup, profile) { operation ->
+                        material.inspectStored(operation, backup.birth, backup.encryptedDigest, wrapping,
+                            profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+                    }
+                    assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLIC_RECORD_DURABLE, durable.phase)
+                    assertFalse(importStage.exists())
+                    val publicRecord = QuantumRecoveryRecord.load(context, durable.id)
+                    assertEquals(backup.birth, publicRecord.identity)
+                    assertArrayEquals(backup.encryptedDigest, publicRecord.encryptedDigest)
+                    assertEquals("recovery_only", JSONObject(publicPath.readText()).getString("mode"))
+                    val originalPublicBytes = publicPath.readBytes()
+                    assertEquals(durable.id, reopened.retainBackupImportRecord(backup, profile) { retained }.id)
+                    assertArrayEquals(originalPublicBytes, publicPath.readBytes())
+                    assertThrows(IllegalStateException::class.java) {
+                        QuantumRecoveryRecord(durable.id, profile, backup.birth, ByteArray(32)).save(context)
+                    }
+                    assertArrayEquals(originalPublicBytes, publicPath.readBytes())
+                    publicPath.writeText("{")
+                    assertThrows(Exception::class.java) {
+                        reopened.retainBackupImportRecord(backup, profile) { retained }
+                    }
+                    assertEquals("{", publicPath.readText())
+                    assertTrue(reopened.requiresRecovery(identity))
+                    publicPath.writeBytes(originalPublicBytes)
+                    assertEquals(durable.id, reopened.retainBackupImportRecord(backup, profile) { retained }.id)
+                } finally { publicPath.delete() }
                 assertTrue(reopened.requiresRecovery(identity))
                 val marker = File(journal.parentFile, journal.nameWithoutExtension + ".recovery")
                 assertTrue(marker.delete())
