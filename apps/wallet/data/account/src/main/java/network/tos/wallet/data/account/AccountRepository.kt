@@ -748,6 +748,28 @@ class AccountRepository(
             }
         }
 
+    /** Public lookup handle only; the returned UUID establishes no authorization. */
+    suspend fun pendingQuantumProbeFundingOperation(wallet: WalletEntity): UUID? = withContext(Dispatchers.IO) {
+        val actual = checkNotNull(database.getAccount(wallet.id))
+        require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+        currentCoroutineContext().ensureActive()
+        network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context)
+            .pending(requireNotNull(actual.quantumIdentity))?.operation
+    }
+
+    /** Resume the exact reservation with fresh proofs; no deadline extension or secret access. */
+    suspend fun resumeQuantumProbeFunding(wallet: WalletEntity, operation: UUID):
+        network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            val observed = observeCompletedRecoveryLock(actual)
+            currentCoroutineContext().ensureActive()
+            network.tos.wallet.data.account.pq.QuantumProbeFundingJournal(context).resume(
+                requireNotNull(actual.quantumIdentity), operation, observed, System.currentTimeMillis() / 1000)
+        }
+    }
+
     /** Preparation only: no secret access, signature, fee approval, broadcast or recovery unlock. */
     suspend fun prepareQuantumRecoveryControl(wallet: WalletEntity,
         kind: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind,

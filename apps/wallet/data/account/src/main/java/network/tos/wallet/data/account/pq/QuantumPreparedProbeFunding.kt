@@ -15,6 +15,7 @@ class QuantumPreparedProbeFunding internal constructor(
     now: Long,
     ttl: Long,
     private val handoff: QuantumRecoveryControlHandoff? = null,
+    private val restoredDeadline: Long? = null,
 ) {
     val identity = entry.identity
     val profile = entry.profile
@@ -37,8 +38,8 @@ class QuantumPreparedProbeFunding internal constructor(
         stateHash = current.cell.hash().toByteArray()
         val time = maxOf(now, observation.network.masterchainTime,
             observation.proof.provenAccountTime(QuantumAccountReader.rawAddress(identity)))
-        expiresAt = minOf(time + ttl, entry.deadline)
-        check(expiresAt > time)
+        expiresAt = restoredDeadline ?: minOf(time + ttl, entry.deadline)
+        check(expiresAt > time && expiresAt <= entry.deadline && expiresAt <= time + 3600)
         val body = BagOfCells(entry.signedBody()).roots.single()
         message = buildCell {
             storeUInt(16, 6) // Internal, IHR disabled, non-bouncing, absent relaxed source.

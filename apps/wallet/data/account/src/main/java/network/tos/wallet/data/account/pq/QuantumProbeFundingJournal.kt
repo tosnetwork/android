@@ -5,10 +5,12 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.QuantumStoredSelfPayRequest
 import org.ton.boc.BagOfCells
 import java.io.*
 import java.nio.channels.OverlappingFileLockException
 import java.util.UUID
+import java.math.BigInteger
 
 /** Durable reservation only. Neither a signing capability nor a broadcast/unlock API.
  * A reservation is never replaced or released, including after its deadline.
@@ -20,6 +22,31 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
                         probe: QuantumRecoveryProbeJournal.Entry, now: Long) {
             check(bytes.contentEquals(snapshot(plan, prior, probe, now))) { "Probe funding reservation changed" }
         }
+        /** Reconstruct the saved request after fresh authentication; never renew its deadline. */
+        internal fun restore(prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry,
+                             fresh: QuantumAccountReader.Observation, now: Long): QuantumPreparedProbeFunding =
+            DataInputStream(ByteArrayInputStream(bytes)).use { input ->
+                val walletId = UUID(input.readLong(), input.readLong())
+                val globalId = input.readInt(); val root = input.readUTF(); val file = input.readUTF()
+                require(root.matches(Regex("[0-9a-f]{64}")) && file.matches(Regex("[0-9a-f]{64}")))
+                val profile = QuantumNetworkProfile(globalId, root, file)
+                val amountText = input.readUTF(); require(amountText.matches(Regex("[1-9][0-9]{0,8}")))
+                val amount = BigInteger(amountText); QuantumPreparedProbeFunding.requireAmount(amount)
+                fun field(): ByteArray {
+                    val size = input.readInt(); require(size in 1..131072 && size <= input.available())
+                    return ByteArray(size).also(input::readFully)
+                }
+                val identity = TosQuantumSelfPayIdentity.fromBoc(field())
+                check(field().contentEquals(prior.encode())) { "Prior control record changed after reservation" }
+                check(field().contentEquals(probe.encode())) { "Possession probe changed after reservation" }
+                val stored = QuantumStoredSelfPayRequest.parse(field()); require(input.read() == -1)
+                require(walletId == fresh.id && identity == fresh.identity && sameProfile(profile, fresh.profile))
+                val handoff = QuantumRecoveryControlHandoff.acquire(prior, fresh, now)
+                QuantumPreparedProbeFunding(probe, fresh, amount, now, 120, handoff, stored.deadline).also { plan ->
+                    plan.requireBound(stored.cell)
+                    requirePlan(plan, prior, probe, now)
+                }
+            }
         internal fun encode(): ByteArray = ByteArrayOutputStream().also { buffer ->
             DataOutputStream(buffer).use { out ->
                 out.writeInt(0x51504631)
@@ -65,6 +92,13 @@ internal class QuantumProbeFundingJournal(private val context: Context, private 
             store.reserve(key(plan.identity), entry.encode())
             entry
         }
+    fun resume(identity: TosQuantumSelfPayIdentity, operation: UUID, fresh: QuantumAccountReader.Observation,
+               now: Long): QuantumPreparedProbeFunding = QuantumPaymentOutbox(context).withRecoveryControlIsolation(identity) {
+        val reservation = checkNotNull(pending(identity)); check(reservation.operation == operation)
+        require(fresh.identity == identity)
+        reservation.restore(checkNotNull(QuantumRecoveryControlJournal(context).pending(identity)),
+            checkNotNull(QuantumRecoveryProbeJournal(context).pending(identity)), fresh, now)
+    }
     companion object { private const val MAX_FILE = 262144 }
 }
 

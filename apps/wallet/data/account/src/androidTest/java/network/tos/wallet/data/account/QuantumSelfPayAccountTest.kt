@@ -309,6 +309,23 @@ class QuantumSelfPayAccountTest {
                     assertEquals(QuantumAuthRole.RESCUE, funding.request.role)
                     assertTrue(funding.expiresAt <= signed.deadline)
                     funding.requireBound(funding.request.request); funding.requireRevalidated(observation, now)
+                    // Resuming must retain the exact request, rather than renewing TTL from the new local time.
+                    val restored = QuantumPreparedProbeFunding(signed, observation, funding.amount, now + 1, 120,
+                        restoredDeadline = funding.expiresAt)
+                    assertEquals(funding.expiresAt, restored.expiresAt)
+                    assertEquals(funding.request.request.hash(), restored.request.request.hash())
+                    funding.requireBound(restored.request.request)
+                    val changed = QuantumPreparedProbeFunding(signed, observation, funding.amount, now + 1, 120,
+                        restoredDeadline = funding.expiresAt - 1)
+                    assertThrows(IllegalArgumentException::class.java) { funding.requireBound(changed.request.request) }
+                    assertThrows(IllegalStateException::class.java) {
+                        QuantumPreparedProbeFunding(signed, observation, funding.amount, funding.expiresAt, 120,
+                            restoredDeadline = funding.expiresAt)
+                    }
+                    assertThrows(IllegalStateException::class.java) {
+                        QuantumPreparedProbeFunding(signed, observation, funding.amount, now, 120,
+                            restoredDeadline = signed.deadline + 1)
+                    }
                     val msg = funding.message.beginParse()
                     assertEquals(16, msg.loadUInt(6).toInt()); assertEquals(signed.probe.address, msg.loadAddress())
                     val count = msg.loadUInt(4).toInt(); assertEquals(funding.amount, msg.loadUInt(count * 8))
