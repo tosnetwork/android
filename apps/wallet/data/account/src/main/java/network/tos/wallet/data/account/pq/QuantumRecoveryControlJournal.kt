@@ -29,6 +29,7 @@ internal class QuantumRecoveryControlJournal(
         private val requestBytes = request.copyOf()
         private val signatureBytes = signature.copyOf()
         val requestHash: ByteArray get() = authorization.cell.hash().toByteArray()
+        val deadline: Long get() = authorization.deadline
         private val authorization get() = QuantumStoredSelfPayRequest.parse(requestBytes)
         private val state get() = QuantumSelfPayState.parse(BagOfCells(stateBytes).roots.single())
         init {

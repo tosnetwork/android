@@ -296,6 +296,9 @@ class QuantumCreationUiTest {
         val wallet = runBlocking { repository.getWallets() }.single()
         val record = QuantumCreationRecord.decode(File(context.noBackupFilesDir, "quantum-creation/${wallet.id}.json").readBytes())
         val backups = GlobalContext.get().get<network.tos.wallet.data.backup.BackupRepository>()
+        if (InstrumentationRegistry.getArguments().getString("quantumRecoveryControlSigning") == "true") {
+            deployCreatedWalletForRecoveryControl(wallet, record)
+        }
         fun backupCount() = runBlocking { backups.stream.first().count { it.walletId == wallet.id } }
         val initialCount = backupCount()
         instrumentation.runOnMainSync {
@@ -468,7 +471,92 @@ class QuantumCreationUiTest {
             assertTrue(stored.roles.all { it.account == 0L && it.generation == 0L && it.sourceProfile == 2 })
             runBlocking { repository.readQuantumAccount(wallet) } // Fresh authenticated account read through published recovery record.
             assertTrue(coldControl("verify-file", publicRecoveryIdentity(identity, profile)).getBoolean("matched"))
+            if (args.getString("quantumRecoveryControlSigning") == "true") signActualRecoveredControl(wallet)
         } finally { password.fill('\u0000') }
+    }
+
+    private fun authenticateRecoveryTest(title: String, cancel: Boolean = false): Boolean {
+        lateinit var activity: network.tos.wallet.app.ui.screen.root.RootActivity
+        instrumentation.runOnMainSync {
+            activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                .filterIsInstance<network.tos.wallet.app.ui.screen.root.RootActivity>().single()
+        }
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val result = executor.submit<Boolean> {
+                runBlocking { GlobalContext.get().get<PasscodeManager>().confirmation(activity, title) }
+            }
+            assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 15000))
+            if (cancel) device.pressBack() else pin()
+            return result.get(30, java.util.concurrent.TimeUnit.SECONDS)
+        } finally { executor.shutdownNow() }
+    }
+
+    /** Setup uses the real funding node and native signing service; not claimed as payment UI acceptance. */
+    private fun deployCreatedWalletForRecoveryControl(wallet: network.tos.wallet.data.account.entities.WalletEntity,
+                                                       record: QuantumCreationRecord) {
+        assertTrue(coldControl("fund-created", publicRecoveryIdentity(record)).getBoolean("funded"))
+        val deadline = android.os.SystemClock.elapsedRealtime() + 60000
+        var snapshot = runBlocking { repository.readQuantumAccount(wallet) }
+        while (snapshot.balance < java.math.BigInteger("10000000000") && android.os.SystemClock.elapsedRealtime() < deadline) {
+            android.os.SystemClock.sleep(500); snapshot = runBlocking { repository.readQuantumAccount(wallet) }
+        }
+        assertEquals(java.math.BigInteger("10000000000"), snapshot.balance)
+        val intent = network.tos.blockchain.ton.contract.QuantumPaymentIntent(
+            org.ton.block.AddrStd.parse("0:" + "71".repeat(32)), java.math.BigInteger("1000000000"), false)
+        val prepared = runBlocking { repository.prepareQuantumPayment(wallet, intent) }
+        assertTrue(authenticateRecoveryTest("Authorize local recovery test deployment"))
+        val quote = runBlocking { repository.authorizeQuantumPayment(wallet, prepared) }
+        runBlocking { repository.submitQuantumPayment(wallet, quote) }
+        val activeDeadline = android.os.SystemClock.elapsedRealtime() + 60000
+        do {
+            snapshot = runBlocking { repository.readQuantumAccount(wallet) }
+            if (snapshot.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active) break
+            android.os.SystemClock.sleep(500)
+        } while (android.os.SystemClock.elapsedRealtime() < activeDeadline)
+        assertTrue("Actual App-created wallet must be deployed before backup", snapshot.status is network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active)
+    }
+
+    private fun signActualRecoveredControl(wallet: network.tos.wallet.data.account.entities.WalletEntity) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        val beforeState = (before.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        assertNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
+        assertFalse(authenticateRecoveryTest("Authorize locking the recovered primary key", cancel = true))
+        assertNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
+        val plan = runBlocking { repository.prepareQuantumRecoveryControl(wallet,
+            network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY) }
+        assertTrue(authenticateRecoveryTest("Authorize locking the recovered primary key"))
+        val operation = runBlocking { repository.reserveQuantumRecoveryControl(plan) }
+        runBlocking { repository.signQuantumRecoveryControl(plan, operation) }
+        val signed = checkNotNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
+        assertEquals("SIGNED", signed.phase); assertEquals(operation, signed.operation)
+        assertEquals(plan.request.digest.joinToString("") { "%02x".format(it) }, signed.requestHash)
+        assertThrows(IllegalStateException::class.java) { runBlocking { repository.signQuantumRecoveryControl(plan, operation) } }
+        val after = runBlocking { repository.readQuantumAccount(wallet) }
+        val afterState = (after.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        assertEquals(beforeState.cell.hash(), afterState.cell.hash())
+        assertEquals(before.balance, after.balance)
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(identity))
+        File(context.cacheDir, "quantum-recovery-control-public.json").writeText(org.json.JSONObject()
+            .put("operation", operation.toString()).put("request_hash", signed.requestHash).put("phase", signed.phase)
+            .put("state_hash", afterState.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
+            .put("balance", after.balance.toString()).put("cancelled_before_signing", true).toString())
+    }
+
+    @Test fun signedRecoveryControlSurvivesProcessRestartWithoutUnlockOrBroadcast() {
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val expected = org.json.JSONObject(File(context.cacheDir, "quantum-recovery-control-public.json").readText())
+        val signed = checkNotNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) })
+        assertEquals(expected.getString("operation"), signed.operation.toString())
+        assertEquals(expected.getString("request_hash"), signed.requestHash); assertEquals("SIGNED", signed.phase)
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
+        val actual = runBlocking { repository.readQuantumAccount(wallet) }
+        val state = (actual.status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+        assertEquals(expected.getString("state_hash"), state.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
+        assertEquals(expected.getString("balance"), actual.balance.toString())
     }
 
     @Test fun existingQuantumWalletSurvivesRejectedAndCancelledRecovery() {
@@ -577,7 +665,7 @@ class QuantumCreationUiTest {
         val request = okhttp3.Request.Builder().url(endpoint.newBuilder().addPathSegment(action).build())
             .header("Authorization", "Bearer " + requireNotNull(args.getString("quantumColdToken")))
             .post(body.toString().toRequestBody("application/json".toMediaType())).build()
-        return okhttp3.OkHttpClient().newCall(request).execute().use {
+        return okhttp3.OkHttpClient.Builder().readTimeout(90, java.util.concurrent.TimeUnit.SECONDS).build().newCall(request).execute().use {
             check(it.isSuccessful) { "Cold recovery controller refused stage" }
             org.json.JSONObject(checkNotNull(it.body).string())
         }

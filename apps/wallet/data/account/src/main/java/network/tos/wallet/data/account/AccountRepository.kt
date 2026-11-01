@@ -605,6 +605,18 @@ class AccountRepository(
         network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl(observed, kind, System.currentTimeMillis() / 1000, 120)
     }
 
+    data class RecoveryControlStatus(val operation: UUID, val phase: String, val requestHash: String, val deadline: Long)
+
+    /** Public journal status only; reading SIGNED revalidates its stored native signature. */
+    suspend fun pendingQuantumRecoveryControl(wallet: WalletEntity): RecoveryControlStatus? = runInterruptible(Dispatchers.IO) {
+        val identity = requireNotNull(wallet.quantumIdentity)
+        network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(identity)?.let { entry ->
+            require(entry.walletId.toString() == wallet.id && entry.identity == identity)
+            RecoveryControlStatus(entry.operation, entry.phase.name,
+                entry.requestHash.joinToString("") { "%02x".format(it) }, entry.deadline)
+        }
+    }
+
     suspend fun reserveQuantumRecoveryControl(plan: network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl): UUID =
         runInterruptible(Dispatchers.IO) {
             network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context)

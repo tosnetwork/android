@@ -26,8 +26,16 @@ def main():
     parser.add_argument('--rpc', default='http://10.0.2.2:18545')
     parser.add_argument('--port', type=int, default=18853)
     parser.add_argument('--encrypted-backup', action='store_true', help='Restore an actual App-exported encrypted file; password stays in controller memory')
+    parser.add_argument('--recovery-control-signing', action='store_true', help='Deploy before encrypted backup; authenticate and sign a restricted recovery control after uninstall')
+    parser.add_argument('--funding-control', default='http://127.0.0.1:18745')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
+    if a.recovery_control_signing and not a.encrypted_backup:
+        raise ValueError('Recovery control signing requires encrypted cold recovery')
+    funding = urllib.parse.urlsplit(a.funding_control)
+    if a.recovery_control_signing and (funding.scheme != 'http' or funding.hostname not in ('127.0.0.1', 'localhost')
+            or funding.username or funding.password or funding.query or funding.fragment or funding.path not in ('', '/')):
+        raise ValueError('Requires an exclusive loopback funding control')
     if a.encrypted_backup and a.journey_recipient:
         raise ValueError('Encrypted imports remain isolated until the R06 recovery-control journey is implemented')
     if a.journey_recipient and not re.fullmatch(r'0:[0-9a-f]{64}', a.journey_recipient):
@@ -44,7 +52,7 @@ def main():
     artifacts = {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in (a.app, a.test_app)}
     (a.out / 'apks.json').write_text(json.dumps(artifacts, indent=2))
     token = secrets.token_hex(32)
-    state = {'words': None, 'password': None, 'document': None, 'cipher_hash': None,
+    state = {'words': None, 'password': None, 'document': None, 'cipher_hash': None, 'funded': None, 'fund_attempted': False,
              'public': None, 'reinstalled': False, 'restored': False, 'verified': False}
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -58,10 +66,31 @@ def main():
                 if not 0 < length <= 32768:
                     raise ValueError('request limit')
                 body = json.loads(self.rfile.read(length))
-                if self.path == '/stage-file':
+                if self.path == '/fund-created':
+                    if not a.recovery_control_signing or state['fund_attempted'] or state['public'] is not None:
+                        raise ValueError('funding unavailable')
+                    if (body['global_id'] != a.global_id or body['root_hash'] != a.root_hash or body['file_hash'] != a.file_hash
+                            or not re.fullmatch(r'0:[0-9a-f]{64}', body['address'])):
+                        raise ValueError('funding identity mismatch')
+                    state['fund_attempted'] = True
+                    request = urllib.request.Request(a.funding_control.rstrip('/') + '/transfer',
+                        data=json.dumps({'address': body['address'], 'amount': 10}).encode(), headers={'Content-Type': 'application/json'})
+                    with urllib.request.urlopen(request, timeout=65) as response:
+                        raw = response.read(65537)
+                    if len(raw) > 65536:
+                        raise ValueError('funding response limit')
+                    receipt = json.loads(raw)
+                    if int(receipt['after']) - int(receipt['before']) != 10000000000:
+                        raise ValueError('funding delta mismatch')
+                    state['funded'] = body
+                    (a.out / 'funding-public.json').write_text(json.dumps({'address': body['address'], 'before': receipt['before'], 'after': receipt['after']}, indent=2))
+                    result = {'funded': True}
+                elif self.path == '/stage-file':
                     if not a.encrypted_backup or state['public'] is not None or set(body) != {'password', 'documentId', 'public', 'cipherSha256'}:
                         raise ValueError('file stage unavailable')
                     password, document, digest = body['password'], body['documentId'], body['cipherSha256']
+                    if a.recovery_control_signing and body['public'] != state['funded']:
+                        raise ValueError('exported wallet differs from funded wallet')
                     if not isinstance(password, str) or not 12 <= len(password) <= 1024 or not re.fullmatch(r'saved-[0-9a-f-]{36}', document) or not re.fullmatch(r'[0-9a-f]{64}', digest):
                         raise ValueError('invalid encrypted file stage')
                     state.update(password=password, document=document, cipher_hash=digest, public=body['public'])
@@ -136,6 +165,8 @@ def main():
             'network.tos.wallet.test/androidx.test.runner.AndroidJUnitRunner']
         for key, value in (extra or {}).items():
             command[-1:-1] = ['-e', key, str(value)]
+        if a.recovery_control_signing:
+            command[-1:-1] = ['-e', 'quantumRecoveryControlSigning', 'true']
         with (a.out / (method + '.log')).open('w') as output:
             subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=True)
         log = (a.out / (method + '.log')).read_text()
@@ -179,6 +210,13 @@ def main():
             test('coldRecoveryRestoresAfterUninstallWithSameAddressAndKeys')
         if not state['verified']:
             raise RuntimeError('Identity verification missing')
+        if a.recovery_control_signing:
+            status = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-recovery-control-public.json']))
+            if status['phase'] != 'SIGNED' or not status['cancelled_before_signing']:
+                raise ValueError('Recovery signing evidence missing')
+            (a.out / 'recovery-control-public.json').write_text(json.dumps(status, indent=2))
+            run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+            test('signedRecoveryControlSurvivesProcessRestartWithoutUnlockOrBroadcast')
         journey = {}
         if a.journey_recipient:
             def recipient_state():
@@ -233,7 +271,8 @@ def main():
                 raise ValueError('APK changed before final result')
         (a.out / 'result.json').write_text(json.dumps({'passed': True, 'same_apk': True,
             'actual_uninstall': True, 'same_address_identity_and_keys': True,
-            'encrypted_file': a.encrypted_backup, 'recovery_isolation_retained': a.encrypted_backup, **journey}, indent=2))
+            'encrypted_file': a.encrypted_backup, 'recovery_isolation_retained': a.encrypted_backup,
+            'recovery_control_signed_and_restart_verified': a.recovery_control_signing, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None
