@@ -13,6 +13,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify proof source checkout boundaries
+        run: python3 scripts/test_quantum_proof_source.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
