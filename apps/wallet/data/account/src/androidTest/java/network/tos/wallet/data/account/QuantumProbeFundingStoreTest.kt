@@ -12,6 +12,9 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Storage boundaries only. Opaque public bytes do not simulate authenticated handoff. */
 @RunWith(AndroidJUnit4::class)
@@ -88,5 +91,45 @@ class QuantumProbeFundingStoreTest {
     @Test fun rejectsPathTraversal() = isolated { parent ->
         assertThrows(IllegalArgumentException::class.java) { QuantumProbeFundingStore(parent).reserve("../outside", byteArrayOf(1)) }
         assertFalse(File(parent, "outside.qpf").exists())
+    }
+    @Test fun transitionRequiresExactExistingBytesAndCannotReplay() = isolated { parent ->
+        val before = byteArrayOf(1); val after = byteArrayOf(2)
+        val store = QuantumProbeFundingStore(parent)
+        assertThrows(IllegalStateException::class.java) { store.transition(key, before, after) }
+        assertNull(store.pending(key))
+        store.reserve(key, before)
+        assertThrows(IllegalStateException::class.java) { store.transition(key, byteArrayOf(9), after) }
+        assertArrayEquals(before, store.pending(key))
+        store.transition(key, before, after)
+        assertArrayEquals(after, QuantumProbeFundingStore(parent).pending(key))
+        assertThrows(IllegalStateException::class.java) { store.transition(key, before, byteArrayOf(3)) }
+        assertArrayEquals(after, store.pending(key))
+    }
+    @Test fun concurrentTransitionsHaveOnlyOneWinner() = isolated { parent ->
+        val before = byteArrayOf(1); QuantumProbeFundingStore(parent).reserve(key, before)
+        val start = CountDownLatch(1); val executor = Executors.newFixedThreadPool(2)
+        try {
+            val results = listOf(2, 3).map { value -> executor.submit<Boolean> {
+                check(start.await(5, TimeUnit.SECONDS))
+                try { QuantumProbeFundingStore(parent).transition(key, before, byteArrayOf(value.toByte())); true }
+                catch (_: IllegalStateException) { false }
+            } }
+            start.countDown()
+            assertEquals(1, results.count { it.get(10, TimeUnit.SECONDS) })
+            val stored = checkNotNull(QuantumProbeFundingStore(parent).pending(key))
+            assertTrue(stored.contentEquals(byteArrayOf(2)) || stored.contentEquals(byteArrayOf(3)))
+        } finally { executor.shutdownNow(); check(executor.awaitTermination(10, TimeUnit.SECONDS)) }
+    }
+    @Test fun interruptedTransitionsCannotSilentlyReturnToReserved() {
+        for (point in listOf("before_file_sync", "before_rename", "before_directory_sync")) isolated { parent ->
+            val before = byteArrayOf(1); val after = byteArrayOf(2)
+            QuantumProbeFundingStore(parent).reserve(key, before)
+            val faulty = QuantumProbeFundingStore(parent) { if (it == point) error("Injected $point") }
+            assertThrows(IllegalStateException::class.java) { faulty.transition(key, before, after) }
+            val reopened = QuantumProbeFundingStore(parent)
+            if (point == "before_directory_sync") assertArrayEquals(after, reopened.pending(key))
+            else assertThrows(IllegalStateException::class.java) { reopened.pending(key) }
+            assertThrows(IllegalStateException::class.java) { reopened.transition(key, before, byteArrayOf(3)) }
+        }
     }
 }

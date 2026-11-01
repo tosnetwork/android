@@ -145,16 +145,32 @@ internal class QuantumProbeFundingStore(private val parent: File, private val fa
         }
     }
     fun pending(key: String): ByteArray? = locked { read(key) }
+    private fun write(key: String, bytes: ByteArray) {
+        val target = file(key); val next = File(target.path + ".next")
+        val fd = Os.open(next.path, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
+        FileOutputStream(fd).use { out -> validate(fd); out.write(bytes); fault?.invoke("before_file_sync"); out.fd.sync() }
+        fault?.invoke("before_rename"); Os.rename(next.path, target.path)
+        fault?.invoke("before_directory_sync"); sync(directory)
+    }
     fun reserve(key: String, bytes: ByteArray) {
         require(bytes.size in 1..MAX_FILE)
+        val saved = bytes.copyOf()
         locked {
-                check(read(key) == null) { "Probe funding already reserved" }
-                check(checkNotNull(directory.list()).count { it.endsWith(".qpf") } < 64)
-                val target = file(key); val next = File(target.path + ".next")
-                val fd = Os.open(next.path, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-                FileOutputStream(fd).use { out -> validate(fd); out.write(bytes); fault?.invoke("before_file_sync"); out.fd.sync() }
-                fault?.invoke("before_rename"); Os.rename(next.path, target.path)
-                fault?.invoke("before_directory_sync"); sync(directory)
+            check(read(key) == null) { "Probe funding already reserved" }
+            check(checkNotNull(directory.list()).count { it.endsWith(".qpf") } < 64)
+            write(key, saved)
+        }
+    }
+    /** Storage CAS only. The journal must validate the permitted phase transition first. */
+    fun transition(key: String, expected: ByteArray, replacement: ByteArray) {
+        require(expected.size in 1..MAX_FILE && replacement.size in 1..MAX_FILE)
+        val before = expected.copyOf(); val after = replacement.copyOf()
+        require(!before.contentEquals(after)) { "Unchanged funding transition" }
+        locked {
+            check(checkNotNull(read(key)) { "Missing funding reservation" }.contentEquals(before)) {
+                "Funding reservation changed concurrently"
+            }
+            write(key, after)
         }
     }
     companion object { private val mutex = Any(); private const val MAX_FILE = 262144 }
