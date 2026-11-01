@@ -39,6 +39,10 @@ class QuantumRecoveryControlQuote internal constructor(
         simulation.requireBinding(entry.profile.anchor(), requestBytes, message, now, 30)
         check(now < expiresAt)
     }
+    /** Persistence metadata for the future explicit-confirmation transition; not a fresh capability. */
+    internal fun approvalRecord(): ByteArray = QuantumRecoveryControlApproval.record(operation,
+        QuantumPaymentOutbox.digest(message), entry.requestHash, quotedAt, expiresAt,
+        observedBalance, estimatedBalance, maximumEstimatedFee)
     companion object {
         /** Strict codec checks only. The constructor additionally requires a native simulation capability. */
         internal fun validateExecution(wire: JSONObject, message: ByteArray, address: String): Pair<BigInteger, BigInteger> {
