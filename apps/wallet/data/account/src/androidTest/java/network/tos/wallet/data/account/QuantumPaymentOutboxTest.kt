@@ -291,8 +291,25 @@ class QuantumPaymentOutboxTest {
             assertFalse("Atomic promotion left the source pending name", afterRenameFailure.exists())
             assertArrayEquals("Post-rename interruption lost the complete authorization", canonicalBytes, journal.readBytes())
             assertEquals(second.id, outbox.pending(identity)!!.id)
+
+            // Reset only this deliberately stranded public test authorization, then exercise
+            // recovery isolation on a genuinely RESERVED operation and on an empty outbox.
+            assertTrue(journal.delete())
+            val isolatedEntry = outbox.reserve(payment, now)
+            outbox.isolateRecoveredIdentity(identity)
+            var signerCalled = false
+            assertThrows(IllegalStateException::class.java) {
+                outbox.sign(isolatedEntry) { signerCalled = true; ByteArray(0) }
+            }
+            assertFalse(signerCalled)
+            outbox.cancelUnsigned(isolatedEntry)
+            assertNull(outbox.pending(identity))
+            val reopened = QuantumPaymentOutbox(context)
+            assertTrue(reopened.requiresRecovery(TosQuantumSelfPayIdentity.fromBoc(identity.toBoc())))
+            assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
         } finally {
             journal.delete()
+            File(journal.parentFile, journal.nameWithoutExtension + ".recovery").delete()
             File(context.noBackupFilesDir, "quantum-proof-checkpoints/$id").deleteRecursively()
             File(context.noBackupFilesDir, "quantum-creation/$id.json").delete()
         }
