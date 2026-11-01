@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from quantum_cold_recovery import run_instrumentation, redact_failure_logcat
+from quantum_cold_recovery import run_instrumentation, redact_failure_logcat, redact_failure_environment
 import json
 
 
@@ -53,6 +53,32 @@ class InstrumentationEvidenceTest(unittest.TestCase):
 
 
 class CrashRedactionTest(unittest.TestCase):
+    def test_environment_keeps_only_numbers_and_known_wake_state(self):
+        result = redact_failure_environment(b'MemTotal: 2000 kB\nMemAvailable: 1000 kB\nSecret: password\n',
+            b'mWakefulness=Asleep\nsecret-wake-lock-tag', b'60000\n')
+        self.assertEqual({'guest_memory_kb': {'MemTotal': 2000, 'MemAvailable': 1000},
+                          'wakefulness': 'Asleep', 'screen_off_timeout_ms': 60000}, result)
+        self.assertIsNone(redact_failure_environment(b'', b'private', b'secret')['screen_off_timeout_ms'])
+        with self.assertRaises(ValueError):
+            redact_failure_environment(b'x' * 65537, b'', b'')
+
+    def test_owned_process_signal_is_numeric_without_freeform_text(self):
+        raw = b'I/am_proc_died( 10): [0,123,network.tos.wallet,0,secret]\nI/Process( 123): Sending signal. PID: 123 SIG: 9\n'
+        self.assertIn({'event': 'process_signal', 'pid': 123, 'signal': 9}, redact_failure_logcat(raw)['records'])
+
+    def test_runner_tag_frames_are_bound_by_owned_exit_pid_without_messages(self):
+        raw = b'''I/am_proc_died( 10): [0,123,network.tos.wallet,0,secret reason]
+E/TestRunner( 123): java.lang.IllegalStateException: secret password
+E/TestRunner( 123): at network.tos.wallet.Step.run(Step.kt:77)
+E/TestRunner( 456): java.lang.Error: other-secret
+E/TestRunner( 456): at java.lang.Other.run(Other.java:1)
+'''
+        result = json.dumps(redact_failure_logcat(raw))
+        self.assertIn('java.lang.IllegalStateException', result)
+        self.assertIn('Step.kt:77', result)
+        for forbidden in ('secret', 'password', 'Other.java', '456'):
+            self.assertNotIn(forbidden, result)
+
     def test_owned_java_frames_survive_without_messages_inputs_or_other_processes(self):
         raw = b'''E/AndroidRuntime( 123): FATAL EXCEPTION: secret-thread
 E/AndroidRuntime( 123): Process: network.tos.wallet, PID: 123

@@ -48,10 +48,13 @@ def redact_failure_logcat(raw):
                 library = re.search(r'/(lib[A-Za-z0-9_.-]+\.so)\b', text)
                 if frame and library:
                     output.append({'event': 'native_frame', 'index': int(frame[1]), 'pc': frame[2], 'library': library[1]})
-        elif tag == 'AndroidRuntime' and pid in owned:
+        elif pid in owned and tag not in ('libc', 'am_crash', 'am_anr', 'am_kill', 'am_proc_died'):
+            signal = re.fullmatch(r'Sending signal\. PID: ([0-9]+) SIG: ([0-9]+)', text)
+            if tag == 'Process' and signal and int(signal[1]) in owned:
+                output.append({'event': 'process_signal', 'pid': int(signal[1]), 'signal': int(signal[2])})
             if text.startswith('FATAL EXCEPTION:'):
                 output.append({'event': 'fatal_exception', 'pid': pid})
-            exception = re.match(r'^(?:Caused by: )?([A-Za-z_$][A-Za-z0-9_.$]{1,255})(?::|$)', text)
+            exception = re.match(r'^(?:Caused by: )?((?:java|android|androidx|kotlin|kotlinx|network\.tos|org|com)\.[A-Za-z_$][A-Za-z0-9_.$]{1,255})(?::|$)', text)
             if exception and '.' in exception[1]:
                 output.append({'event': 'exception_class', 'pid': pid, 'class': exception[1]})
             frame = re.fullmatch(r'at ((?:network\.tos|java|android|androidx|kotlin|kotlinx|org\.junit|org\.ton|okhttp3|com\.android)\.[A-Za-z0-9_.$<>/]{1,256})\(([A-Za-z0-9_.$-]{1,128}(?::[0-9]{1,8})?|Native Method|Unknown Source)\)', text)
@@ -69,6 +72,18 @@ def redact_failure_logcat(raw):
     if len(json.dumps(result).encode()) > 65536:
         raise ValueError('Redacted crash log exceeds output limit')
     return result
+
+
+def redact_failure_environment(meminfo, power, screen_timeout):
+    if sum(map(len, (meminfo, power, screen_timeout))) > 65536:
+        raise ValueError('Environment snapshot exceeds limit')
+    memory = {key: int(value) for key, value in re.findall(
+        r'^(MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree|Shmem|Slab):\s+([0-9]+) kB$',
+        meminfo.decode('utf-8', errors='replace'), re.M)}
+    wake = re.search(r'\bmWakefulness=(Awake|Asleep|Dreaming|Dozing)\b', power.decode('utf-8', errors='replace'))
+    timeout = screen_timeout.decode('utf-8', errors='replace').strip()
+    return {'guest_memory_kb': memory, 'wakefulness': wake[1] if wake else None,
+            'screen_off_timeout_ms': int(timeout) if re.fullmatch(r'[0-9]{1,10}', timeout) and int(timeout) <= 2147483647 else None}
 
 
 def run_instrumentation(command, log_path, collect_failure, timeout=300):
@@ -144,8 +159,8 @@ def main():
     if not re.fullmatch(r'emulator-\d+', a.serial):
         raise ValueError('Only a disposable TOS emulator is supported')
     adb = ['adb', '-s', a.serial]
-    def run(args):
-        return subprocess.check_output(adb + args, timeout=60, stderr=subprocess.STDOUT)
+    def run(args, timeout=60):
+        return subprocess.check_output(adb + args, timeout=timeout, stderr=subprocess.STDOUT)
     name = run(['emu', 'avd', 'name']).decode().splitlines()[0]
     if not name.startswith('TOS_'):
         raise ValueError('Requires a dedicated TOS_ emulator')
@@ -288,8 +303,14 @@ def main():
             command[-1:-1] = ['-e', 'quantumSubmitProbeFunding', 'true']
         def collect_failure():
             try:
-                crash = redact_failure_logcat(run(['logcat', '-b', 'crash', '-b', 'events', '-d', '-t', '200', '-v', 'brief']))
+                crash = redact_failure_logcat(run(['logcat', '-b', 'crash', '-b', 'events', '-b', 'main', '-b', 'system', '-d', '-t', '200', '-v', 'brief'], timeout=10))
                 crash['buffers_cleared_before_stage'] = cleared_crash_buffers
+                try:
+                    crash['environment'] = redact_failure_environment(run(['shell', 'cat', '/proc/meminfo'], timeout=10),
+                        run(['shell', 'dumpsys', 'power'], timeout=10),
+                        run(['shell', 'settings', 'get', 'system', 'screen_off_timeout'], timeout=10))
+                except (subprocess.SubprocessError, ValueError):
+                    crash['environment_available'] = False
                 (a.out / (method + '.crash-public.json')).write_text(json.dumps(crash, indent=2))
             except (subprocess.SubprocessError, ValueError):
                 pass
@@ -309,7 +330,7 @@ def main():
                         pass
         cleared_crash_buffers = False
         try:
-            run(['logcat', '-b', 'crash', '-b', 'events', '-c'])
+            run(['logcat', '-b', 'crash', '-b', 'events', '-b', 'main', '-b', 'system', '-c'])
             cleared_crash_buffers = True
         except subprocess.SubprocessError:
             pass
