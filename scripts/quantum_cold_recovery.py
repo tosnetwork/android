@@ -147,8 +147,11 @@ def main():
     parser.add_argument('--estimate-probe-funding', action='store_true', help='Native-estimate the saved funding message through the actual account service; no broadcast')
     parser.add_argument('--submit-probe-funding', action='store_true', help='Explicit local test fee confirmation sends probe funding once, verifies the probe and checks restart isolation')
     parser.add_argument('--sign-successor-migration', action='store_true', help='PIN-sign replacement once after confirmed backup; no migration broadcast or installation')
+    parser.add_argument('--active-before-restore', action='store_true', help='Pay before uninstall, then restore and pay using current nonzero counters')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
+    if a.active_before_restore and (a.encrypted_backup or not a.journey_recipient):
+        raise ValueError('Active ordinary restore requires phrase backup and a journey recipient')
     if a.sign_successor_migration and not a.submit_probe_funding:
         raise ValueError('Migration signing requires the completed funding and confirmed backup journey')
     if a.submit_probe_funding and not a.estimate_probe_funding:
@@ -384,6 +387,15 @@ def main():
             test('coldRecoveryCreatesAndStagesDisplayedBackup')
             if state['words'] is None:
                 raise RuntimeError('No displayed backup staged')
+        if a.active_before_restore:
+            test('journeyPaysFromRestoredWallet', {'quantumRecipient': a.journey_recipient,
+                'quantumExpectedAddress': state['public']['address'],
+                'quantumExpectedIdentity': state['public']['identity_cell_hash']})
+            prior_payment = json.loads(run(['shell', 'run-as', 'network.tos.wallet', 'cat',
+                'cache/quantum-app-payment-public-receipt.json']))
+            if prior_payment['wallet'] != state['public']['address']:
+                raise ValueError('Pre-uninstall payment came from a different account')
+            (a.out / 'before-uninstall-payment-public.json').write_text(json.dumps(prior_payment, indent=2))
         receipt = run(['uninstall', 'network.tos.wallet']).decode()
         if 'Success' not in receipt:
             raise RuntimeError('Uninstall failed')
@@ -520,7 +532,7 @@ def main():
                 value = reply['result']
                 return {'balance': value['balance'], 'last_transaction_id': value.get('last_transaction_id')}
             before_recipient = recipient_state()
-            test('journeyPaysFromRestoredWallet', {'quantumRecipient': a.journey_recipient,
+            test('journeyPaysFromActiveRestoredWallet' if a.active_before_restore else 'journeyPaysFromRestoredWallet', {'quantumRecipient': a.journey_recipient,
                 'quantumExpectedAddress': state['public']['address'],
                 'quantumExpectedIdentity': state['public']['identity_cell_hash']})
             receipt = json.loads(run(['shell', 'run-as', 'network.tos.wallet', 'cat',
@@ -528,6 +540,8 @@ def main():
             if (receipt['wallet'] != state['public']['address'] or
                     receipt['birth_identity_hash'] != state['public']['identity_cell_hash']):
                 raise ValueError('Payment came from a different restored identity')
+            if a.active_before_restore and (receipt['operation'] == prior_payment['operation'] or receipt['message_sha256'] == prior_payment['message_sha256']):
+                raise ValueError('Restored payment reused the old intent or signature')
             (a.out / 'payment-public-receipt.json').write_text(json.dumps(receipt, indent=2))
             # Sender verification and recipient credit remain independent observations.
             import time
