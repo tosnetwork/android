@@ -14,6 +14,23 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 
+def run_instrumentation(command, log_path, collect_failure, timeout=300):
+    """Retain diagnostics for runner crashes/timeouts as well as JUnit failures."""
+    try:
+        with log_path.open('w') as output:
+            subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=timeout, check=True)
+        log = log_path.read_text()
+        if 'OK (1 test)' not in log or 'FAILURES' in log:
+            raise RuntimeError('Instrumentation did not pass; inspect ' + log_path.name)
+    except (subprocess.SubprocessError, RuntimeError):
+        # Best-effort evidence must never replace the original failure.
+        try:
+            collect_failure()
+        except Exception:
+            pass
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial', required=True)
@@ -197,19 +214,16 @@ def main():
             command[-1:-1] = ['-e', 'quantumSignSuccessorProbe', 'true']
         if a.prepare_probe_funding:
             command[-1:-1] = ['-e', 'quantumPrepareProbeFunding', 'true']
-        with (a.out / (method + '.log')).open('w') as output:
-            subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=True)
-        log = (a.out / (method + '.log')).read_text()
-        if 'OK (1 test)' not in log or 'FAILURES' in log:
+        def collect_failure():
             if a.prepare_probe_funding:
-                try:
-                    public_checkpoint = run(['shell', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-proof-failure-public.json'])
-                    if len(public_checkpoint) <= 2097152:
-                        json.loads(public_checkpoint)
-                        (a.out / 'quantum-proof-failure-public.json').write_bytes(public_checkpoint)
-                except (subprocess.SubprocessError, ValueError):
-                    pass
-            raise RuntimeError(method + ' did not pass; inspect its log')
+                public_checkpoint = run(['shell', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-proof-failure-public.json'])
+                if len(public_checkpoint) <= 2097152:
+                    json.loads(public_checkpoint)
+                    (a.out / 'quantum-proof-failure-public.json').write_bytes(public_checkpoint)
+        if a.prepare_probe_funding:
+            # A previous phase's checkpoint is not evidence for this invocation.
+            run(['shell', 'run-as', 'network.tos.wallet', 'rm', '-f', 'cache/quantum-proof-failure-public.json'])
+        run_instrumentation(command, a.out / (method + '.log'), collect_failure)
     try:
         install()
         run(['shell', 'pm', 'clear', 'network.tos.wallet'])
