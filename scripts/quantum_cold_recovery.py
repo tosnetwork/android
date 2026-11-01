@@ -14,13 +14,70 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 
+def redact_failure_logcat(raw):
+    """Owned-process metadata/frames only. Never retain exception messages or arbitrary log text."""
+    if len(raw) > 1_048_576:
+        raise ValueError('Crash log exceeds input limit')
+    rows = []
+    for line in raw.decode('utf-8', errors='replace').splitlines()[-512:]:
+        match = re.fullmatch(r'[VDIWEFA]/([^()]+)\(\s*([0-9]+)\):\s?(.*)', line)
+        if match:
+            rows.append((match[1].strip(), int(match[2]), match[3].strip()))
+    owned = set()
+    for tag, pid, text in rows:
+        if tag == 'AndroidRuntime' and re.fullmatch(r'Process: network\.tos\.wallet, PID: [0-9]+', text):
+            owned.add(pid)
+        native = re.search(r'^pid:\s*([0-9]+),.*>>> network\.tos\.wallet <<<', text)
+        if tag == 'DEBUG' and native:
+            owned.add(int(native[1]))
+        if tag in ('am_crash', 'am_anr', 'am_kill', 'am_proc_died'):
+            event = re.match(r'^\[[0-9]+,([0-9]+),network\.tos\.wallet(?:,|\])', text)
+            if event:
+                owned.add(int(event[1]))
+    output = []
+    native_owned = {}
+    for tag, pid, text in rows:
+        if tag == 'DEBUG':
+            header = re.match(r'^pid:\s*([0-9]+),.*>>> ([^ ]+) <<<', text)
+            if header:
+                native_owned[pid] = header[2] == 'network.tos.wallet'
+                if native_owned[pid]:
+                    output.append({'event': 'native_crash', 'pid': int(header[1])})
+            if native_owned.get(pid):
+                frame = re.match(r'^#([0-9]{2}) pc ([0-9a-fA-F]{1,16}) ', text)
+                library = re.search(r'/(lib[A-Za-z0-9_.-]+\.so)\b', text)
+                if frame and library:
+                    output.append({'event': 'native_frame', 'index': int(frame[1]), 'pc': frame[2], 'library': library[1]})
+        elif tag == 'AndroidRuntime' and pid in owned:
+            if text.startswith('FATAL EXCEPTION:'):
+                output.append({'event': 'fatal_exception', 'pid': pid})
+            exception = re.match(r'^(?:Caused by: )?([A-Za-z_$][A-Za-z0-9_.$]{1,255})(?::|$)', text)
+            if exception and '.' in exception[1]:
+                output.append({'event': 'exception_class', 'pid': pid, 'class': exception[1]})
+            frame = re.fullmatch(r'at ((?:network\.tos|java|android|androidx|kotlin|kotlinx|org\.junit|org\.ton|okhttp3|com\.android)\.[A-Za-z0-9_.$<>/]{1,256})\(([A-Za-z0-9_.$-]{1,128}(?::[0-9]{1,8})?|Native Method|Unknown Source)\)', text)
+            if frame:
+                output.append({'event': 'java_frame', 'pid': pid, 'method': frame[1], 'source': frame[2]})
+        elif tag == 'libc' and pid in owned:
+            signal = re.match(r'^Fatal signal ([0-9]+) \(([A-Z0-9]+)\)', text)
+            if signal:
+                output.append({'event': 'fatal_signal', 'pid': pid, 'signal': int(signal[1]), 'name': signal[2]})
+        elif tag in ('am_crash', 'am_anr', 'am_kill', 'am_proc_died'):
+            event = re.match(r'^\[[0-9]+,([0-9]+),network\.tos\.wallet(?:,|\])', text)
+            if event:
+                output.append({'event': tag, 'pid': int(event[1])})
+    result = {'process': 'network.tos.wallet', 'records': output[:128]}
+    if len(json.dumps(result).encode()) > 65536:
+        raise ValueError('Redacted crash log exceeds output limit')
+    return result
+
+
 def run_instrumentation(command, log_path, collect_failure, timeout=300):
     """Retain diagnostics for runner crashes/timeouts as well as JUnit failures."""
     try:
         with log_path.open('w') as output:
             subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=timeout, check=True)
         log = log_path.read_text()
-        if 'OK (1 test)' not in log or 'FAILURES' in log:
+        if 'OK (1 test)' not in log or 'FAILURES' in log or 'Process crashed' in log:
             raise RuntimeError('Instrumentation did not pass; inspect ' + log_path.name)
     except (subprocess.SubprocessError, RuntimeError):
         # Best-effort evidence must never replace the original failure.
@@ -230,6 +287,12 @@ def main():
         if a.submit_probe_funding:
             command[-1:-1] = ['-e', 'quantumSubmitProbeFunding', 'true']
         def collect_failure():
+            try:
+                crash = redact_failure_logcat(run(['logcat', '-b', 'crash', '-b', 'events', '-d', '-t', '200', '-v', 'brief']))
+                crash['buffers_cleared_before_stage'] = cleared_crash_buffers
+                (a.out / (method + '.crash-public.json')).write_text(json.dumps(crash, indent=2))
+            except (subprocess.SubprocessError, ValueError):
+                pass
             if a.prepare_probe_funding:
                 for name, limit, is_json in [('quantum-proof-failure-public.json', 2097152, True),
                                              ('quantum-ui-failure-status.txt', 65536, False)]:
@@ -244,6 +307,12 @@ def main():
                         (a.out / name).write_bytes(evidence)
                     except (subprocess.SubprocessError, ValueError):
                         pass
+        cleared_crash_buffers = False
+        try:
+            run(['logcat', '-b', 'crash', '-b', 'events', '-c'])
+            cleared_crash_buffers = True
+        except subprocess.SubprocessError:
+            pass
         if a.prepare_probe_funding:
             # A previous phase's checkpoint is not evidence for this invocation.
             run(['shell', 'run-as', 'network.tos.wallet', 'rm', '-f', 'cache/quantum-proof-failure-public.json',
