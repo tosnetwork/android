@@ -437,6 +437,17 @@ class AccountRepository(
         } else {
             pendingQuantumProfile(creationId)
         }
+        proveQuantumNetwork(profile, recovery = false)
+    }
+
+    /** Recovery needs authenticated network identity even after PRIMARY creation admission ends. */
+    suspend fun quantumRecoveryNamespace(profile: QuantumNetworkProfile): ByteArray {
+        check(quantumBackupImport.tryLock()) { "Another backup import is in progress" }
+        try { return proveQuantumNetwork(profile, recovery = true) }
+        finally { quantumBackupImport.unlock() }
+    }
+
+    private suspend fun proveQuantumNetwork(profile: QuantumNetworkProfile, recovery: Boolean): ByteArray {
         val id = UUID.randomUUID()
         val session = QuantumProofSession(context, id, profile.anchor())
         var failure: Throwable? = null
@@ -448,7 +459,10 @@ class AccountRepository(
                 session.enrollBound(QuantumSelfPayNetwork.request(300), now, transport)
             }
             val verifiedAt = System.currentTimeMillis() / 1000
-            QuantumSelfPayNetwork.bind(proof, profile.globalId, verifiedAt, 300).requireFresh(verifiedAt)
+            return if (recovery) QuantumSelfPayNetwork.recoveryNamespace(proof, profile.globalId, verifiedAt)
+            else QuantumSelfPayNetwork.bind(proof, profile.globalId, verifiedAt, 300).also {
+                it.requireFresh(verifiedAt)
+            }.namespace
         } catch (error: Throwable) {
             failure = error
             throw error
@@ -709,6 +723,34 @@ class AccountRepository(
     }
 
     /** Encrypted-file recovery preserves the birth identity and publishes with ordinary payment isolated. */
+    data class QuantumBackupPreview(val address: String, val containsPrimary: Boolean, val containsRescue: Boolean)
+
+    /** Public historical metadata only. The caller's password is consumed on every exit. */
+    suspend fun inspectQuantumBackup(encrypted: ByteArray, password: CharArray, profile: QuantumNetworkProfile,
+                                    expectedNamespace: ByteArray): QuantumBackupPreview {
+        var acquired = false
+        var ownedPassword = CharArray(0)
+        try {
+            require(encrypted.size in 58..262201 && expectedNamespace.size == 32 && password.size in 12..1024)
+            check(quantumBackupImport.tryLock()) { "Another backup import is in progress" }
+            acquired = true
+            val input = encrypted.copyOf(); val namespace = expectedNamespace.copyOf()
+            ownedPassword = password.copyOf()
+            return withContext(Dispatchers.IO) {
+                currentCoroutineContext().ensureActive()
+                fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                val backup = QuantumBackupInspection.inspect(input, ownedPassword.copyOf(), profile.globalId,
+                    hex(profile.rootHash), hex(profile.fileHash), namespace)
+                currentCoroutineContext().ensureActive()
+                QuantumBackupPreview(QuantumAccountReader.rawAddress(backup.birth),
+                    backup.roles.any { it.role == QuantumRole.PRIMARY }, backup.roles.any { it.role == QuantumRole.RESCUE })
+            }
+        } finally {
+            ownedPassword.fill('\u0000'); password.fill('\u0000')
+            if (acquired) quantumBackupImport.unlock()
+        }
+    }
+
     suspend fun importQuantumBackup(encrypted: ByteArray, password: CharArray, profile: QuantumNetworkProfile,
         expectedNamespace: ByteArray, label: Wallet.NewLabel): WalletEntity {
         var ownedPassword = CharArray(0)
