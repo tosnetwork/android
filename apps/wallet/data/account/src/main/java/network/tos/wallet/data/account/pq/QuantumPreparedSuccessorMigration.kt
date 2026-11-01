@@ -11,7 +11,7 @@ class QuantumPreparedSuccessorMigration internal constructor(
     probe: QuantumRecoveryProbeJournal.Entry,
     submitted: QuantumProbeFundingSubmission,
     private val observation: QuantumAccountReader.Observation,
-    backupDigest: ByteArray, now: Long, ttl: Long,
+    backupDigest: ByteArray, now: Long, ttl: Long, retainedDeadline: Long? = null,
 ) {
     val identity = submitted.identity
     val profile = submitted.profile
@@ -19,6 +19,7 @@ class QuantumPreparedSuccessorMigration internal constructor(
     val probeOperation = probe.operation
     val successor = probe.successor
     val priorAuthorizationDeadline = submitted.deadline
+    internal val validityWindowSeconds = ttl
     internal val walletId = submitted.walletId
     private val fundingBytes = entry.encode()
     private val priorBytes = prior.encode()
@@ -46,8 +47,7 @@ class QuantumPreparedSuccessorMigration internal constructor(
         validateObservation(observation, now)
         val time = maxOf(now, observation.network.masterchainTime,
             observation.proof.provenAccountTime(QuantumAccountReader.rawAddress(identity)))
-        expiresAt = time + ttl
-        require(expiresAt <= 0xffffffffL)
+        expiresAt = QuantumMigrationDeadline.choose(time, ttl, retainedDeadline)
         val state = submitted.expectedState
         request = TosQuantumSelfPayRequest(identity.address, state, QuantumAuthRole.RESCUE, expiresAt,
             QuantumSelfPayAction.Migrate(successor), time)

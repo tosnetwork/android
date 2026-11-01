@@ -49,11 +49,11 @@ class QuantumProbeFundingOutcomeReader(
         /** Only this private authenticated result can supply the proven wallet time for handoff. */
         internal fun prepareMigration(entry: QuantumProbeFundingJournal.Reservation,
             prior: QuantumRecoveryControlJournal.Entry, probe: QuantumRecoveryProbeJournal.Entry,
-            confirmedBackupDigest: ByteArray, now: Long, ttl: Long,
+            confirmedBackupDigest: ByteArray, now: Long, ttl: Long, retainedDeadline: Long? = null,
         ): QuantumPreparedSuccessorMigration {
             requireRecordedFunding(entry, prior, probe, now)
             return QuantumPreparedSuccessorMigration(entry, prior, probe, entry.submission(prior, probe),
-                observation, confirmedBackupDigest, now, ttl)
+                observation, confirmedBackupDigest, now, ttl, retainedDeadline)
         }
         companion object {
             internal suspend fun read(reader: QuantumProbeFundingOutcomeReader, id: UUID,
