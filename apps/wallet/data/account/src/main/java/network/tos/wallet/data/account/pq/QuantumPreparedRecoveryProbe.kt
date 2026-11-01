@@ -1,6 +1,7 @@
 package network.tos.wallet.data.account.pq
 
 import network.tos.blockchain.ton.contract.*
+import org.ton.boc.BagOfCells
 
 /** Immutable unsigned possession challenge. This is neither possession nor migration authority. */
 class QuantumPreparedRecoveryProbe internal constructor(
@@ -16,6 +17,10 @@ class QuantumPreparedRecoveryProbe internal constructor(
     val expiresAt: Long
     val probe: TosQuantumSelfPayProbe
     private val stateHash: ByteArray
+    private val stateBytes: ByteArray
+    private val challengeValue = challenge.copyOf()
+    internal val boundStateBOC get() = stateBytes.copyOf()
+    internal val challengeBytes get() = challengeValue.copyOf()
 
     init {
         require(now in 1..0xffffffffL && ttl in 1..3600)
@@ -25,6 +30,7 @@ class QuantumPreparedRecoveryProbe internal constructor(
         val current = (QuantumSelfPayAccount.bind(identity, observation.proof, now, 300).snapshot(now).status
             as? QuantumSelfPayAccount.Status.Active)?.state ?: error("Possession preparation requires an active wallet")
         stateHash = current.cell.hash().toByteArray()
+        stateBytes = BagOfCells(current.cell).toByteArray()
         require(successor.globalId == profile.globalId && successor.namespace.contentEquals(current.authority.namespace))
         require(!successor.primaryKey.contentEquals(current.authority.primaryKey) &&
             !successor.rescueKey.contentEquals(current.authority.rescueKey)) { "Both successor roles must use new keys" }
@@ -33,7 +39,7 @@ class QuantumPreparedRecoveryProbe internal constructor(
             observation.proof.provenAccountTime(QuantumAccountReader.rawAddress(identity)))
         expiresAt = time + ttl
         require(expiresAt <= 0xffffffffL)
-        probe = TosQuantumSelfPayProbe(identity.address, successor, challenge.copyOf(), expiresAt, time)
+        probe = TosQuantumSelfPayProbe(identity.address, successor, challengeValue, expiresAt, time)
     }
 
     fun requireFresh(now: Long) {

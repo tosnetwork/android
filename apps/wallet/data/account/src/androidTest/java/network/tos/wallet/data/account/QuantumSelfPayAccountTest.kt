@@ -13,6 +13,10 @@ import network.tos.wallet.data.account.pq.QuantumSelfPayAccount
 import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
 import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl
 import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryProbe
+import network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal
+import network.tos.security.pq.QuantumCrypto
+import network.tos.security.pq.QuantumRole
+import network.tos.security.pq.QuantumPurpose
 import network.tos.wallet.data.account.pq.QuantumAccountReader
 import network.tos.wallet.data.account.pq.QuantumNetworkProfile
 import network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal
@@ -134,8 +138,10 @@ class QuantumSelfPayAccountTest {
                 val profile = QuantumNetworkProfile(1, anchor.getString("root_hash"), anchor.getString("file_hash"))
                 val observation = QuantumAccountReader.Observation(UUID.randomUUID(), birth, profile, recoveryBase, proof, s)
                 if (role == "active") {
-                    val primary = birth.wallet.initialAuthority.primaryKey.also { it[0] = (it[0].toInt() xor 1).toByte() }
-                    val rescue = birth.wallet.initialAuthority.rescueKey.also { it[0] = (it[0].toInt() xor 1).toByte() }
+                    val primarySeed = ByteArray(QuantumRole.PRIMARY.seedSize) { 23 } // Public, unfunded vectors.
+                    val rescueSeed = ByteArray(QuantumRole.RESCUE.seedSize) { 31 }
+                    val primary = QuantumCrypto.publicKey(QuantumRole.PRIMARY, primarySeed)
+                    val rescue = QuantumCrypto.publicKey(QuantumRole.RESCUE, rescueSeed)
                     val successor = QuantumSelfPayAuthority(1, birth.wallet.initialAuthority.namespace, primary, rescue, QuantumPolicy.REQUIRED)
                     val challenge = ByteArray(32) { 9 }
                     val preparedProbe = QuantumPreparedRecoveryProbe(observation, successor, challenge, now, 120)
@@ -144,6 +150,8 @@ class QuantumSelfPayAccountTest {
                     assertArrayEquals(digest, preparedProbe.probe.digest)
                     assertNotEquals(preparedProbe.probe.address, birth.address)
                     preparedProbe.requireRevalidated(observation, now)
+                    try { verifyProbeJournal(observation, preparedProbe, primarySeed, rescueSeed, now) }
+                    finally { primarySeed.fill(0); rescueSeed.fill(0) }
                     assertThrows(IllegalStateException::class.java) { preparedProbe.requireFresh(preparedProbe.expiresAt) }
                     assertThrows(IllegalArgumentException::class.java) {
                         preparedProbe.requireRevalidated(observation.copy(id = UUID.randomUUID()), now)
@@ -252,5 +260,57 @@ class QuantumSelfPayAccountTest {
             }
             assertNotNull(runCatching { prove("active", corrupt = true) }.exceptionOrNull())
         } finally { directories.forEach { it.deleteRecursively() } }
+    }
+    private fun verifyProbeJournal(observation: QuantumAccountReader.Observation, plan: QuantumPreparedRecoveryProbe,
+                                   primarySeed: ByteArray, rescueSeed: ByteArray, now: Long) {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        for (failure in listOf(null, "before_file_sync", "before_directory_sync", "callback")) {
+            val root = File(base.cacheDir, "probe-journal-${UUID.randomUUID()}").apply { check(mkdir()) }
+            val context = object : android.content.ContextWrapper(base) {
+                override fun getNoBackupFilesDir() = root
+                override fun getApplicationContext(): android.content.Context = this
+            }
+            try {
+                val journal = QuantumRecoveryProbeJournal(context)
+                assertThrows(IllegalStateException::class.java) { journal.reserve(plan, ByteArray(32) { 5 }, now) }
+                QuantumPaymentOutbox(context).isolateRecoveredIdentity(plan.identity)
+                val reserved = journal.reserve(plan, ByteArray(32) { 5 }, now)
+                assertThrows(IllegalStateException::class.java) { journal.reserve(plan, ByteArray(32) { 5 }, now) }
+                var calls = 0
+                val signer: (QuantumRecoveryProbeJournal.Entry) -> Pair<ByteArray, ByteArray> = { entry ->
+                    calls++
+                    val canonical = File(root, "quantum-recovery-probes").listFiles()!!.single { it.name.endsWith(".qpp") }
+                    assertEquals(QuantumRecoveryProbeJournal.Phase.SIGNING, QuantumRecoveryProbeJournal.Entry.decode(canonical.readBytes()).phase)
+                    assertArrayEquals(plan.probe.digest, entry.probe.digest)
+                    val primary = QuantumCrypto.sign(QuantumRole.PRIMARY, QuantumPurpose.SELF_PAY_POP,
+                        primarySeed, plan.successor.primaryKey, entry.probe.digest)
+                    if (failure == "callback") { primary.fill(0); error("Injected interrupted second signature") }
+                    Pair(primary, QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY_POP,
+                        rescueSeed, plan.successor.rescueKey, entry.probe.digest))
+                }
+                assertThrows(IllegalStateException::class.java) { journal.sign(plan.identity, UUID.randomUUID(), observation, now, signer) }
+                assertThrows(IllegalStateException::class.java) { journal.sign(plan.identity, reserved.operation, observation, plan.expiresAt, signer) }
+                assertEquals(0, calls)
+                val faulted = QuantumRecoveryProbeJournal(context) { point -> if (point == failure) error("Injected $point") }
+                if (failure == null) {
+                    val wrong = Pair(QuantumCrypto.sign(QuantumRole.PRIMARY, QuantumPurpose.POP, primarySeed, plan.successor.primaryKey, plan.probe.digest),
+                        QuantumCrypto.sign(QuantumRole.RESCUE, QuantumPurpose.POP, rescueSeed, plan.successor.rescueKey, plan.probe.digest))
+                    try { assertThrows(IllegalStateException::class.java) { reserved.next(QuantumRecoveryProbeJournal.Phase.SIGNED, wrong) } }
+                    finally { wrong.first.fill(0); wrong.second.fill(0) }
+                    faulted.sign(plan.identity, reserved.operation, observation, now, signer)
+                    val signed = checkNotNull(QuantumRecoveryProbeJournal(context).pending(plan.identity))
+                    assertEquals(QuantumRecoveryProbeJournal.Phase.SIGNED, signed.phase)
+                    assertEquals(reserved.operation, signed.operation)
+                    assertArrayEquals(signed.signedBody(), QuantumRecoveryProbeJournal.Entry.decode(signed.encode()).signedBody())
+                } else {
+                    assertThrows(IllegalStateException::class.java) { faulted.sign(plan.identity, reserved.operation, observation, now, signer) }
+                    if (failure == "before_file_sync") assertThrows(IllegalStateException::class.java) { journal.pending(plan.identity) }
+                    else assertEquals(QuantumRecoveryProbeJournal.Phase.SIGNING, journal.pending(plan.identity)!!.phase)
+                }
+                assertEquals(if (failure == null || failure == "callback") 1 else 0, calls)
+                assertThrows(IllegalStateException::class.java) { journal.sign(plan.identity, reserved.operation, observation, now, signer) }
+                assertTrue(QuantumPaymentOutbox(context).requiresRecovery(plan.identity))
+            } finally { root.deleteRecursively() }
+        }
     }
 }
