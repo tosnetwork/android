@@ -3,6 +3,7 @@ package network.tos.wallet.data.account.pq
 import network.tos.blockchain.ton.contract.QuantumAuthRole
 import network.tos.blockchain.ton.contract.QuantumSelfPayAction
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayRequest
+import org.ton.boc.BagOfCells
 
 /** Unsigned recovery-only control. Never permits merchant actions or clearing isolation.
  * Authentication, durable signing journal, bounded fees and final-state verification are
@@ -20,6 +21,8 @@ class QuantumPreparedRecoveryControl internal constructor(
     val expiresAt: Long
     val request: TosQuantumSelfPayRequest
     private val originalState: ByteArray
+    private val stateBytes: ByteArray
+    internal val boundStateBOC: ByteArray get() = stateBytes.copyOf()
     private val rescueKey: ByteArray
     val signingPublicKey: ByteArray get() = rescueKey.copyOf()
 
@@ -33,6 +36,7 @@ class QuantumPreparedRecoveryControl internal constructor(
         val state = (snapshot.status as? QuantumSelfPayAccount.Status.Active)?.state
             ?: error("Recovery control requires an active wallet")
         originalState = state.cell.hash().toByteArray()
+        stateBytes = BagOfCells(state.cell).toByteArray()
         rescueKey = state.authority.rescueKey
         val time = maxOf(now, observation.network.masterchainTime,
             observation.proof.provenAccountTime(QuantumAccountReader.rawAddress(identity)))

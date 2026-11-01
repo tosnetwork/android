@@ -14,6 +14,8 @@ import network.tos.wallet.data.account.pq.QuantumSelfPayNetwork
 import network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl
 import network.tos.wallet.data.account.pq.QuantumAccountReader
 import network.tos.wallet.data.account.pq.QuantumNetworkProfile
+import network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal
+import network.tos.wallet.data.account.pq.QuantumPaymentOutbox
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -141,6 +143,69 @@ class QuantumSelfPayAccountTest {
                             control.requireRevalidated(observation.copy(id = UUID.randomUUID()), now)
                         }
                         assertThrows(IllegalStateException::class.java) { control.requireFresh(control.expiresAt) }
+                        val root = File(instrumentation.targetContext.noBackupFilesDir, "control-journal-test-${UUID.randomUUID()}")
+                        check(root.mkdir())
+                        val isolatedContext = object : android.content.ContextWrapper(instrumentation.targetContext) {
+                            override fun getNoBackupFilesDir() = root
+                            override fun getApplicationContext(): android.content.Context = this
+                        }
+                        try {
+                            val journal = QuantumRecoveryControlJournal(isolatedContext)
+                            assertThrows(IllegalStateException::class.java) { journal.reserve(control, now) }
+                            QuantumPaymentOutbox(isolatedContext).isolateRecoveredIdentity(birth)
+                            val entry = journal.reserve(control, now)
+                            assertThrows(IllegalStateException::class.java) {
+                                entry.next(QuantumRecoveryControlJournal.Phase.SIGNED, ByteArray(7856))
+                            }
+                            assertThrows(IllegalArgumentException::class.java) {
+                                QuantumRecoveryControlJournal.Entry.decode(entry.encode() + byteArrayOf(0))
+                            }
+                            assertArrayEquals(control.request.digest, QuantumRecoveryControlJournal(isolatedContext).pending(birth)!!.requestHash)
+                            assertThrows(IllegalStateException::class.java) { journal.reserve(control, now) }
+                            var calls = 0
+                            assertThrows(IllegalStateException::class.java) {
+                                journal.sign(control, observation, now, UUID.randomUUID()) { calls++; ByteArray(0) }
+                            }
+                            assertEquals(0, calls)
+                            assertThrows(java.io.IOException::class.java) {
+                                journal.sign(control, observation, now, entry.operation) {
+                                    calls++
+                                    // Read only public journal bytes: callback must start after SIGNING was written.
+                                    val stored = File(root, "quantum-recovery-controls").listFiles()!!.single { it.name.endsWith(".qrc") }.readBytes()
+                                    assertEquals(QuantumRecoveryControlJournal.Phase.SIGNING.ordinal, stored[4].toInt())
+                                    throw java.io.IOException("Injected uncertain signing")
+                                }
+                            }
+                            assertEquals(1, calls)
+                            val restarted = QuantumRecoveryControlJournal(isolatedContext)
+                            assertEquals(QuantumRecoveryControlJournal.Phase.SIGNING, restarted.pending(birth)!!.phase)
+                            assertThrows(IllegalStateException::class.java) {
+                                restarted.sign(control, observation, now, entry.operation) { calls++; ByteArray(0) }
+                            }
+                            assertEquals(1, calls)
+                        } finally { check(root.deleteRecursively()) }
+                        for (point in listOf("before_file_sync", "before_rename", "before_directory_sync")) {
+                            val failureRoot = File(instrumentation.targetContext.noBackupFilesDir, "control-fault-${UUID.randomUUID()}")
+                            check(failureRoot.mkdir())
+                            val failureContext = object : android.content.ContextWrapper(instrumentation.targetContext) {
+                                override fun getNoBackupFilesDir() = failureRoot
+                                override fun getApplicationContext(): android.content.Context = this
+                            }
+                            try {
+                                QuantumPaymentOutbox(failureContext).isolateRecoveredIdentity(birth)
+                                val initial = QuantumRecoveryControlJournal(failureContext).reserve(control, now)
+                                val failing = QuantumRecoveryControlJournal(failureContext) { if (it == point) throw java.io.IOException("Injected persistence failure") }
+                                var called = false
+                                assertThrows(java.io.IOException::class.java) {
+                                    failing.sign(control, observation, now, initial.operation) { called = true; ByteArray(0) }
+                                }
+                                assertFalse("No signing before durable SIGNING", called)
+                                assertThrows(IllegalStateException::class.java) {
+                                    QuantumRecoveryControlJournal(failureContext).sign(control, observation, now, initial.operation) { called = true; ByteArray(0) }
+                                }
+                                assertFalse(called)
+                            } finally { check(failureRoot.deleteRecursively()) }
+                        }
                     }
                 } else {
                     // A forged Active snapshot cannot substitute for the actual authenticated account.

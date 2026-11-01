@@ -86,6 +86,11 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         }
     }
     fun requiresRecovery(identity: TosQuantumSelfPayIdentity): Boolean = locked { recoveryIsolated(identity) || hasImportState(identity) }
+    /** Shared with future recovery completion so secret control use cannot race an unlock. */
+    internal fun <T> withRecoveryControlIsolation(identity: TosQuantumSelfPayIdentity, body: () -> T): T = recoveryGate {
+        check(requiresRecovery(identity)) { "Recovery isolation required" }
+        body()
+    }
     private fun hasImportState(identity: TosQuantumSelfPayIdentity): Boolean {
         val canonical = importPath(identity)
         return listOf(canonical, File(canonical.absolutePath + ".next")).any { file ->
