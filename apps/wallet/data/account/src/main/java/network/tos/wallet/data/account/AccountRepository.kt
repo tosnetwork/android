@@ -605,7 +605,8 @@ class AccountRepository(
         network.tos.wallet.data.account.pq.QuantumPreparedRecoveryControl(observed, kind, System.currentTimeMillis() / 1000, 120)
     }
 
-    data class RecoveryControlStatus(val operation: UUID, val phase: String, val requestHash: String, val deadline: Long)
+    data class RecoveryControlStatus(val operation: UUID, val phase: String, val requestHash: String, val deadline: Long,
+                                     val messageRootHash: String?)
 
     /** Public journal status only; reading SIGNED revalidates its stored native signature. */
     suspend fun pendingQuantumRecoveryControl(wallet: WalletEntity): RecoveryControlStatus? = runInterruptible(Dispatchers.IO) {
@@ -613,7 +614,11 @@ class AccountRepository(
         network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(identity)?.let { entry ->
             require(entry.walletId.toString() == wallet.id && entry.identity == identity)
             RecoveryControlStatus(entry.operation, entry.phase.name,
-                entry.requestHash.joinToString("") { "%02x".format(it) }, entry.deadline)
+                entry.requestHash.joinToString("") { "%02x".format(it) }, entry.deadline,
+                if (entry.phase in setOf(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.SIGNED,
+                        network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.SUBMITTING,
+                        network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal.Phase.UNKNOWN))
+                    BagOfCells(entry.signedMessage()).roots.single().hash().toByteArray().joinToString("") { "%02x".format(it) } else null)
         }
     }
 
@@ -675,6 +680,28 @@ class AccountRepository(
             it.requireFresh(checkNotNull(journal.pending(identity)), System.currentTimeMillis() / 1000)
         }
     }
+
+    /** Caller explicitly confirms the displayed quote. Transport success never means inclusion. */
+    suspend fun submitQuantumRecoveryControl(quote: network.tos.wallet.data.account.pq.QuantumRecoveryControlQuote) =
+        withContext(Dispatchers.IO) {
+            val entry = quote.entry
+            val wallet = checkNotNull(database.getAccount(entry.walletId.toString()))
+            check(wallet.quantumIdentity == entry.identity && wallet.type == Wallet.Type.Default)
+            val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, entry.identity))
+            check(record.id == entry.walletId && sameProfile(record.profile, entry.profile))
+            runInterruptible {
+                val journal = network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context)
+                val bytes = journal.beginSubmission(quote, System.currentTimeMillis() / 1000)
+                try {
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException("Recovery submission cancelled")
+                    quote.requireFresh(checkNotNull(journal.pending(entry.identity)), System.currentTimeMillis() / 1000)
+                    val singleAttempt = quantumHttpClient.newBuilder().retryOnConnectionFailure(false).build()
+                    network.tos.wallet.data.account.pq.QuantumPaymentHttpTransport(quantumPaymentEndpoint(), singleAttempt).send(bytes)
+                } finally {
+                    journal.unknown(entry.identity, entry.operation)
+                }
+            }
+        }
 
     private fun quantumPaymentEndpoint() = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
 

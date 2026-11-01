@@ -21,20 +21,21 @@ internal class QuantumRecoveryControlJournal(
     private val context: Context,
     private val fault: ((String) -> Unit)? = null,
 ) {
-    enum class Phase { RESERVED, SIGNING, SIGNED }
+    enum class Phase { RESERVED, SIGNING, SIGNED, SUBMITTING, UNKNOWN }
     class Entry internal constructor(val operation: UUID, val walletId: UUID,
         val identity: TosQuantumSelfPayIdentity, val profile: QuantumNetworkProfile,
-        stateBOC: ByteArray, request: ByteArray, val phase: Phase, signature: ByteArray,
+        stateBOC: ByteArray, request: ByteArray, val phase: Phase, signature: ByteArray, approval: ByteArray = ByteArray(0),
     ) {
         private val stateBytes = stateBOC.copyOf()
         private val requestBytes = request.copyOf()
         private val signatureBytes = signature.copyOf()
+        private val approvalBytes = approval.copyOf()
         val requestHash: ByteArray get() = authorization.cell.hash().toByteArray()
         val deadline: Long get() = authorization.deadline
         val kind: QuantumPreparedRecoveryControl.Kind get() = if (authorization.kind == 3)
             QuantumPreparedRecoveryControl.Kind.LOCK_PRIMARY else QuantumPreparedRecoveryControl.Kind.REQUIRE_RESCUE
         internal fun signedMessage(): ByteArray {
-            check(phase == Phase.SIGNED)
+            check(phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN))
             val body = buildCell { storeRef(authorization.cell); storeRef(TosPqWallet.byteChain(signatureBytes)) }
             return BagOfCells(identity.wallet.external(body, false)).toByteArray()
         }
@@ -60,17 +61,19 @@ internal class QuantumRecoveryControlJournal(
                 if (decoded.kind == 1) QuantumSelfPayAction.ConfigureRequired else QuantumSelfPayAction.LockPrimary,
                 decoded.deadline - 1)
             require(rebuilt.request.hash() == decoded.cell.hash())
-            if (phase == Phase.SIGNED) {
+            if (phase in setOf(Phase.SIGNED, Phase.SUBMITTING, Phase.UNKNOWN)) {
                 check(QuantumCrypto.verify(QuantumRole.RESCUE, QuantumPurpose.SELF_PAY,
                     state.authority.rescueKey, requestHash, signatureBytes)) { "Stored recovery signature mismatch" }
             } else require(signatureBytes.isEmpty())
+            if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN)) QuantumRecoveryControlApproval.decode(approvalBytes).requireBound(this)
+            else require(approvalBytes.isEmpty())
         }
         internal fun requirePlan(plan: QuantumPreparedRecoveryControl) {
             require(walletId == plan.walletId && identity == plan.identity && sameProfile(profile, plan.profile))
             require(requestHash.contentEquals(plan.request.digest) && stateBytes.contentEquals(plan.boundStateBOC))
         }
-        internal fun next(phase: Phase, signature: ByteArray = ByteArray(0)) =
-            Entry(operation, walletId, identity, profile, stateBytes, requestBytes, phase, signature)
+        internal fun next(phase: Phase, signature: ByteArray = signatureBytes, approval: ByteArray = approvalBytes) =
+            Entry(operation, walletId, identity, profile, stateBytes, requestBytes, phase, signature, approval)
         internal fun encode(): ByteArray = ByteArrayOutputStream().also { buffer ->
             DataOutputStream(buffer).use { out ->
                 out.writeInt(0x51524331); out.writeByte(phase.ordinal)
@@ -80,6 +83,7 @@ internal class QuantumRecoveryControlJournal(
                 for (bytes in listOf(identity.toBoc(), stateBytes, requestBytes, signatureBytes)) {
                     require(bytes.size <= 32768); out.writeInt(bytes.size); out.write(bytes)
                 }
+                if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN)) { out.writeInt(approvalBytes.size); out.write(approvalBytes) }
             }
         }.toByteArray().also { require(it.size <= MAX_FILE) }
         companion object {
@@ -92,7 +96,9 @@ internal class QuantumRecoveryControlJournal(
                 fun hex() = fixed(32).joinToString("") { "%02x".format(it) }
                 val profile = QuantumNetworkProfile(globalId, hex(), hex())
                 fun field(): ByteArray { val size = input.readInt(); require(size in 0..32768 && size <= input.available()); return fixed(size) }
-                val entry = Entry(operation, walletId, TosQuantumSelfPayIdentity.fromBoc(field()), profile, field(), field(), phase, field())
+                val identity = TosQuantumSelfPayIdentity.fromBoc(field()); val state = field(); val request = field(); val signature = field()
+                val approval = if (phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN)) field() else ByteArray(0)
+                val entry = Entry(operation, walletId, identity, profile, state, request, phase, signature, approval)
                 require(input.read() == -1) { "Recovery journal tail" }; entry
             }
         }
@@ -166,6 +172,22 @@ internal class QuantumRecoveryControlJournal(
             val signature = signer()
             try { write(signing.next(Phase.SIGNED, signature)) } finally { signature.fill(0) }
         }
+    }
+    /** One initial dispatch only. A stored approval or UNKNOWN can never mint a retry. */
+    fun beginSubmission(quote: QuantumRecoveryControlQuote, now: Long): ByteArray = outbox.withRecoveryControlIsolation(quote.entry.identity) {
+        locked {
+            val current = checkNotNull(read(quote.entry.identity))
+            check(current.phase == Phase.SIGNED) { "Recovery submission already started or uncertain" }
+            quote.requireFresh(current, now)
+            val submitting = current.next(Phase.SUBMITTING, approval = quote.approvalRecord())
+            write(submitting)
+            submitting.signedMessage()
+        }
+    }
+    fun unknown(identity: TosQuantumSelfPayIdentity, operation: UUID) = locked {
+        val current = checkNotNull(read(identity))
+        check(current.operation == operation && current.phase in setOf(Phase.SUBMITTING, Phase.UNKNOWN))
+        write(current.next(Phase.UNKNOWN))
     }
     companion object { private val mutex = Any(); private const val MAX_FILE = 131072 }
 }

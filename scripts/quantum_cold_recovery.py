@@ -28,10 +28,13 @@ def main():
     parser.add_argument('--encrypted-backup', action='store_true', help='Restore an actual App-exported encrypted file; password stays in controller memory')
     parser.add_argument('--recovery-control-signing', action='store_true', help='Deploy before encrypted backup; authenticate and sign a restricted recovery control after uninstall')
     parser.add_argument('--funding-control', default='http://127.0.0.1:18745')
+    parser.add_argument('--submit-recovery-control', action='store_true', help='Explicit test confirmation sends the one recovery control; verify linked history and exact lock state')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
     if a.recovery_control_signing and not a.encrypted_backup:
         raise ValueError('Recovery control signing requires encrypted cold recovery')
+    if a.submit_recovery_control and not a.recovery_control_signing:
+        raise ValueError('Recovery submission requires the signing journey')
     funding = urllib.parse.urlsplit(a.funding_control)
     if a.recovery_control_signing and (funding.scheme != 'http' or funding.hostname not in ('127.0.0.1', 'localhost')
             or funding.username or funding.password or funding.query or funding.fragment or funding.path not in ('', '/')):
@@ -167,6 +170,8 @@ def main():
             command[-1:-1] = ['-e', key, str(value)]
         if a.recovery_control_signing:
             command[-1:-1] = ['-e', 'quantumRecoveryControlSigning', 'true']
+        if a.submit_recovery_control:
+            command[-1:-1] = ['-e', 'quantumSubmitRecoveryControl', 'true']
         with (a.out / (method + '.log')).open('w') as output:
             subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=True)
         log = (a.out / (method + '.log')).read_text()
@@ -212,11 +217,11 @@ def main():
             raise RuntimeError('Identity verification missing')
         if a.recovery_control_signing:
             status = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-recovery-control-public.json']))
-            if status['phase'] != 'SIGNED' or not status['cancelled_before_signing']:
+            if status['phase'] != ('UNKNOWN' if a.submit_recovery_control else 'SIGNED') or not status['cancelled_before_signing']:
                 raise ValueError('Recovery signing evidence missing')
             (a.out / 'recovery-control-public.json').write_text(json.dumps(status, indent=2))
             run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
-            test('signedRecoveryControlSurvivesProcessRestartWithoutUnlockOrBroadcast')
+            test('recoveryControlJournalSurvivesProcessRestartWithoutUnlockOrResubmit')
         journey = {}
         if a.journey_recipient:
             def recipient_state():
@@ -273,7 +278,8 @@ def main():
             'actual_uninstall': True, 'same_address_identity_and_keys': True,
             'encrypted_file': a.encrypted_backup, 'recovery_isolation_retained': a.encrypted_backup,
             'recovery_control_signed_and_restart_verified': a.recovery_control_signing,
-            'recovery_control_quote_verified': a.recovery_control_signing, **journey}, indent=2))
+            'recovery_control_quote_verified': a.recovery_control_signing,
+            'recovery_control_sent_and_chain_verified': a.submit_recovery_control, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None
