@@ -732,6 +732,11 @@ class QuantumCreationUiTest {
         assertEquals(expected.getString("state_hash"), state.cell.hash().toByteArray().joinToString("") { "%02x".format(it) })
         assertEquals(expected.getString("balance"), actual.balance.toString())
         if (expected.has("successor") && !expected.isNull("successor")) {
+            context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 3000)) pin()
+            assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "send")), 15000))
             assertTrue(authenticateRecoveryTest("Verify saved replacement keys after restart"))
             val staged = runBlocking { repository.stageQuantumSuccessorMaterial(wallet, resume = true) }
             fun hex(value: ByteArray) = value.joinToString("") { "%02x".format(it) }
