@@ -76,6 +76,10 @@ class QuantumPreparedProbeFunding internal constructor(
         require(digest.size == 32)
         check(digest.contentEquals(request.digest)) { "Funding request changed after review" }
     }
+    internal fun requireStagedMaterial(successor: QuantumSelfPayAuthority, materialDigest: ByteArray) {
+        check(successor.hash.contentEquals(entry.successor.hash) &&
+            materialDigest.contentEquals(entry.materialDigest)) { "Staged successor material changed" }
+    }
     /** Account service invokes this only from the journal's durable SIGNING callback. */
     internal fun signProtected(custody: QuantumCreationCustody, inspection: network.tos.security.pq.QuantumBackupInspection,
                               state: QuantumSelfPayState, now: Long): ByteArray {

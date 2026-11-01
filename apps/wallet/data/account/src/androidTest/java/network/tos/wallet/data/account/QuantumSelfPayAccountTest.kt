@@ -310,6 +310,13 @@ class QuantumSelfPayAccountTest {
                     assertTrue(funding.expiresAt <= signed.deadline)
                     funding.requireBound(funding.request.request); funding.requireRevalidated(observation, now)
                     funding.requireReviewedRequest(funding.request.digest)
+                    funding.requireStagedMaterial(signed.successor, signed.materialDigest)
+                    val alteredMaterial = signed.materialDigest.copyOf().apply { this[0] = (this[0].toInt() xor 1).toByte() }
+                    assertThrows(IllegalStateException::class.java) { funding.requireStagedMaterial(signed.successor, alteredMaterial) }
+                    val alteredRescue = signed.successor.rescueKey.apply { this[0] = (this[0].toInt() xor 1).toByte() }
+                    val alteredSuccessor = QuantumSelfPayAuthority(signed.successor.globalId, signed.successor.namespace,
+                        signed.successor.primaryKey, alteredRescue, signed.successor.policy)
+                    assertThrows(IllegalStateException::class.java) { funding.requireStagedMaterial(alteredSuccessor, signed.materialDigest) }
                     assertThrows(IllegalArgumentException::class.java) { funding.requireReviewedRequest(ByteArray(0)) }
                     val alteredReview = funding.request.digest.copyOf().apply { this[0] = (this[0].toInt() xor 1).toByte() }
                     assertThrows(IllegalStateException::class.java) { funding.requireReviewedRequest(alteredReview) }
