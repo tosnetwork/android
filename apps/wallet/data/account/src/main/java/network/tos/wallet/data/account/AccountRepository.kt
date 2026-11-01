@@ -676,6 +676,27 @@ class AccountRepository(
         }
     }
 
+    private fun requireProbePreparationHandoff(observed: QuantumAccountReader.Observation, now: Long) {
+        QuantumPaymentOutbox(context).withRecoveryControlIsolation(observed.identity) {
+            val prior = checkNotNull(network.tos.wallet.data.account.pq.QuantumRecoveryControlJournal(context).pending(observed.identity))
+            network.tos.wallet.data.account.pq.QuantumRecoveryControlHandoff.acquire(prior, observed, now)
+        }
+    }
+
+    /** Read-only preflight before product PIN. No challenge lifetime starts while the prior authorization is live. */
+    suspend fun requireQuantumProbePreparationReady(wallet: WalletEntity) = withContext(Dispatchers.IO) {
+        quantumCreationMutex.withLock {
+            val actual = checkNotNull(database.getAccount(wallet.id))
+            require(actual.identity == wallet.identity && actual.type == Wallet.Type.Default)
+            val observed = observeCompletedRecoveryLock(actual)
+            currentCoroutineContext().ensureActive()
+            check(network.tos.wallet.data.account.pq.QuantumRecoveryProbeJournal(context).pending(observed.identity) == null) {
+                "A possession challenge is already saved"
+            }
+            requireProbePreparationHandoff(observed, System.currentTimeMillis() / 1000)
+        }
+    }
+
     /** Caller explicitly reviews preparation. No signature or funded probe is produced. */
     suspend fun reserveQuantumRecoveryProbe(wallet: WalletEntity): RecoveryProbeStatus = withContext(Dispatchers.IO) {
         quantumCreationMutex.withLock {
@@ -685,6 +706,7 @@ class AccountRepository(
             val identity = requireNotNull(actual.quantumIdentity); val now = System.currentTimeMillis() / 1000
             val state = (network.tos.wallet.data.account.pq.QuantumSelfPayAccount.bind(identity, observed.proof, now, 300)
                 .snapshot(now).status as network.tos.wallet.data.account.pq.QuantumSelfPayAccount.Status.Active).state
+            requireProbePreparationHandoff(observed, now)
             val staged = quantumCustody.successorMaterial(UUID.fromString(actual.id), identity, state, observed.profile, true)
             currentCoroutineContext().ensureActive()
             val challenge = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }

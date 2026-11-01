@@ -758,9 +758,32 @@ class QuantumCreationUiTest {
                 .put("material_digest", hex(staged.inspection.encryptedDigest)).put("pin_cancelled_without_storage", true)
             if (InstrumentationRegistry.getArguments().getString("quantumSignSuccessorProbe") == "true") {
                 assertNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                val readyDeadline = android.os.SystemClock.elapsedRealtime() + 130000
+                var preparationReady = false
+                var waitingObserved = false
+                do {
+                    try { runBlocking { repository.requireQuantumProbePreparationReady(wallet) }; preparationReady = true }
+                    catch (waiting: network.tos.wallet.data.account.pq.QuantumPriorControlNotExpired) {
+                        assertTrue(waiting.provenShardTime <= waiting.authorizationDeadline)
+                        assertEquals(completed.deadline, waiting.authorizationDeadline)
+                        if (!waitingObserved) {
+                            assertThrows(network.tos.wallet.data.account.pq.QuantumPriorControlNotExpired::class.java) {
+                                runBlocking { repository.reserveQuantumRecoveryProbe(wallet) }
+                            }
+                            assertNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                            press("quantum.recovery.probe.prepare")
+                            status("The previous authorization has not yet expired")
+                            assertFalse(device.hasObject(By.res(context.packageName, "num_pad")))
+                        }
+                        waitingObserved = true
+                        assertNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+                        android.os.SystemClock.sleep(1000)
+                    }
+                } while (!preparationReady && android.os.SystemClock.elapsedRealtime() < readyDeadline)
+                assertTrue(preparationReady)
                 press("quantum.recovery.probe.prepare")
                 assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 15000))
-                device.pressBack(); status("Saved replacement keys verified")
+                device.pressBack(); status("Ready to prepare the replacement-key check")
                 assertNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
                 press("quantum.recovery.probe.prepare"); pin(); status("Possession message: RESERVED")
                 val reserved = checkNotNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
@@ -780,11 +803,11 @@ class QuantumCreationUiTest {
                 val probePublic = org.json.JSONObject().put("operation", proof.operation.toString()).put("phase", proof.phase)
                     .put("address", proof.address).put("digest", proof.digest).put("material_digest", proof.materialDigest)
                     .put("body_digest", proof.bodyDigest).put("deadline", proof.deadline)
+                    .put("preparation_after_authenticated_expiry", true).put("preparation_wait_observed", waitingObserved)
                 successorPublic.put("probe", probePublic)
                 if (InstrumentationRegistry.getArguments().getString("quantumPrepareProbeFunding") == "true") {
                     val stop = android.os.SystemClock.elapsedRealtime() + 130000
                     var prepared: network.tos.wallet.data.account.pq.QuantumPreparedProbeFunding? = null
-                    var waitingObserved = false
                     do {
                         try { prepared = runBlocking { repository.prepareQuantumProbeFunding(wallet, java.math.BigInteger("10000000")) } }
                         catch (waiting: network.tos.wallet.data.account.pq.QuantumPriorControlNotExpired) {

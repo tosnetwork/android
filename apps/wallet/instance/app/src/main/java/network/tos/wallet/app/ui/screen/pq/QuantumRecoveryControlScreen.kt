@@ -118,7 +118,7 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                     (error.javaClass.name + "\n" + error.stackTrace.take(16).joinToString("\n")).take(8192)
                 plan = null; quote = null; fundingPlan = null; fundingOperation = null; fundingQuote = null
                 status.text = if (error is QuantumPriorControlNotExpired)
-                    "The previous authorization has not yet expired at the proven chain time. Wait, then review funding again. Nothing was signed or sent."
+                    "The previous authorization has not yet expired at the proven chain time. Wait, then try this step again. Nothing was signed or sent."
                 else "Unable to complete this step. Reload the saved operation before continuing. Recovery controls currently require an imported encrypted backup with matching rescue material. Nothing was unlocked."
             } finally {
                 actions.forEach { it.isEnabled = true }
@@ -186,6 +186,8 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
         } ?: "No saved possession challenge. Prepare one after saving replacement keys."
     }
     private fun prepareProbe() = run {
+        accounts.requireQuantumProbePreparationReady(wallet)
+        status.text = "Ready to prepare the replacement-key check. No challenge has been saved."
         authenticating = true
         val accepted = try { passcodes.confirmation(requireActivity() as NavigationActivity, "Prepare possession challenge") }
             finally { authenticating = false }

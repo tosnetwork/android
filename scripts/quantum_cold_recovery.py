@@ -296,6 +296,8 @@ def main():
                 raise ValueError('Successor staging product evidence missing')
             if a.sign_successor_probe and status.get('successor', {}).get('probe', {}).get('phase') != 'SIGNED':
                 raise ValueError('Successor probe signing evidence missing')
+            if a.sign_successor_probe and not status.get('successor', {}).get('probe', {}).get('preparation_after_authenticated_expiry'):
+                raise ValueError('Probe lifetime started before authenticated prior expiry')
             if a.prepare_probe_funding and not status.get('successor', {}).get('probe', {}).get('funding_prepared'):
                 raise ValueError('Authenticated probe funding preparation evidence missing')
             if a.sign_probe_funding_ui and not (status.get('successor', {}).get('probe', {}).get('funding_phase') == 'SIGNED'
@@ -385,6 +387,7 @@ def main():
             'recovery_control_product_ui_verified': a.recovery_control_ui,
             'successor_protected_material_and_restart_verified': a.stage_successor,
             'successor_probe_signed_and_restart_verified': a.sign_successor_probe,
+            'probe_lifetime_started_after_prior_expiry': a.sign_successor_probe,
             'probe_funding_prepared_after_authenticated_expiry': a.prepare_probe_funding,
             'probe_funding_signed_product_and_restart_verified': a.sign_probe_funding_ui,
             'probe_funding_native_estimate_service_verified': a.estimate_probe_funding,
