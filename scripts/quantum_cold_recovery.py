@@ -86,6 +86,11 @@ def redact_failure_environment(meminfo, power, screen_timeout):
             'screen_off_timeout_ms': int(timeout) if re.fullmatch(r'[0-9]{1,10}', timeout) and int(timeout) <= 2147483647 else None}
 
 
+def instrumentation_timeout(method):
+    # This one test deliberately waits beyond the unchanged 300-second proof freshness policy.
+    return 420 if method == 'fundingCompletionRejectsChangedRecordsAndExpiredProof' else 300
+
+
 def run_instrumentation(command, log_path, collect_failure, timeout=300):
     """Retain diagnostics for runner crashes/timeouts as well as JUnit failures."""
     try:
@@ -338,7 +343,7 @@ def main():
             # A previous phase's checkpoint is not evidence for this invocation.
             run(['shell', 'run-as', 'network.tos.wallet', 'rm', '-f', 'cache/quantum-proof-failure-public.json',
                  'cache/quantum-ui-failure-status.txt'])
-        run_instrumentation(command, a.out / (method + '.log'), collect_failure)
+        run_instrumentation(command, a.out / (method + '.log'), collect_failure, timeout=instrumentation_timeout(method))
     try:
         install()
         run(['shell', 'pm', 'clear', 'network.tos.wallet'])
@@ -415,6 +420,13 @@ def main():
                 (a.out / 'funding-submission-public.json').write_text(json.dumps(funded, indent=2))
                 run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
                 test('submittedProbeFundingSurvivesRestartWithoutAnotherDispatch')
+                test('fundingCompletionRejectsChangedRecordsAndExpiredProof')
+                rejected = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funding-completion-rejections-public.json']))
+                if not (rejected.get('operation') == funded['operation'] and rejected.get('phase') == 'UNKNOWN'
+                        and all(rejected.get(key) is True for key in ('funding_changed_refused', 'prior_changed_refused',
+                            'operation_changed_refused', 'probe_changed_refused', 'expired_proof_refused', 'isolation_retained'))):
+                    raise ValueError('Funding completion rejection evidence missing')
+                (a.out / 'funding-completion-rejections-public.json').write_text(json.dumps(rejected, indent=2))
                 test('confirmedFundingCompletionRetainsIsolationAndRejectsRepeatedWrite')
                 run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
                 test('completedFundingSurvivesRestartWithoutUnlockOrDispatch')
@@ -487,7 +499,8 @@ def main():
             'probe_funding_estimate_product_and_background_verified': a.estimate_probe_funding,
             'probe_funding_confirmed_and_chain_verified': a.submit_probe_funding,
             'funded_probe_verified_and_restart_isolated': a.submit_probe_funding,
-            'probe_funding_completed_product_and_restart_verified': a.submit_probe_funding, **journey}, indent=2))
+            'probe_funding_completed_product_and_restart_verified': a.submit_probe_funding,
+            'probe_funding_completion_rejections_verified': a.submit_probe_funding, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None

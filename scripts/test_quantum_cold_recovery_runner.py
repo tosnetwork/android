@@ -5,11 +5,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from quantum_cold_recovery import run_instrumentation, redact_failure_logcat, redact_failure_environment
+from quantum_cold_recovery import run_instrumentation, redact_failure_logcat, redact_failure_environment, instrumentation_timeout
 import json
 
 
 class InstrumentationEvidenceTest(unittest.TestCase):
+    def test_only_explicit_real_freshness_wait_receives_longer_timeout(self):
+        self.assertEqual(instrumentation_timeout('fundingCompletionRejectsChangedRecordsAndExpiredProof'), 420)
+        for method in ('createdWalletExportsEncryptedFileThroughSystemPicker',
+                       'confirmedFundingCompletionRetainsIsolationAndRejectsRepeatedWrite',
+                       'fundingCompletionRejectsChangedRecordsAndExpiredProofExtra', ''):
+            self.assertEqual(instrumentation_timeout(method), 300)
     def invoke(self, source, collect, timeout=5):
         with tempfile.TemporaryDirectory() as directory:
             run_instrumentation([sys.executable, '-c', source],

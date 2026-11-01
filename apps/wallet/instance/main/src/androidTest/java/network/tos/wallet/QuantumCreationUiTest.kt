@@ -1040,6 +1040,78 @@ class QuantumCreationUiTest {
         assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(requireNotNull(wallet.quantumIdentity)))
     }
 
+    @Test fun fundingCompletionRejectsChangedRecordsAndExpiredProof() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
+        privateBackupExport = true
+        val wallet = runBlocking { repository.getWallets() }.single()
+        val saved = checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals("UNKNOWN", saved.phase)
+        val result = runBlocking { repository.readQuantumProbeFundingOutcome(wallet, saved.operation) }
+        assertEquals(network.tos.wallet.data.account.pq.QuantumProbeFundingOutcomeReader.Status.Verified, result.status)
+        assertEquals(true, result.currentStateMatchesExpected)
+        val identity = requireNotNull(wallet.quantumIdentity)
+        val key = identity.cell.hash().toByteArray().joinToString("") { "%02x".format(it) }
+        // Fault injection modifies only this disposable App's public journal bytes, with no concurrent operation.
+        // Each alternative must decode successfully, so rejection exercises result binding, not a malformed file.
+        fun changedRecord(path: String, offset: (Long) -> Long, replacement: (Int) -> Int,
+                          extraChange: ((java.io.RandomAccessFile) -> Unit)? = null, readable: () -> Unit) {
+            val file = File(context.noBackupFilesDir, path)
+            val originalBytes = file.readBytes()
+            try {
+                java.io.RandomAccessFile(file, "rw").use { stream ->
+                    val position = offset(stream.length()); stream.seek(position); val original = stream.readUnsignedByte()
+                    stream.seek(position); stream.writeByte(replacement(original)); extraChange?.invoke(stream); stream.fd.sync()
+                    readable()
+                    val failure = assertThrows(IllegalStateException::class.java) {
+                        runBlocking { repository.completeQuantumProbeFunding(wallet, result) }
+                    }
+                    assertEquals("Recovery funding records changed since verification", failure.message)
+                }
+            } finally {
+                // Restore the canonical file even if a broken protection unexpectedly replaced its inode.
+                java.io.RandomAccessFile(file, "rw").use { stream ->
+                    stream.setLength(originalBytes.size.toLong()); stream.seek(0); stream.write(originalBytes); stream.fd.sync()
+                }
+                originalBytes.fill(0)
+            }
+            assertEquals(saved, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+            assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(identity))
+        }
+        changedRecord("quantum-probe-funding/$key.qpf", { 20L }, { 3 }) {
+            assertEquals("SUBMITTING", checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) }).phase)
+        }
+        changedRecord("quantum-probe-funding/$key.qpf", { 4L }, { it xor 1 }, { stream ->
+            // Keep the approval's operation ID consistent, so the alternative record still decodes.
+            val position = stream.length() - 164 + 4
+            stream.seek(position); val original = stream.readUnsignedByte()
+            stream.seek(position); stream.writeByte(original xor 1)
+        }) {
+            assertNotEquals(saved.operation, checkNotNull(runBlocking { repository.pendingQuantumProbeFunding(wallet) }).operation)
+        }
+        changedRecord("quantum-recovery-controls/$key.qrc", { it - 88 }, { it xor 1 }) {
+            assertEquals("COMPLETED", checkNotNull(runBlocking { repository.pendingQuantumRecoveryControl(wallet) }).phase)
+        }
+        changedRecord("quantum-recovery-probes/$key.qpp", { 5L }, { it xor 1 }) {
+            assertNotNull(runBlocking { repository.pendingQuantumRecoveryProbe(wallet) })
+        }
+        val before = runBlocking { repository.readQuantumAccount(wallet) }
+        // Use the real clock, without changing device time, proof policy or the saved authorization deadline.
+        android.os.SystemClock.sleep(310000)
+        assertTrue(System.currentTimeMillis() / 1000 - result.checkpointTime > 300)
+        val expired = assertThrows(IllegalStateException::class.java) {
+            runBlocking { repository.completeQuantumProbeFunding(wallet, result) }
+        }
+        assertEquals("Proof freshness refused", expired.message)
+        assertEquals(saved, runBlocking { repository.pendingQuantumProbeFunding(wallet) })
+        assertEquals(before.balance, runBlocking { repository.readQuantumAccount(wallet) }.balance)
+        assertTrue(network.tos.wallet.data.account.pq.QuantumPaymentOutbox(context).requiresRecovery(identity))
+        File(context.cacheDir, "quantum-funding-completion-rejections-public.json").writeText(org.json.JSONObject()
+            .put("operation", saved.operation.toString()).put("phase", saved.phase)
+            .put("funding_changed_refused", true).put("prior_changed_refused", true)
+            .put("operation_changed_refused", true).put("probe_changed_refused", true)
+            .put("expired_proof_refused", true).put("isolation_retained", true).toString())
+    }
+
     @Test fun confirmedFundingCompletionRetainsIsolationAndRejectsRepeatedWrite() {
         org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("quantumSubmitProbeFunding") == "true")
         privateBackupExport = true
