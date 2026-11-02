@@ -9,6 +9,7 @@ import network.tos.blockchain.ton.extensions.toAccountId
 import network.tos.blockchain.ton.extensions.toRawAddress
 import network.tos.blockchain.ton.contract.BaseWalletContract
 import network.tos.blockchain.ton.contract.LegacyWalletCompatibility
+import network.tos.wallet.api.withRetry
 import network.tos.blockchain.ton.contract.NativeWalletCompatibility
 import network.tos.blockchain.ton.contract.TosWalletV5R1Contract
 import okhttp3.OkHttpClient
@@ -372,12 +373,20 @@ class TosSource(
     // (getAccountTokens / getAccountNfts). See doc/tos-wc0-wallet-index.md.
     // ---------------------------------------------------------------------
 
-    /** node getAccountTokens -> the owner's jetton-wallet addresses (raw wc:hex). */
+    /** Node getAccountTokens returns the owner's token-wallet addresses (raw wc:hex). */
     fun getAccountJettonWallets(owner: String, testnet: Boolean = false): List<String> {
-        val result = rpc.callObject("getAccountTokens", JSONObject().put("address", owner), testnet)
+        // Retry transport failures only; decode outside the retry so incompatible data is not hidden.
+        val result = withRetry {
+            rpc.callObject("getAccountTokens", JSONObject().put("address", owner), testnet)
+        } ?: return emptyList()
         val arr = result.getJSONArray("tokens")
-        return (0 until arr.length()).mapNotNull {
-            arr.getJSONObject(it).getString("token_wallet").also { address -> require(address.isNotBlank()) }
+        return (0 until arr.length()).map {
+            val entry = arr.getJSONObject(it)
+            val wallet = entry.getString("token_wallet")
+            require(wallet.isNotBlank() && entry.getString("token_master").isNotBlank()) {
+                "Invalid token position"
+            }
+            wallet
         }
     }
 
