@@ -23,12 +23,12 @@ object QuantumBalanceProjection {
             decimals = decimals,
             verification = TokenEntity.Verification.none,
             isRequestMinting = false,
-            isTransferable = false,
+            isTransferable = true,
             customPayloadApiUri = null,
         )
         return AccountTokenEntity(BalanceEntity(metadata,
             Coins.of(BigDecimal(value.units).movePointLeft(decimals), decimals), value.wallet,
-            initializedAccount = true, isRequestMinting = false, isTransferable = false))
+            initializedAccount = true, isRequestMinting = false, isTransferable = true))
     }
 
     fun token(accountId: String, snapshot: QuantumSelfPayAccount.Snapshot, currency: WalletCurrency): AccountTokenEntity {

@@ -335,7 +335,7 @@ sealed class Item(type: Int): BaseListItem(type), Parcelable {
         val blockchain: Blockchain,
     ): Item(TYPE_TOKEN) {
 
-        val isTON = symbol == TokenEntity.TON.symbol
+        val isTON = address == TokenEntity.TON.address
 
         val isUSDT = address == TokenEntity.USDT.address
         val isTRC20 = address == TokenEntity.TRON_USDT.address

@@ -1479,7 +1479,8 @@ class AccountRepository(
         UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity))
     private suspend fun checkQuantumRecipient(wallet: WalletEntity, intent: network.tos.blockchain.ton.contract.QuantumPaymentIntent) {
         // Metadata is advisory only and cannot change the raw signed recipient.
-        val raw = "${intent.recipient.workchainId}:" + intent.recipient.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+        val recipient = intent.tokenTransfer?.recipient ?: intent.recipient
+        val raw = "${recipient.workchainId}:" + recipient.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
         val hints = api.resolveAccount(raw, wallet.testnet)
         check(hints?.isScam != true) { "Recipient is marked unsafe" }
         check(hints?.memoRequired != true || !intent.comment.isNullOrEmpty()) { "Recipient requires a comment" }

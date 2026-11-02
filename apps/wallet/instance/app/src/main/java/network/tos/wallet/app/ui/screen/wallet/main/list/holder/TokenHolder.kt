@@ -38,7 +38,10 @@ class TokenHolder(parent: ViewGroup): Holder<Item.Token>(parent, R.layout.view_c
                 androidx.appcompat.app.AlertDialog.Builder(context)
                     .setTitle(item.name)
                     .setMessage("${if (item.hiddenBalance) HIDDEN_BALANCE else item.balanceFormat} ${item.symbol}\n\nToken master\n${item.address}\n\nUnverified issuer")
-                    .setPositiveButton(android.R.string.ok, null).show()
+                    .setPositiveButton("Send") { _, _ ->
+                        navigation?.add(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newTokenInstance(item.wallet, item.address, item.balance.decimals))
+                    }
+                    .setNegativeButton(android.R.string.cancel, null).show()
             } else openToken(item)
         })
         if (item.blacklist) {
