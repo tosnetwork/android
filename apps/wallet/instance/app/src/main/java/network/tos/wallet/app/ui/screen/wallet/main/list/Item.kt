@@ -358,7 +358,8 @@ sealed class Item(type: Int): BaseListItem(type), Parcelable {
             symbol = token.symbol,
             name = token.name,
             balance = token.balance.value,
-            balanceFormat = CurrencyFormatter.format(value = token.balance.value),
+            balanceFormat = if (wallet.isQuantum && !token.isTon) token.balance.value.value.toPlainString()
+                else CurrencyFormatter.format(value = token.balance.value),
             fiat = token.fiat,
             fiatFormat = if (testnet) "" else CurrencyFormatter.formatFiat(currencyCode, token.fiat),
             rate = if (token.isUsdt || token.isTrc20) {

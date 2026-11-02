@@ -60,6 +60,7 @@ sealed class State {
         val list: List<AssetsEntity>,
         val fromCache: Boolean,
         val rates: RatesEntity,
+        val tokenNotice: String? = null,
     ): State() {
 
         val size: Int
@@ -276,6 +277,10 @@ sealed class State {
             val uiItems = mutableListOf<Item>()
             if (apkStatus != APKManager.Status.Default && apkStatus !is APKManager.Status.UpdateAvailable) {
                 uiItems.add(Item.ApkStatus(apkStatus))
+            }
+            assets.tokenNotice?.let {
+                uiItems.add(Item.Alert("Token balances", it, null, null))
+                uiItems.add(Item.Space(true))
             }
             val legacySubscriptions = plugins.filter { it.type == "subscription_v1" }
             if (legacySubscriptions.isNotEmpty() && (wallet.hasPrivateKey || wallet.signer)) {

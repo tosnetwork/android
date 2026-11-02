@@ -42,6 +42,31 @@ class AssetsManager(
 
     private val cache = TotalBalanceCache(context)
 
+    data class QuantumDisplayAssets(val list: List<AssetsEntity>, val notice: String?)
+
+    suspend fun getQuantumDisplayAssets(wallet: WalletEntity, currency: WalletCurrency): QuantumDisplayAssets {
+        require(wallet.isQuantum)
+        val observed = accountRepository.readQuantumAssets(wallet)
+        val native = QuantumBalanceProjection.token(wallet.accountId, observed.native, currency)
+        if (wallet.initialized != native.balance.initializedAccount) {
+            accountRepository.setInitialized(wallet.id, native.balance.initializedAccount)
+        }
+        val resolved = observed.tokens.filter { it.decimals != null }
+        val unresolved = observed.tokens.size - resolved.size
+        val safeMode = settingsRepository.isSafeModeEnabled(api)
+        val visible = if (safeMode) emptyList() else resolved
+        val list = listOf(AssetsEntity.Token(native)) + visible.map { AssetsEntity.Token(QuantumBalanceProjection.token(it)) }
+        val notice = when {
+            observed.discoveryFailed -> "Token balances could not be loaded. Pull down to retry."
+            observed.unreadPositions > 0 || observed.reachedRowLimit || !observed.nodeReportsComplete ->
+                "The Token list may be incomplete. Pull down to retry or select another node."
+            unresolved > 0 -> "Some Tokens have unavailable precision and cannot yet display a balance."
+            safeMode && resolved.isNotEmpty() -> "Safe mode hides Tokens from unverified issuers."
+            else -> null
+        }
+        return QuantumDisplayAssets(list, notice)
+    }
+
     init {
         settingsRepository.tokenPrefsChangedFlow.drop(1).onEach {
             accountRepository.getSelectedWallet()?.let {
