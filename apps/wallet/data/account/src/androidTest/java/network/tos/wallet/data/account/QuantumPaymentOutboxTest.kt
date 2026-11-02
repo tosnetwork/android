@@ -108,6 +108,15 @@ class QuantumPaymentOutboxTest {
             val observation = QuantumAccountReader(context,
                 transcript(policyNames + listOf("active/material/chain-0000.tl", "active/material/account.tl"))) { now }
                 .observe(id, identity, intArrayOf(8, 19, 48))
+            val insufficient = runCatching {
+                QuantumPreparedPayment(observation,
+                    QuantumPaymentIntent(identity.address, observation.snapshot.balance + BigInteger.ONE,
+                        false, "insufficient balance"), now, 120)
+            }.exceptionOrNull()
+            assertTrue(insufficient is QuantumInsufficientBalanceException)
+            assertFalse("Read-only preparation created an authorization", journal.exists())
+            assertEquals(0, signerCalls.get())
+            assertEquals(0, broadcastCalls.get())
             val payment = QuantumPreparedPayment(observation,
                 QuantumPaymentIntent(identity.address, BigInteger.ONE, false, "cancel during custody"), now, 120)
             val coordinator = QuantumPaymentCoordinator(context,

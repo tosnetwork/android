@@ -220,7 +220,13 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
             return
         }
         run("Verifying the wallet and payment intent…") {
-            val result = accounts.prepareQuantumPayment(wallet, intent)
+            val result = try {
+                accounts.prepareQuantumPayment(wallet, intent)
+            } catch (_: QuantumInsufficientBalanceException) {
+                currentCoroutineContext().ensureActive()
+                status.text = "Insufficient balance for this amount before network fees. Enter a smaller amount and review again."
+                return@run
+            }
             currentCoroutineContext().ensureActive()
             prepared = result
             details.text = summary(intent) + "\nOriginal authorization deadline: ${time(result.expiresAt)}" +
