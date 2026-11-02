@@ -10,6 +10,7 @@ import org.junit.Test
 class TosRecoveryAssetsTest {
     private val owner = "0:" + "11".repeat(32)
     private val tokenWallet = "0:" + "22".repeat(32)
+    private val tokenMaster = "0:" + "44".repeat(32)
     private val nft = "0:" + "33".repeat(32)
     @Test fun recoveryAccountKeepsDeployedStatesAndFullUnsignedAmounts() {
         MockWebServer().use { server ->
@@ -83,11 +84,14 @@ class TosRecoveryAssetsTest {
         MockWebServer().use { server ->
             server.start()
             val source = TosSource(OkHttpClient(), { server.url("/").toString() })
-            enqueue(server, "wallet.accountTokens", "tokens", """[{"token_wallet":"$tokenWallet"}]""", true)
+            enqueue(server, "wallet.accountTokens", "tokens", """[{"token_wallet":"$tokenWallet","token_master":"$tokenMaster"}]""", true)
             assertEquals(listOf(tokenWallet), source.getAccountJettonWallets(owner))
             assertEquals("getAccountTokens", JSONObject(server.takeRequest().body!!.utf8()).getString("method"))
-            enqueue(server, "wallet.accountTokens", "tokens", "[{}]", true)
-            assertThrows(Exception::class.java) { source.getAccountJettonWallets(owner) }
+            for (rows in listOf("[{}]", """[{"token_wallet":"$tokenWallet"}]""",
+                """[{"token_wallet":"$tokenWallet","token_master":""}]""")) {
+                enqueue(server, "wallet.accountTokens", "tokens", rows, true)
+                assertThrows(Exception::class.java) { source.getAccountJettonWallets(owner) }
+            }
         }
     }
     @Test fun unavailableAndMalformedDiscoveryNeverBecomeEmptyCompleteAssets() {
