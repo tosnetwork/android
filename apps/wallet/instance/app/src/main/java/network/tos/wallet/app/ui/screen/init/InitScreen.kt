@@ -157,6 +157,7 @@ class InitScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_init, S
             InitRoute.CreatePasscode -> PasscodeScreen.newInstance(false)
             InitRoute.ReEnterPasscode -> PasscodeScreen.newInstance(true)
             InitRoute.ImportWords -> WordsScreen.newInstance(false)
+            InitRoute.QuantumBackupFile -> network.tos.wallet.app.ui.screen.init.step.QuantumBackupFileScreen()
             InitRoute.QuantumRecoveryPhrase -> QuantumRecoveryPhraseScreen.newInstance()
             InitRoute.QuantumRecoveryCheck -> QuantumRecoveryCheckScreen.newInstance()
             InitRoute.WatchAccount -> WatchScreen.newInstance()

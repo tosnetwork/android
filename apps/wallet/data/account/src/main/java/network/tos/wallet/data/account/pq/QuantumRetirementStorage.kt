@@ -6,8 +6,6 @@ import android.system.OsConstants
 import network.tos.security.pq.QuantumLocalDirectory
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 
 /** All callers already hold the outbox's shared mutex and flock. Faults never imply rollback. */
 internal class QuantumRetirementStorage(private val fault: ((String) -> Unit)?) {
@@ -23,7 +21,7 @@ internal class QuantumRetirementStorage(private val fault: ((String) -> Unit)?) 
     }
     fun read(file: File, maximum: Int, allowEmpty: Boolean = false): ByteArray {
         val fd = Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
-        return FileInputStream(fd).use { input ->
+        return withOwnedInputStream(fd) { input ->
             val st = Os.fstat(fd)
             check(st.st_mode and OsConstants.S_IFMT == OsConstants.S_IFREG && st.st_uid == Os.getuid() &&
                 st.st_mode and 0x3f == 0 && st.st_nlink == 1L && st.st_size in (if (allowEmpty) 0L else 1L)..maximum.toLong())
@@ -39,7 +37,7 @@ internal class QuantumRetirementStorage(private val fault: ((String) -> Unit)?) 
         require(bytes.size in 1..maximum)
         point("$label.before_open")
         val fd = Os.open(file.absolutePath, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 0x180)
-        FileOutputStream(fd).use { stream ->
+        withOwnedOutputStream(fd) { stream ->
             point("$label.before_write"); stream.write(bytes)
             point("$label.before_file_sync"); stream.fd.sync(); point("$label.after_file_sync")
         }

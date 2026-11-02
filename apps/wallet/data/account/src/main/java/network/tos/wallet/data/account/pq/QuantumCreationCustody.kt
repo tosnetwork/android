@@ -8,6 +8,10 @@ import network.tos.security.pq.QuantumCrypto
 import network.tos.security.pq.QuantumRole
 import network.tos.security.pq.QuantumSeedVault
 import network.tos.security.pq.QuantumPurpose
+import network.tos.security.pq.QuantumRecoveryMaterialVault
+import network.tos.security.pq.QuantumBackupInspection
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
 import java.util.UUID
 import javax.crypto.SecretKey
 
@@ -22,7 +26,89 @@ internal class QuantumCreationCustody internal constructor(
         { create -> QuantumDeviceKey.get(create) })
 
     private val roles = QuantumSeedVault(preferences)
+    private val recovery = QuantumRecoveryMaterialVault(preferences)
+    private val successors = network.tos.security.pq.QuantumSuccessorMaterialVault(preferences)
+    private val successorBackups = QuantumSuccessorBackupConfirmation(preferences)
+    fun exportSuccessorMaterial(record: QuantumRecoveryRecord,
+        stagedState: network.tos.blockchain.ton.contract.QuantumSelfPayState,
+        materialDigest: ByteArray, successor: QuantumSelfPayAuthority, password: CharArray,
+    ): ByteArray = synchronized(lock) {
+        try {
+            fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            successors.exportEncrypted(record.id, record.identity, stagedState,
+                hex(record.profile.rootHash), hex(record.profile.fileHash), wrappingKey(false), materialDigest, successor, password)
+        } finally { password.fill('\u0000') }
+    }
+    fun confirmSuccessorBackup(binding: QuantumSuccessorBackupConfirmation.Binding, digest: ByteArray,
+        saved: QuantumBackupExportFile.Saved) = synchronized(lock) { successorBackups.confirm(binding, digest, saved) }
+    fun requireSuccessorBackup(binding: QuantumSuccessorBackupConfirmation.Binding): ByteArray =
+        synchronized(lock) { successorBackups.requireConfirmed(binding) }
+    fun successorMaterial(id: UUID, birth: TosQuantumSelfPayIdentity,
+        current: network.tos.blockchain.ton.contract.QuantumSelfPayState, profile: QuantumNetworkProfile,
+        resume: Boolean,
+    ): network.tos.security.pq.QuantumSuccessorMaterialVault.Stage = synchronized(lock) {
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        if (resume) successors.inspect(id, birth, current, hex(profile.rootHash), hex(profile.fileHash), wrappingKey(false))
+        else successors.generate(id, birth, current, hex(profile.rootHash), hex(profile.fileHash), wrappingKey(false))
+    }
+    fun exportCreationMaterial(record: QuantumCreationRecord, authority: QuantumSelfPayAuthority,
+                               password: CharArray): ByteArray = synchronized(lock) {
+        try {
+            val words = checkNotNull(mnemonic(record.id)) { "Original recovery phrase unavailable" }.toList()
+            fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            roles.encryptedCreationBackup(record.id.toString(), wrappingKey(false), record.identity, authority,
+                hex(record.profile.rootHash), hex(record.profile.fileHash), words, password)
+        } finally { password.fill('\u0000') }
+    }
+    fun inspectFundedSuccessor(id: UUID, birth: TosQuantumSelfPayIdentity,
+        stagedState: network.tos.blockchain.ton.contract.QuantumSelfPayState,
+        fundedState: network.tos.blockchain.ton.contract.QuantumSelfPayState, profile: QuantumNetworkProfile,
+        materialDigest: ByteArray, successor: QuantumSelfPayAuthority,
+    ): network.tos.security.pq.QuantumSuccessorMaterialVault.Stage = synchronized(lock) {
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        successors.inspectAfterFunding(id, birth, stagedState, fundedState, hex(profile.rootHash), hex(profile.fileHash),
+            wrappingKey(false), materialDigest, successor)
+    }
+    fun signSuccessorProbe(id: UUID, birth: TosQuantumSelfPayIdentity,
+        current: network.tos.blockchain.ton.contract.QuantumSelfPayState, profile: QuantumNetworkProfile,
+        materialDigest: ByteArray, successor: QuantumSelfPayAuthority, challenge: ByteArray, deadline: Long, now: Long,
+    ): Pair<ByteArray, ByteArray> = synchronized(lock) {
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        successors.signProbe(id, birth, current, hex(profile.rootHash), hex(profile.fileHash), wrappingKey(false),
+            materialDigest, successor, challenge, deadline, now)
+    }
+    fun storeRecoveryMaterial(id: UUID, encrypted: ByteArray, password: CharArray, inspection: QuantumBackupInspection) = synchronized(lock) {
+        try { recovery.storeValidated(encrypted, password, inspection, id, wrappingKey(true)) }
+        finally { password.fill('\u0000') }
+    }
+    fun inspectRecoveryMaterial(id: UUID, birth: TosQuantumSelfPayIdentity, digest: ByteArray,
+                                profile: QuantumNetworkProfile): QuantumBackupInspection = synchronized(lock) {
+        fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        recovery.inspectStored(id, birth, digest, wrappingKey(false), profile.globalId,
+            hex(profile.rootHash), hex(profile.fileHash), birth.wallet.initialAuthority.namespace)
+    }
+    fun exportRecoveryMaterial(id: UUID, inspection: QuantumBackupInspection, authority: QuantumSelfPayAuthority,
+                               selected: List<QuantumRole>, password: CharArray): ByteArray = synchronized(lock) {
+        try { recovery.exportEncrypted(id, inspection, wrappingKey(false), authority, selected, password) }
+        finally { password.fill('\u0000') }
+    }
     private fun mnemonicKey(id: UUID) = "quantum.mnemonic.v1.$id"
+    fun signRecoveryControl(id: UUID, inspection: QuantumBackupInspection,
+        state: network.tos.blockchain.ton.contract.QuantumSelfPayState, request: ByteArray, now: Long): ByteArray = synchronized(lock) {
+        recovery.signRecoveryControl(id, inspection, wrappingKey(false), state, request, now)
+    }
+    fun signSuccessorMigration(id: UUID, inspection: QuantumBackupInspection,
+        state: network.tos.blockchain.ton.contract.QuantumSelfPayState, successor: QuantumSelfPayAuthority,
+        request: ByteArray, now: Long): ByteArray = synchronized(lock) {
+        recovery.signSuccessorMigration(id, inspection, wrappingKey(false), state, successor, request, now)
+    }
+    fun signProbeFunding(id: UUID, inspection: QuantumBackupInspection,
+        state: network.tos.blockchain.ton.contract.QuantumSelfPayState, successor: QuantumSelfPayAuthority,
+        challenge: ByteArray, probeDeadline: Long, primary: ByteArray, rescue: ByteArray,
+        amount: java.math.BigInteger, request: ByteArray, now: Long): ByteArray = synchronized(lock) {
+        recovery.signProbeFunding(id, inspection, wrappingKey(false), state, successor, challenge, probeDeadline,
+            primary, rescue, amount, request, now)
+    }
 
     fun saveMnemonic(id: UUID, words: List<String>) = synchronized(lock) {
         require(words.size == 24 && words.all { it.matches(Regex("[a-z]+")) })
@@ -81,6 +167,10 @@ internal class QuantumCreationCustody internal constructor(
     fun signPayment(id: UUID, context: QuantumSeedVault.Context, expectedPublicKey: ByteArray, digest: ByteArray): ByteArray =
         roles.sign(id.toString(), QuantumRole.PRIMARY, context, wrappingKey(false), expectedPublicKey, QuantumPurpose.SELF_PAY, digest)
 
+    fun signRegisteredPayment(id: UUID, network: ByteArray, globalId: Int, expectedPublicKey: ByteArray, digest: ByteArray): ByteArray =
+        roles.signRegistered(id.toString(), QuantumRole.PRIMARY, network, globalId, wrappingKey(false),
+            expectedPublicKey, QuantumPurpose.SELF_PAY, digest)
+
     fun markComplete(id: UUID) = synchronized(lock) {
         check(preferences.contains(mnemonicKey(id)))
         for (role in QuantumRole.entries) check(preferences.contains("quantum.seed.v1.${role.id}.$id"))
@@ -89,6 +179,9 @@ internal class QuantumCreationCustody internal constructor(
 
     fun delete(id: UUID) = synchronized(lock) {
         val editor = preferences.edit().remove(mnemonicKey(id)).remove("quantum.creation.complete.v1.$id")
+            .remove("quantum.recovery.material.v1.$id")
+            .remove("quantum.successor.material.v1.$id")
+            .remove("quantum.successor.backup.v1.$id")
         for (role in QuantumRole.entries) editor.remove("quantum.seed.v1.${role.id}.$id")
         check(editor.commit()) { "Quantum key deletion uncertain" }
     }
@@ -96,7 +189,7 @@ internal class QuantumCreationCustody internal constructor(
     fun deleteAll() = synchronized(lock) {
         // Clear failed enrollment attempts too, without touching other wallet services.
         val editor = preferences.edit()
-        preferences.all.keys.filter { it.startsWith("quantum.mnemonic.v1.") || it.startsWith("quantum.seed.v1.") || it.startsWith("quantum.creation.complete.v1.") }
+        preferences.all.keys.filter { it.startsWith("quantum.mnemonic.v1.") || it.startsWith("quantum.seed.v1.") || it.startsWith("quantum.creation.complete.v1.") || it.startsWith("quantum.recovery.material.v1.") || it.startsWith("quantum.successor.material.v1.") || it.startsWith("quantum.successor.backup.v1.") }
             .forEach(editor::remove)
         check(editor.commit()) { "Quantum key deletion uncertain" }
     }

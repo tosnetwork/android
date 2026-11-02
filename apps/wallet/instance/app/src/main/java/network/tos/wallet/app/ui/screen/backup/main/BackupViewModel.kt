@@ -64,6 +64,10 @@ class BackupViewModel(
         }
         items.add(Item.Header)
         items.add(Item.Space)
+        if (wallet.isQuantum && accountRepository.hasOriginalQuantumCreation(wallet.id)) {
+            items.add(Item.EncryptedBackup)
+            items.add(Item.Space)
+        }
 
         for ((index, backup) in backups.withIndex()) {
             val position = ListCell.getPosition(backupsCount, index)
@@ -108,6 +112,32 @@ class BackupViewModel(
             }
         }
     }
+
+    suspend fun createEncryptedBackup(context: Context, password: CharArray): ByteArray {
+        try {
+            check(passcodeManager.hasPinCode() && passcodeManager.confirmation(context, "Export encrypted backup")) {
+                "Backup authentication cancelled"
+            }
+            return accountRepository.exportQuantumCreationBackup(wallet.id, password)
+        } finally { password.fill('\u0000') }
+    }
+
+    suspend fun recordVerifiedEncryptedBackup() = withContext(Dispatchers.IO) {
+        backupRepository.addBackups(listOf(wallet.id))
+    }
+
+    suspend fun createSuccessorBackup(context: Context, password: CharArray): AccountRepository.SuccessorBackupExport {
+        try {
+            check(passcodeManager.hasPinCode() && passcodeManager.confirmation(context, "Back up replacement keys")) {
+                "Backup authentication cancelled"
+            }
+            return accountRepository.exportFundedQuantumSuccessorBackup(wallet, password)
+        } finally { password.fill('\u0000') }
+    }
+
+    suspend fun confirmSuccessorBackup(exported: AccountRepository.SuccessorBackupExport,
+        saved: network.tos.wallet.data.account.pq.QuantumBackupExportFile.Saved,
+    ) = accountRepository.confirmFundedQuantumSuccessorBackup(wallet, exported, saved)
 
     private suspend fun getBalanceType(
         balanceFiat: Coins,

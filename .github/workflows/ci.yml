@@ -15,6 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify proof source checkout boundaries
         run: python3 scripts/test_quantum_proof_source.py
+      - name: Verify cold recovery runner failure handling
+        run: |
+          python3 -m unittest discover -s scripts -p test_quantum_cold_recovery_runner.py -v
+          python3 -m unittest discover -s scripts -p test_quantum_proof_recording_proxy.py -v
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,6 +47,14 @@ jobs:
 
       - name: Verify Quantum self-pay native signing domains
         run: python3 scripts/test_quantum_self_pay_native.py --output build/quantum-self-pay-native
+
+      - name: Retain wallet release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-wallet-release-${{ github.sha }}
+          path: apps/wallet/instance/main/build/outputs/apk/site/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Retain Quantum self-pay native evidence
         if: always()
@@ -93,6 +105,9 @@ jobs:
             make test_quantum_proof_device
             make test_quantum_history_transport_device
             make test_quantum_expiry_device
+            make test_quantum_funding_storage_device
+            make test_quantum_funding_custody_device
+            make test_quantum_funding_wrapper_device
       - name: Retain native device test reports
         if: always()
         uses: actions/upload-artifact@v4

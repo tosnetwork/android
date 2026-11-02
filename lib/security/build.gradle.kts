@@ -103,6 +103,8 @@ tasks.configureEach {
 }
 
 dependencies {
+    implementation(project(ProjectModules.Lib.blockchain))
+    testImplementation(libs.junit)
     androidTestImplementation(libs.androidX.test)
     androidTestImplementation(libs.androidX.test.core)
     androidTestImplementation("androidx.test:runner:1.7.0")

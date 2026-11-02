@@ -51,6 +51,18 @@ class QuantumSelfPayNetworkTest {
         assertArrayEquals(network, QuantumSelfPayNetwork.validate(version(), identity(), policy(deadline = 101), 1, 100))
     }
 
+    @Test fun recoveryNetworkValidationDoesNotGrantPrimaryAdmission() {
+        for (cell in listOf(policy(2), policy(deadline = 100))) {
+            assertArrayEquals(network, QuantumSelfPayNetwork.validateRecovery(version(), identity(), cell, 1))
+            assertTrue(runCatching { QuantumSelfPayNetwork.validate(version(), identity(), cell, 1, 100) }.isFailure)
+        }
+        for (cell in listOf(policy(4), policy(validSpec = false), policy(deadline = 0))) {
+            assertTrue(runCatching { QuantumSelfPayNetwork.validateRecovery(version(), identity(), cell, 1) }.isFailure)
+        }
+        assertTrue(runCatching { QuantumSelfPayNetwork.validateRecovery(version(15), identity(), policy(), 1) }.isFailure)
+        assertTrue(runCatching { QuantumSelfPayNetwork.validateRecovery(version(), identity(2), policy(), 1) }.isFailure)
+    }
+
     @Test fun boundedBootstrapRequest() {
         for (age in listOf(0L, -1L, 3600L, Long.MAX_VALUE)) {
             assertNotNull(runCatching { QuantumSelfPayNetwork.request(age) }.exceptionOrNull())

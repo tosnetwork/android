@@ -6,6 +6,11 @@ import java.nio.ByteBuffer
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import java.security.MessageDigest
+import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
+import network.tos.blockchain.ton.contract.QuantumSelfPayAuthority
+import org.ton.boc.BagOfCells
+import org.ton.mnemonic.Mnemonic
 
 /** Role-specific encrypted seed custody. Authentication and chain authorization belong to the wallet service.
  * Separate rescue custody requires storing its record on the independent device. No fee state is stored here. */
@@ -24,6 +29,8 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
     private fun aad(name: String, context: Context): ByteArray =
         "TOS-V5R2-SEED-v1".toByteArray(Charsets.US_ASCII) +
             byteArrayOf(name.length.toByte()) + name.toByteArray(Charsets.US_ASCII) + context.encoding()
+    private fun registeredAad(name: String): ByteArray = "TOS-ROLE-CUSTODY-v2".toByteArray(Charsets.US_ASCII) +
+        byteArrayOf(name.length.toByte()) + name.toByteArray(Charsets.US_ASCII)
 
     /** Initial key binding only. No signing handle or current-authority approval is returned.
      * Native mnemonic validation must precede this call for that input profile. */
@@ -50,9 +57,10 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
             val publicKey = QuantumCrypto.publicKey(role, seed)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, wrappingKey)
-            cipher.updateAAD(aad(name, context))
-            val ciphertext = cipher.doFinal(seed)
-            val record = byteArrayOf(1) + cipher.iv + ciphertext
+            cipher.updateAAD(registeredAad(name))
+            val plaintext = context.encoding() + seed
+            val ciphertext = try { cipher.doFinal(plaintext) } finally { plaintext.fill(0) }
+            val record = byteArrayOf(2) + cipher.iv + ciphertext
             try {
                 check(prefs.edit().putString(name, Base64.encodeToString(record, Base64.NO_WRAP)).commit())
             } finally { ciphertext.fill(0); record.fill(0) }
@@ -60,23 +68,119 @@ class QuantumSeedVault(private val prefs: SharedPreferences) {
         } finally { seed.fill(0) }
     }
     private fun <T> withSeed(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey,
-                             body: (ByteArray) -> T): T = synchronized(writerLock) {
+                             body: (ByteArray) -> T): T = withCustody(id, role, context, wrappingKey, false, body)
+    private fun <T> withCustody(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey,
+                                registered: Boolean, body: (ByteArray) -> T): T = synchronized(writerLock) {
         val name = name(id, role)
         val record = Base64.decode(checkNotNull(prefs.getString(name, null)), Base64.NO_WRAP)
         try {
-            require(record.size == 29 + role.seedSize && record[0] == 1.toByte())
+            require(record.isNotEmpty())
+            val version = record[0].toInt()
+            require((version == 1 && record.size == 29 + role.seedSize) ||
+                (version == 2 && record.size == 73 + role.seedSize))
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, wrappingKey, GCMParameterSpec(128, record.copyOfRange(1, 13)))
-            cipher.updateAAD(aad(name, context))
-            val seed = cipher.doFinal(record, 13, record.size - 13)
-            try { require(seed.size == role.seedSize); body(seed) } finally { seed.fill(0) }
+            cipher.updateAAD(if (version == 1) aad(name, context) else registeredAad(name))
+            val plaintext = cipher.doFinal(record, 13, record.size - 13)
+            try {
+                if (version == 1) {
+                    require(plaintext.size == role.seedSize)
+                    body(plaintext)
+                } else {
+                    require(plaintext.size == 44 + role.seedSize)
+                    val expected = context.encoding()
+                    val count = if (registered) 36 else 44 // Network/globalID always bind; derivation is authenticated ciphertext.
+                    if (!java.security.MessageDigest.isEqual(plaintext.copyOfRange(0, count), expected.copyOfRange(0, count)))
+                        throw javax.crypto.AEADBadTagException("Quantum custody context mismatch")
+                    val seed = plaintext.copyOfRange(44, plaintext.size)
+                    try { body(seed) } finally { seed.fill(0) }
+                }
+            } finally { plaintext.fill(0) }
         } finally { record.fill(0) }
     }
     fun publicKey(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey): ByteArray =
         withSeed(id, role, context, wrappingKey) { QuantumCrypto.publicKey(role, it) }
+
+    /** Original native 24-word creation only; imported/rotated roles retain their own stored provenance.
+     * Caller authenticates and proves this birth/profile/current authority before and after export.
+     * Only ciphertext leaves the vault. Both roles must exist in authenticated original 0/0 custody. */
+    fun encryptedCreationBackup(id: String, wrappingKey: SecretKey, birth: TosQuantumSelfPayIdentity,
+                                authority: QuantumSelfPayAuthority, rootHash: ByteArray, fileHash: ByteArray,
+                                words: List<String>, password: CharArray): ByteArray = synchronized(writerLock) {
+        var templateBytes = ByteArray(0)
+        val roles = mutableListOf<QuantumBackupPayload.Role>()
+        try {
+            require(password.size in 12..1024)
+            require(Character.codePointCount(password, 0, password.size) >= 12)
+            require(words.size == 24 && words.all { it.matches(Regex("[a-z]+")) })
+            require(rootHash.size == 32 && fileHash.size == 32)
+            birth.requireNetwork(authority.globalId, authority.namespace)
+            val dictionary = Mnemonic.mnemonicWords()
+            val indices = words.map { word -> dictionary.indexOf(word).also { require(it >= 0) } }.toIntArray()
+            try {
+                for (role in QuantumRole.entries) {
+                    val key = if (role == QuantumRole.PRIMARY) authority.primaryKey else authority.rescueKey
+                    roles += QuantumBackupPayload.Role(role.id, 0, 0, ByteArray(role.seedSize),
+                        MessageDigest.getInstance("SHA-256").digest(key), 2, indices.copyOf(), byteArrayOf(), byteArrayOf())
+                }
+            } finally { indices.fill(0) }
+            templateBytes = QuantumBackupPayload.encodeUnverified(authority.globalId, rootHash, fileHash,
+                authority.namespace, birth.toBoc(), BagOfCells(authority.cell).toByteArray(), roles)
+            QuantumBackupPayload.parseUnverified(templateBytes).use { template ->
+                encryptedBackup(id, wrappingKey, template, authority.primaryKey, authority.rescueKey, password)
+            }
+        } finally { templateBytes.fill(0); password.fill('\u0000'); roles.forEach { it.wipe() } }
+    }
+
+    /** Internal export primitive. Caller authenticates and validates birth/snapshot before and after.
+     * Template seeds are ignored: only protected custody supplies the exported role seeds.
+     * No plaintext or general seed getter crosses this boundary; password input is consumed. */
+    internal fun encryptedBackup(id: String, wrappingKey: SecretKey, template: QuantumBackupPayload,
+                                 primary: ByteArray, rescue: ByteArray, password: CharArray): ByteArray =
+        synchronized(writerLock) {
+            val roles = mutableListOf<QuantumBackupPayload.Role>()
+            var plaintext = ByteArray(0)
+            try {
+                // Structural consistency only. Trust-profile approval remains the service's responsibility.
+                val identity = template.validateIdentity(template.globalId, template.rootHash,
+                    template.fileHash, template.namespace)
+                require(java.security.MessageDigest.isEqual(primary, identity.snapshot.primaryKey) &&
+                    java.security.MessageDigest.isEqual(rescue, identity.snapshot.rescueKey)) {
+                    "Export snapshot differs from expected authority"
+                }
+                for (entry in template.roles) {
+                    val role = when (entry.role) {
+                        1 -> QuantumRole.PRIMARY
+                        2 -> QuantumRole.RESCUE
+                        else -> throw IllegalArgumentException("Unsupported backup role")
+                    }
+                    val context = Context(template.namespace, template.globalId, entry.account, entry.generation)
+                    withSeed(id, role, context, wrappingKey) { seed ->
+                        roles += QuantumBackupPayload.Role(entry.role, entry.account, entry.generation,
+                            seed.copyOf(), entry.publicKeyHash.copyOf(), entry.sourceProfile,
+                            entry.wordIndices.copyOf(), entry.phrasePassword.copyOf(), entry.master.copyOf())
+                    }
+                }
+                plaintext = QuantumBackupPayload.encodeUnverified(template.globalId, template.rootHash,
+                    template.fileHash, template.namespace, template.birthBoc, template.authorityBoc, roles)
+                QuantumBackupPayload.parseUnverified(plaintext).use { bound ->
+                    bound.validateSnapshotKeys(primary, rescue)
+                    bound.validateProvenance()
+                }
+                QuantumBackupCipher.encrypt(plaintext, password)
+            } finally {
+                plaintext.fill(0); password.fill('\u0000'); roles.forEach { it.wipe() }
+            }
+        }
     fun sign(id: String, role: QuantumRole, context: Context, wrappingKey: SecretKey,
              expectedPublicKey: ByteArray, purpose: QuantumPurpose, digest: ByteArray): ByteArray =
         withSeed(id, role, context, wrappingKey) {
+            QuantumCrypto.sign(role, purpose, it, expectedPublicKey, digest)
+        }
+    /** V2 resolves derivation from authenticated encrypted custody; v1 is restricted to original 0/0. */
+    fun signRegistered(id: String, role: QuantumRole, network: ByteArray, globalId: Int, wrappingKey: SecretKey,
+                       expectedPublicKey: ByteArray, purpose: QuantumPurpose, digest: ByteArray): ByteArray =
+        withCustody(id, role, Context(network, globalId, 0, 0), wrappingKey, true) {
             QuantumCrypto.sign(role, purpose, it, expectedPublicKey, digest)
         }
     companion object { private val writerLock = Any() }

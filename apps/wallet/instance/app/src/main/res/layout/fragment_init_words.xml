@@ -23,6 +23,13 @@
                 android:title="@string/import_wallet_title"
                 android:description="@string/import_wallet_description"/>
 
+            <Button
+                android:id="@+id/quantum_backup_file"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="24dp"
+                android:text="Import encrypted TOS backup" />
+
             <uikit.widget.RowLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

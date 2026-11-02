@@ -14,6 +14,115 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 
+def validate_migration_signing_evidence(signed, restarted=None):
+    if not (re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', signed.get('operation', ''))
+            and signed['operation'] != '00000000-0000-0000-0000-000000000000'
+            and all(re.fullmatch(r'[0-9a-f]{64}', signed.get(key, '')) for key in ('request_hash', 'signature_digest'))
+            and type(signed.get('deadline')) is int and 1 <= signed['deadline'] <= 0xffffffff
+            and all(signed.get(key) is True for key in ('pin_cancelled_without_reservation', 'background_cleared_review',
+                'signature_verified', 'duplicate_rejected', 'isolation_retained', 'state_and_balance_unchanged',
+                'estimate_verified', 'estimate_ui_verified'))):
+        raise ValueError('Migration signing product evidence missing')
+    if restarted is not None and not (type(restarted.get('deadline')) is int and all(restarted.get(key) == signed[key]
+            for key in ('operation', 'request_hash', 'signature_digest', 'deadline'))
+            and all(restarted.get(key) is True for key in ('signature_verified', 'restart', 'isolation_retained'))):
+        raise ValueError('Migration signing restart evidence missing')
+
+
+def redact_failure_logcat(raw):
+    """Owned-process metadata/frames only. Never retain exception messages or arbitrary log text."""
+    if len(raw) > 1_048_576:
+        raise ValueError('Crash log exceeds input limit')
+    rows = []
+    for line in raw.decode('utf-8', errors='replace').splitlines()[-512:]:
+        match = re.fullmatch(r'[VDIWEFA]/([^()]+)\(\s*([0-9]+)\):\s?(.*)', line)
+        if match:
+            rows.append((match[1].strip(), int(match[2]), match[3].strip()))
+    owned = set()
+    for tag, pid, text in rows:
+        if tag == 'AndroidRuntime' and re.fullmatch(r'Process: network\.tos\.wallet, PID: [0-9]+', text):
+            owned.add(pid)
+        native = re.search(r'^pid:\s*([0-9]+),.*>>> network\.tos\.wallet <<<', text)
+        if tag == 'DEBUG' and native:
+            owned.add(int(native[1]))
+        if tag in ('am_crash', 'am_anr', 'am_kill', 'am_proc_died'):
+            event = re.match(r'^\[[0-9]+,([0-9]+),network\.tos\.wallet(?:,|\])', text)
+            if event:
+                owned.add(int(event[1]))
+    output = []
+    native_owned = {}
+    for tag, pid, text in rows:
+        if tag == 'DEBUG':
+            header = re.match(r'^pid:\s*([0-9]+),.*>>> ([^ ]+) <<<', text)
+            if header:
+                native_owned[pid] = header[2] == 'network.tos.wallet'
+                if native_owned[pid]:
+                    output.append({'event': 'native_crash', 'pid': int(header[1])})
+            if native_owned.get(pid):
+                frame = re.match(r'^#([0-9]{2}) pc ([0-9a-fA-F]{1,16}) ', text)
+                library = re.search(r'/(lib[A-Za-z0-9_.-]+\.so)\b', text)
+                if frame and library:
+                    output.append({'event': 'native_frame', 'index': int(frame[1]), 'pc': frame[2], 'library': library[1]})
+        elif pid in owned and tag not in ('libc', 'am_crash', 'am_anr', 'am_kill', 'am_proc_died'):
+            signal = re.fullmatch(r'Sending signal\. PID: ([0-9]+) SIG: ([0-9]+)', text)
+            if tag == 'Process' and signal and int(signal[1]) in owned:
+                output.append({'event': 'process_signal', 'pid': int(signal[1]), 'signal': int(signal[2])})
+            if text.startswith('FATAL EXCEPTION:'):
+                output.append({'event': 'fatal_exception', 'pid': pid})
+            exception = re.match(r'^(?:Caused by: )?((?:java|android|androidx|kotlin|kotlinx|network\.tos|org|com)\.[A-Za-z_$][A-Za-z0-9_.$]{1,255})(?::|$)', text)
+            if exception and '.' in exception[1]:
+                output.append({'event': 'exception_class', 'pid': pid, 'class': exception[1]})
+            frame = re.fullmatch(r'at ((?:network\.tos|java|android|androidx|kotlin|kotlinx|org\.junit|org\.ton|okhttp3|com\.android)\.[A-Za-z0-9_.$<>/]{1,256})\(([A-Za-z0-9_.$-]{1,128}(?::[0-9]{1,8})?|Native Method|Unknown Source)\)', text)
+            if frame:
+                output.append({'event': 'java_frame', 'pid': pid, 'method': frame[1], 'source': frame[2]})
+        elif tag == 'libc' and pid in owned:
+            signal = re.match(r'^Fatal signal ([0-9]+) \(([A-Z0-9]+)\)', text)
+            if signal:
+                output.append({'event': 'fatal_signal', 'pid': pid, 'signal': int(signal[1]), 'name': signal[2]})
+        elif tag in ('am_crash', 'am_anr', 'am_kill', 'am_proc_died'):
+            event = re.match(r'^\[[0-9]+,([0-9]+),network\.tos\.wallet(?:,|\])', text)
+            if event:
+                output.append({'event': tag, 'pid': int(event[1])})
+    result = {'process': 'network.tos.wallet', 'records': output[:128]}
+    if len(json.dumps(result).encode()) > 65536:
+        raise ValueError('Redacted crash log exceeds output limit')
+    return result
+
+
+def redact_failure_environment(meminfo, power, screen_timeout):
+    if sum(map(len, (meminfo, power, screen_timeout))) > 65536:
+        raise ValueError('Environment snapshot exceeds limit')
+    memory = {key: int(value) for key, value in re.findall(
+        r'^(MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree|Shmem|Slab):\s+([0-9]+) kB$',
+        meminfo.decode('utf-8', errors='replace'), re.M)}
+    wake = re.search(r'\bmWakefulness=(Awake|Asleep|Dreaming|Dozing)\b', power.decode('utf-8', errors='replace'))
+    timeout = screen_timeout.decode('utf-8', errors='replace').strip()
+    return {'guest_memory_kb': memory, 'wakefulness': wake[1] if wake else None,
+            'screen_off_timeout_ms': int(timeout) if re.fullmatch(r'[0-9]{1,10}', timeout) and int(timeout) <= 2147483647 else None}
+
+
+def instrumentation_timeout(method):
+    # This one test deliberately waits beyond the unchanged 300-second proof freshness policy.
+    return 420 if method == 'fundingCompletionRejectsChangedRecordsAndExpiredProof' else 300
+
+
+def run_instrumentation(command, log_path, collect_failure, timeout=300):
+    """Retain diagnostics for runner crashes/timeouts as well as JUnit failures."""
+    try:
+        with log_path.open('w') as output:
+            subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=timeout, check=True)
+        log = log_path.read_text()
+        if 'OK (1 test)' not in log or 'FAILURES' in log or 'Process crashed' in log:
+            raise RuntimeError('Instrumentation did not pass; inspect ' + log_path.name)
+    except (subprocess.SubprocessError, RuntimeError):
+        # Best-effort evidence must never replace the original failure.
+        try:
+            collect_failure()
+        except Exception:
+            pass
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial', required=True)
@@ -25,15 +134,59 @@ def main():
     parser.add_argument('--file-hash', required=True)
     parser.add_argument('--rpc', default='http://10.0.2.2:18545')
     parser.add_argument('--port', type=int, default=18853)
+    parser.add_argument('--encrypted-backup', action='store_true', help='Restore an actual App-exported encrypted file; password stays in controller memory')
+    parser.add_argument('--recovery-control-signing', action='store_true', help='Deploy before encrypted backup; authenticate and sign a restricted recovery control after uninstall')
+    parser.add_argument('--funding-control', default='http://127.0.0.1:18745')
+    parser.add_argument('--submit-recovery-control', action='store_true', help='Explicit test confirmation sends the one recovery control; verify linked history and exact lock state')
+    parser.add_argument('--complete-recovery-control', action='store_true', help='Persist authenticated completion and verify retained isolation after restart')
+    parser.add_argument('--recovery-control-ui', action='store_true', help='Use actual recovery product screen, PIN and fee confirmation')
+    parser.add_argument('--stage-successor', action='store_true', help='Generate protected successor roots through actual product UI and verify after restart')
+    parser.add_argument('--sign-successor-probe', action='store_true', help='Authenticate and durably dual-sign the staged successor probe without funding it')
+    parser.add_argument('--prepare-probe-funding', action='store_true', help='Wait for authenticated prior-control expiry and prepare one unsigned probe funding request')
+    parser.add_argument('--sign-probe-funding-ui', action='store_true', help='Review and PIN-sign probe funding in the product UI without broadcasting')
+    parser.add_argument('--estimate-probe-funding', action='store_true', help='Native-estimate the saved funding message through the actual account service; no broadcast')
+    parser.add_argument('--submit-probe-funding', action='store_true', help='Explicit local test fee confirmation sends probe funding once, verifies the probe and checks restart isolation')
+    parser.add_argument('--sign-successor-migration', action='store_true', help='PIN-sign replacement once after confirmed backup; no migration broadcast or installation')
+    parser.add_argument('--active-before-restore', action='store_true', help='Pay before uninstall, then restore and pay using current nonzero counters')
     parser.add_argument('--journey-recipient', help='Continue with restored-account funding/payment and force-stop recovery')
     a = parser.parse_args()
+    if a.active_before_restore and (a.encrypted_backup or not a.journey_recipient):
+        raise ValueError('Active ordinary restore requires phrase backup and a journey recipient')
+    if a.sign_successor_migration and not a.submit_probe_funding:
+        raise ValueError('Migration signing requires the completed funding and confirmed backup journey')
+    if a.submit_probe_funding and not a.estimate_probe_funding:
+        raise ValueError('Probe submission requires the estimate/signing product journey')
+    if a.estimate_probe_funding and not a.sign_probe_funding_ui:
+        raise ValueError('Funding estimate requires the product signing journey')
+    if a.sign_probe_funding_ui and not a.prepare_probe_funding:
+        raise ValueError('Funding product signing requires authenticated preparation mode')
+    if a.recovery_control_signing and not a.encrypted_backup:
+        raise ValueError('Recovery control signing requires encrypted cold recovery')
+    if a.submit_recovery_control and not a.recovery_control_signing:
+        raise ValueError('Recovery submission requires the signing journey')
+    if a.complete_recovery_control and not a.submit_recovery_control:
+        raise ValueError('Recovery completion requires the submission journey')
+    if a.recovery_control_ui and not a.complete_recovery_control:
+        raise ValueError('Recovery product UI requires completion mode')
+    if a.stage_successor and not a.recovery_control_ui:
+        raise ValueError('Successor staging requires recovery product UI')
+    if a.sign_successor_probe and not a.stage_successor:
+        raise ValueError('Successor probe signing requires staged successor journey')
+    if a.prepare_probe_funding and not a.sign_successor_probe:
+        raise ValueError('Probe funding preparation requires the signed probe journey')
+    funding = urllib.parse.urlsplit(a.funding_control)
+    if a.recovery_control_signing and (funding.scheme != 'http' or funding.hostname not in ('127.0.0.1', 'localhost')
+            or funding.username or funding.password or funding.query or funding.fragment or funding.path not in ('', '/')):
+        raise ValueError('Requires an exclusive loopback funding control')
+    if a.encrypted_backup and a.journey_recipient:
+        raise ValueError('Encrypted imports remain isolated until the R06 recovery-control journey is implemented')
     if a.journey_recipient and not re.fullmatch(r'0:[0-9a-f]{64}', a.journey_recipient):
         raise ValueError('Requires a public raw localnet recipient')
     if not re.fullmatch(r'emulator-\d+', a.serial):
         raise ValueError('Only a disposable TOS emulator is supported')
     adb = ['adb', '-s', a.serial]
-    def run(args):
-        return subprocess.check_output(adb + args, timeout=60, stderr=subprocess.STDOUT)
+    def run(args, timeout=60):
+        return subprocess.check_output(adb + args, timeout=timeout, stderr=subprocess.STDOUT)
     name = run(['emu', 'avd', 'name']).decode().splitlines()[0]
     if not name.startswith('TOS_'):
         raise ValueError('Requires a dedicated TOS_ emulator')
@@ -41,7 +194,8 @@ def main():
     artifacts = {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in (a.app, a.test_app)}
     (a.out / 'apks.json').write_text(json.dumps(artifacts, indent=2))
     token = secrets.token_hex(32)
-    state = {'words': None, 'public': None, 'reinstalled': False, 'restored': False, 'verified': False}
+    state = {'words': None, 'password': None, 'document': None, 'cipher_hash': None, 'funded': None, 'fund_attempted': False,
+             'public': None, 'reinstalled': False, 'restored': False, 'verified': False}
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -54,7 +208,51 @@ def main():
                 if not 0 < length <= 32768:
                     raise ValueError('request limit')
                 body = json.loads(self.rfile.read(length))
-                if self.path == '/stage':
+                if self.path == '/fund-created':
+                    if not a.recovery_control_signing or state['fund_attempted'] or state['public'] is not None:
+                        raise ValueError('funding unavailable')
+                    if (body['global_id'] != a.global_id or body['root_hash'] != a.root_hash or body['file_hash'] != a.file_hash
+                            or not re.fullmatch(r'0:[0-9a-f]{64}', body['address'])):
+                        raise ValueError('funding identity mismatch')
+                    state['fund_attempted'] = True
+                    request = urllib.request.Request(a.funding_control.rstrip('/') + '/transfer',
+                        data=json.dumps({'address': body['address'], 'amount': 10}).encode(), headers={'Content-Type': 'application/json'})
+                    with urllib.request.urlopen(request, timeout=65) as response:
+                        raw = response.read(65537)
+                    if len(raw) > 65536:
+                        raise ValueError('funding response limit')
+                    receipt = json.loads(raw)
+                    if int(receipt['after']) - int(receipt['before']) != 10000000000:
+                        raise ValueError('funding delta mismatch')
+                    state['funded'] = body
+                    (a.out / 'funding-public.json').write_text(json.dumps({'address': body['address'], 'before': receipt['before'], 'after': receipt['after']}, indent=2))
+                    result = {'funded': True}
+                elif self.path == '/stage-file':
+                    if not a.encrypted_backup or state['public'] is not None or set(body) != {'password', 'documentId', 'public', 'cipherSha256'}:
+                        raise ValueError('file stage unavailable')
+                    password, document, digest = body['password'], body['documentId'], body['cipherSha256']
+                    if a.recovery_control_signing and body['public'] != state['funded']:
+                        raise ValueError('exported wallet differs from funded wallet')
+                    if not isinstance(password, str) or not 12 <= len(password) <= 1024 or not re.fullmatch(r'saved-[0-9a-f-]{36}', document) or not re.fullmatch(r'[0-9a-f]{64}', digest):
+                        raise ValueError('invalid encrypted file stage')
+                    state.update(password=password, document=document, cipher_hash=digest, public=body['public'])
+                    (a.out / 'before-public.json').write_text(json.dumps(state['public'], indent=2))
+                    result = {'staged': True}
+                elif self.path == '/restore-file':
+                    if not a.encrypted_backup or body or not state['reinstalled'] or state['restored'] or state['password'] is None:
+                        raise ValueError('file restore unavailable')
+                    result = {'password': state['password'], 'public': state['public'], 'cipherSha256': state['cipher_hash']}
+                    state['password'] = None
+                    state['restored'] = True
+                elif self.path == '/verify-file':
+                    if not a.encrypted_backup or not state['restored'] or state['verified'] or body != state['public']:
+                        raise ValueError('file identity mismatch')
+                    (a.out / 'after-public.json').write_text(json.dumps(body, indent=2))
+                    state['verified'] = True
+                    result = {'matched': True}
+                elif self.path == '/stage':
+                    if a.encrypted_backup:
+                        raise ValueError('phrase stage disabled')
                     if state['public'] is not None or set(body) != {'words', 'public'}:
                         raise ValueError('stage already consumed')
                     words = body['words']
@@ -109,26 +307,227 @@ def main():
             'network.tos.wallet.test/androidx.test.runner.AndroidJUnitRunner']
         for key, value in (extra or {}).items():
             command[-1:-1] = ['-e', key, str(value)]
-        with (a.out / (method + '.log')).open('w') as output:
-            subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=True)
-        log = (a.out / (method + '.log')).read_text()
-        if 'OK (1 test)' not in log or 'FAILURES' in log:
-            raise RuntimeError(method + ' did not pass; inspect its log')
+        if a.recovery_control_signing:
+            command[-1:-1] = ['-e', 'quantumRecoveryControlSigning', 'true']
+        if a.submit_recovery_control:
+            command[-1:-1] = ['-e', 'quantumSubmitRecoveryControl', 'true']
+        if a.complete_recovery_control:
+            command[-1:-1] = ['-e', 'quantumCompleteRecoveryControl', 'true']
+        if a.recovery_control_ui:
+            command[-1:-1] = ['-e', 'quantumRecoveryControlUI', 'true']
+        if a.stage_successor:
+            command[-1:-1] = ['-e', 'quantumStageSuccessor', 'true']
+        if a.sign_successor_probe:
+            command[-1:-1] = ['-e', 'quantumSignSuccessorProbe', 'true']
+        if a.prepare_probe_funding:
+            command[-1:-1] = ['-e', 'quantumPrepareProbeFunding', 'true']
+        if a.sign_probe_funding_ui:
+            command[-1:-1] = ['-e', 'quantumSignProbeFundingUI', 'true']
+        if a.estimate_probe_funding:
+            command[-1:-1] = ['-e', 'quantumEstimateProbeFunding', 'true']
+        if a.submit_probe_funding:
+            command[-1:-1] = ['-e', 'quantumSubmitProbeFunding', 'true']
+        if a.sign_successor_migration:
+            command[-1:-1] = ['-e', 'quantumSignSuccessorMigration', 'true']
+        def collect_failure():
+            if method in ('journeyPaysFromRestoredWallet', 'journeyPaysFromActiveRestoredWallet',
+                          'localNetworkRestoresSubmittedPaymentAfterProcessRestart'):
+                try:
+                    # The test watcher reads only named payment/recovery status views.
+                    # Never export a generic view hierarchy or wallet custody here.
+                    status = run(['shell', 'run-as', 'network.tos.wallet', 'cat',
+                                  'cache/quantum-ui-failure-status.txt'])
+                    if len(status) > 65536:
+                        raise ValueError('Public payment status exceeds limit')
+                    status.decode('utf-8')
+                    (a.out / (method + '.payment-status.txt')).write_bytes(status)
+                except (subprocess.SubprocessError, ValueError):
+                    pass
+            try:
+                crash = redact_failure_logcat(run(['logcat', '-b', 'crash', '-b', 'events', '-b', 'main', '-b', 'system', '-d', '-t', '200', '-v', 'brief'], timeout=10))
+                crash['buffers_cleared_before_stage'] = cleared_crash_buffers
+                try:
+                    crash['environment'] = redact_failure_environment(run(['shell', 'cat', '/proc/meminfo'], timeout=10),
+                        run(['shell', 'dumpsys', 'power'], timeout=10),
+                        run(['shell', 'settings', 'get', 'system', 'screen_off_timeout'], timeout=10))
+                except (subprocess.SubprocessError, ValueError):
+                    crash['environment_available'] = False
+                (a.out / (method + '.crash-public.json')).write_text(json.dumps(crash, indent=2))
+            except (subprocess.SubprocessError, ValueError):
+                pass
+            if a.prepare_probe_funding:
+                for name, limit, is_json in [('quantum-proof-failure-public.json', 2097152, True),
+                                             ('quantum-funding-attempt-public.json', 8192, True),
+                                             ('quantum-ui-failure-status.txt', 65536, False)]:
+                    try:
+                        evidence = run(['shell', 'run-as', 'network.tos.wallet', 'cat', 'cache/' + name])
+                        if len(evidence) > limit:
+                            raise ValueError('Public evidence exceeds limit')
+                        if is_json:
+                            json.loads(evidence)
+                        else:
+                            evidence.decode('utf-8')
+                        (a.out / name).write_bytes(evidence)
+                    except (subprocess.SubprocessError, ValueError):
+                        pass
+        cleared_crash_buffers = False
+        try:
+            run(['logcat', '-b', 'crash', '-b', 'events', '-b', 'main', '-b', 'system', '-c'])
+            cleared_crash_buffers = True
+        except subprocess.SubprocessError:
+            pass
+        if a.prepare_probe_funding:
+            # A previous phase's checkpoint is not evidence for this invocation.
+            run(['shell', 'run-as', 'network.tos.wallet', 'rm', '-f', 'cache/quantum-proof-failure-public.json',
+                 'cache/quantum-ui-failure-status.txt'])
+        run_instrumentation(command, a.out / (method + '.log'), collect_failure, timeout=instrumentation_timeout(method))
     try:
         install()
         run(['shell', 'pm', 'clear', 'network.tos.wallet'])
-        test('coldRecoveryCreatesAndStagesDisplayedBackup')
-        if state['words'] is None:
-            raise RuntimeError('No displayed backup staged')
+        if a.encrypted_backup:
+            # Clear only this disposable test provider's old external ciphertext documents.
+            run(['shell', 'pm', 'clear', 'network.tos.wallet.test'])
+            test('createdWalletExportsEncryptedFileThroughSystemPicker', {'quantumEncryptedColdRecovery': 'true'})
+            if state['password'] is None:
+                raise RuntimeError('No encrypted backup staged')
+            cipher = run(['exec-out', 'run-as', 'network.tos.wallet.test', 'cat',
+                          'cache/encrypted-exports/' + state['document']])
+            if not 58 <= len(cipher) <= 262201 or hashlib.sha256(cipher).hexdigest() != state['cipher_hash']:
+                raise ValueError('Actual exported ciphertext mismatch')
+            # Ciphertext is the external backup artifact; plaintext and password never go to disk.
+            (a.out / 'actual-app-backup.tosqbk').write_bytes(cipher)
+        else:
+            test('coldRecoveryCreatesAndStagesDisplayedBackup')
+            if state['words'] is None:
+                raise RuntimeError('No displayed backup staged')
+        if a.active_before_restore:
+            test('journeyPaysFromRestoredWallet', {'quantumRecipient': a.journey_recipient,
+                'quantumExpectedAddress': state['public']['address'],
+                'quantumExpectedIdentity': state['public']['identity_cell_hash']})
+            prior_payment = json.loads(run(['shell', 'run-as', 'network.tos.wallet', 'cat',
+                'cache/quantum-app-payment-public-receipt.json']))
+            if prior_payment['wallet'] != state['public']['address']:
+                raise ValueError('Pre-uninstall payment came from a different account')
+            (a.out / 'before-uninstall-payment-public.json').write_text(json.dumps(prior_payment, indent=2))
         receipt = run(['uninstall', 'network.tos.wallet']).decode()
         if 'Success' not in receipt:
             raise RuntimeError('Uninstall failed')
         (a.out / 'uninstall.txt').write_text(receipt)
         install()
         state['reinstalled'] = True
-        test('coldRecoveryRestoresAfterUninstallWithSameAddressAndKeys')
+        if a.encrypted_backup:
+            # Recreate only the external document source from the exact saved ciphertext.
+            run(['shell', 'pm', 'clear', 'network.tos.wallet.test'])
+            run(['push', str(a.out / 'actual-app-backup.tosqbk'), '/data/local/tmp/tos-cold-encrypted-backup'])
+            run(['shell', 'run-as', 'network.tos.wallet.test', 'mkdir', '-p', 'cache/encrypted-exports'])
+            run(['shell', 'run-as', 'network.tos.wallet.test', 'cp', '/data/local/tmp/tos-cold-encrypted-backup',
+                 'cache/encrypted-exports/' + state['document']])
+            run(['shell', 'rm', '/data/local/tmp/tos-cold-encrypted-backup'])
+            test('encryptedFileRestoresAfterUninstallWithSameIdentityAndRecoveryIsolation')
+        else:
+            test('coldRecoveryRestoresAfterUninstallWithSameAddressAndKeys')
         if not state['verified']:
             raise RuntimeError('Identity verification missing')
+        if a.recovery_control_signing:
+            status = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-recovery-control-public.json']))
+            expected_phase = 'COMPLETED' if a.complete_recovery_control else ('UNKNOWN' if a.submit_recovery_control else 'SIGNED')
+            if a.recovery_control_ui and not (status.get('product_ui') and status.get('background_quote_cleared')):
+                raise ValueError('Recovery product UI evidence missing')
+            if a.stage_successor and not status.get('successor', {}).get('pin_cancelled_without_storage'):
+                raise ValueError('Successor staging product evidence missing')
+            if a.sign_successor_probe and status.get('successor', {}).get('probe', {}).get('phase') != 'SIGNED':
+                raise ValueError('Successor probe signing evidence missing')
+            if a.sign_successor_probe and not status.get('successor', {}).get('probe', {}).get('preparation_after_authenticated_expiry'):
+                raise ValueError('Probe lifetime started before authenticated prior expiry')
+            if a.prepare_probe_funding and not status.get('successor', {}).get('probe', {}).get('funding_prepared'):
+                raise ValueError('Authenticated probe funding preparation evidence missing')
+            if a.sign_probe_funding_ui and not (status.get('successor', {}).get('probe', {}).get('funding_phase') == 'SIGNED'
+                    and status.get('successor', {}).get('probe', {}).get('funding_pin_cancelled')):
+                raise ValueError('Funding PIN/signing product evidence missing')
+            if a.estimate_probe_funding and not all(status.get('successor', {}).get('probe', {}).get(key)
+                    for key in ('funding_quote_verified', 'funding_quote_ui_verified', 'funding_quote_background_cleared')):
+                raise ValueError('Native funding estimate service evidence missing')
+            if status['phase'] != expected_phase or not status['cancelled_before_signing']:
+                raise ValueError('Recovery signing evidence missing')
+            (a.out / 'recovery-control-public.json').write_text(json.dumps(status, indent=2))
+            run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+            test('recoveryControlJournalSurvivesProcessRestartWithoutUnlockOrResubmit')
+            if a.submit_probe_funding:
+                test('confirmedProbeFundingUsesOneSavedMessageAndAuthenticatesProbe')
+                funded = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funding-submission-public.json']))
+                original = status['successor']['probe']
+                if not (funded.get('phase') == 'UNKNOWN' and funded.get('operation') == original['funding_operation']
+                        and funded.get('signature_digest') == original['funding_signature_digest']
+                        and funded.get('probe') == original['address'] and funded.get('probe_verified')
+                        and funded.get('confirmation_cancelled') and funded.get('duplicate_refused')
+                        and all(re.fullmatch(r'[0-9a-f]{64}', funded.get(key, ''))
+                                for key in ('message_root_hash', 'transaction_hash', 'state_hash'))):
+                    raise ValueError('Funding submission and authenticated probe evidence missing')
+                (a.out / 'funding-submission-public.json').write_text(json.dumps(funded, indent=2))
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('submittedProbeFundingSurvivesRestartWithoutAnotherDispatch')
+                test('fundingCompletionRejectsChangedRecordsAndExpiredProof')
+                rejected = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funding-completion-rejections-public.json']))
+                if not (rejected.get('operation') == funded['operation'] and rejected.get('phase') == 'UNKNOWN'
+                        and all(rejected.get(key) is True for key in ('funding_changed_refused', 'prior_changed_refused',
+                            'operation_changed_refused', 'probe_changed_refused', 'expired_proof_refused', 'isolation_retained'))):
+                    raise ValueError('Funding completion rejection evidence missing')
+                (a.out / 'funding-completion-rejections-public.json').write_text(json.dumps(rejected, indent=2))
+                test('confirmedFundingCompletionRetainsIsolationAndRejectsRepeatedWrite')
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('completedFundingSurvivesRestartWithoutUnlockOrDispatch')
+                test('fundedSuccessorMaterialChecksProductPinAndRetainsIsolation')
+                material = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funded-material-public.json']))
+                if not (material.get('operation') == funded['operation'] and material.get('pin_cancelled') is True
+                        and all(material.get(key) is True for key in ('pin_confirmed', 'isolation_retained', 'state_and_balance_unchanged'))
+                        and all(material.get(key) == status['successor'][key] for key in ('authority_hash', 'material_digest'))):
+                    raise ValueError('Funded protected-material product evidence missing')
+                (a.out / 'funded-material-public.json').write_text(json.dumps(material, indent=2))
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('fundedSuccessorMaterialSurvivesRestartWithoutReplacingKeys')
+                resumed = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-funded-material-restart-public.json']))
+                if not (resumed.get('restart') is True
+                        and all(resumed.get(key) == material[key] for key in ('operation', 'authority_hash', 'material_digest'))
+                        and all(resumed.get(key) is True for key in ('pin_confirmed', 'isolation_retained', 'state_and_balance_unchanged'))):
+                    raise ValueError('Funded protected-material restart evidence missing')
+                (a.out / 'funded-material-restart-public.json').write_text(json.dumps(resumed, indent=2))
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('fundedSuccessorBackupUsesProductSaveAndOriginalRoots')
+                backup = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-successor-backup-public.json']))
+                if not (all(backup.get(key) == material[key] for key in ('operation', 'authority_hash', 'material_digest'))
+                        and re.fullmatch(r'[0-9a-f]{64}', backup.get('cipher_sha256', ''))
+                        and all(backup.get(key) is True for key in ('pin_cancelled', 'picker_cancelled', 'saved_and_read_back',
+                            'original_roots_verified', 'isolation_retained', 'state_and_balance_unchanged', 'current_backup_flag_unchanged',
+                            'migration_preparation_verified'))):
+                    raise ValueError('Successor backup product save evidence missing')
+                (a.out / 'successor-backup-public.json').write_text(json.dumps(backup, indent=2))
+                run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                test('fundedSuccessorBackupConfirmationSurvivesRestart')
+                confirmed = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-successor-backup-restart-public.json']))
+                if not (all(confirmed.get(key) == backup[key] for key in ('operation', 'cipher_sha256'))
+                        and all(confirmed.get(key) is True for key in ('pin_confirmed', 'original_roots_verified', 'isolation_retained', 'restart'))):
+                    raise ValueError('Successor backup restart evidence missing')
+                (a.out / 'successor-backup-restart-public.json').write_text(json.dumps(confirmed, indent=2))
+                if a.sign_successor_migration:
+                    test('successorMigrationSigningUsesProductPinAndNeverDispatches')
+                    signed = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-migration-signing-public.json']))
+                    validate_migration_signing_evidence(signed)
+                    (a.out / 'migration-signing-public.json').write_text(json.dumps(signed, indent=2))
+                    previous_pid = run(['shell', 'pidof', 'network.tos.wallet']).decode().split()
+                    if not previous_pid or not all(value.isdigit() for value in previous_pid):
+                        raise ValueError('Migration signing process unavailable before restart')
+                    run(['shell', 'am', 'force-stop', 'network.tos.wallet'])
+                    stopped = subprocess.run(adb + ['shell', 'pidof', 'network.tos.wallet'], capture_output=True, timeout=10)
+                    if stopped.returncode not in (0, 1) or stopped.stdout.strip():
+                        raise ValueError('Migration signing process did not stop')
+                    test('successorMigrationSignatureSurvivesRestartWithoutResigning')
+                    current_pid = run(['shell', 'pidof', 'network.tos.wallet']).decode().split()
+                    if not current_pid or not all(value.isdigit() for value in current_pid) or set(previous_pid) & set(current_pid):
+                        raise ValueError('Migration signing process identity did not change')
+                    resumed = json.loads(run(['exec-out', 'run-as', 'network.tos.wallet', 'cat', 'cache/quantum-migration-signing-restart-public.json']))
+                    validate_migration_signing_evidence(signed, resumed)
+                    resumed['process_changed'] = True
+                    (a.out / 'migration-signing-restart-public.json').write_text(json.dumps(resumed, indent=2))
         journey = {}
         if a.journey_recipient:
             def recipient_state():
@@ -146,7 +545,7 @@ def main():
                 value = reply['result']
                 return {'balance': value['balance'], 'last_transaction_id': value.get('last_transaction_id')}
             before_recipient = recipient_state()
-            test('journeyPaysFromRestoredWallet', {'quantumRecipient': a.journey_recipient,
+            test('journeyPaysFromActiveRestoredWallet' if a.active_before_restore else 'journeyPaysFromRestoredWallet', {'quantumRecipient': a.journey_recipient,
                 'quantumExpectedAddress': state['public']['address'],
                 'quantumExpectedIdentity': state['public']['identity_cell_hash']})
             receipt = json.loads(run(['shell', 'run-as', 'network.tos.wallet', 'cat',
@@ -154,6 +553,8 @@ def main():
             if (receipt['wallet'] != state['public']['address'] or
                     receipt['birth_identity_hash'] != state['public']['identity_cell_hash']):
                 raise ValueError('Payment came from a different restored identity')
+            if a.active_before_restore and (receipt['operation'] == prior_payment['operation'] or receipt['message_sha256'] == prior_payment['message_sha256']):
+                raise ValueError('Restored payment reused the old intent or signature')
             (a.out / 'payment-public-receipt.json').write_text(json.dumps(receipt, indent=2))
             # Sender verification and recipient credit remain independent observations.
             import time
@@ -182,10 +583,32 @@ def main():
             if hashlib.sha256(path.read_bytes()).hexdigest() != artifacts[str(path.resolve())]:
                 raise ValueError('APK changed before final result')
         (a.out / 'result.json').write_text(json.dumps({'passed': True, 'same_apk': True,
-            'actual_uninstall': True, 'same_address_identity_and_keys': True, **journey}, indent=2))
+            'actual_uninstall': True, 'same_address_identity_and_keys': True,
+            'encrypted_file': a.encrypted_backup, 'recovery_isolation_retained': a.encrypted_backup,
+            'recovery_control_signed_and_restart_verified': a.recovery_control_signing,
+            'recovery_control_quote_verified': a.recovery_control_signing,
+            'recovery_control_sent_and_chain_verified': a.submit_recovery_control,
+            'recovery_control_completed_and_restart_verified': a.complete_recovery_control,
+            'recovery_control_product_ui_verified': a.recovery_control_ui,
+            'successor_protected_material_and_restart_verified': a.stage_successor,
+            'successor_probe_signed_and_restart_verified': a.sign_successor_probe,
+            'probe_lifetime_started_after_prior_expiry': a.sign_successor_probe,
+            'probe_funding_prepared_after_authenticated_expiry': a.prepare_probe_funding,
+            'probe_funding_signed_product_and_restart_verified': a.sign_probe_funding_ui,
+            'probe_funding_native_estimate_service_verified': a.estimate_probe_funding,
+            'probe_funding_estimate_product_and_background_verified': a.estimate_probe_funding,
+            'probe_funding_confirmed_and_chain_verified': a.submit_probe_funding,
+            'funded_probe_verified_and_restart_isolated': a.submit_probe_funding,
+            'probe_funding_completed_product_and_restart_verified': a.submit_probe_funding,
+            'probe_funding_completion_rejections_verified': a.submit_probe_funding,
+            'funded_successor_material_product_and_restart_verified': a.submit_probe_funding,
+            'successor_backup_product_and_restart_verified': a.submit_probe_funding,
+            'successor_migration_preparation_verified': a.submit_probe_funding,
+            'successor_migration_signing_and_restart_verified': a.sign_successor_migration, **journey}, indent=2))
         print('PASS: cold recovery' + (' and same-account payment/restart journey' if journey else ''))
     finally:
         state['words'] = None
+        state['password'] = None
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)

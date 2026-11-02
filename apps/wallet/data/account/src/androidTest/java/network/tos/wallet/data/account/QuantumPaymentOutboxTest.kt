@@ -27,9 +27,57 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import network.tos.security.pq.QuantumBackupInspection
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
+import java.nio.ByteBuffer
+import java.security.MessageDigest
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+import org.bouncycastle.crypto.generators.PKCS5S2ParametersGenerator
+import org.bouncycastle.crypto.digests.SHA256Digest
+import org.bouncycastle.crypto.params.KeyParameter
+import network.tos.security.pq.QuantumRecoveryMaterialVault
+import javax.crypto.KeyGenerator
 
 @RunWith(AndroidJUnit4::class)
 class QuantumPaymentOutboxTest {
+    /** Independent wire encoder using public fixture seed only; never use this material for funds. */
+    private fun encryptedFixture(identity: TosQuantumSelfPayIdentity, authority: QuantumSelfPayAuthority,
+                                 profile: QuantumNetworkProfile, nonceOffset: Int = 0): ByteArray {
+        fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val output = ByteArrayOutputStream()
+        DataOutputStream(output).use { data ->
+            data.writeByte(1); data.writeInt(profile.globalId)
+            data.write(hex(profile.rootHash)); data.write(hex(profile.fileHash)); data.write(authority.namespace)
+            val birth = identity.toBoc(); val snapshot = org.ton.boc.BagOfCells(authority.cell).toByteArray()
+            data.writeInt(birth.size); data.write(birth); data.writeInt(snapshot.size); data.write(snapshot)
+            data.writeByte(1); data.writeByte(1); data.writeInt(0); data.writeInt(0)
+            data.write(ByteArray(32) { 0x11 }); data.write(MessageDigest.getInstance("SHA-256").digest(authority.primaryKey))
+            data.writeByte(1)
+        }
+        val plaintext = output.toByteArray()
+        val salt = ByteArray(16) { it.toByte() }; val nonce = ByteArray(12) { (it + 16 + nonceOffset).toByte() }
+        val header = "TOSQBK01".toByteArray(Charsets.US_ASCII) + byteArrayOf(1) + salt + nonce +
+            ByteBuffer.allocate(4).putInt(plaintext.size).array()
+        val password = "public journal password".toByteArray()
+        val generator = PKCS5S2ParametersGenerator(SHA256Digest())
+        generator.init(password, salt, 600000)
+        val key = (generator.generateDerivedParameters(256) as KeyParameter).key
+        try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
+            cipher.updateAAD(header)
+            return header + cipher.doFinal(plaintext)
+        } finally { key.fill(0); password.fill(0); plaintext.fill(0) }
+    }
+    private fun inspection(identity: TosQuantumSelfPayIdentity, authority: QuantumSelfPayAuthority,
+                           profile: QuantumNetworkProfile, nonceOffset: Int = 0): QuantumBackupInspection {
+        fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        return QuantumBackupInspection.inspect(encryptedFixture(identity, authority, profile, nonceOffset),
+            "public journal password".toCharArray(), profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+    }
     @Test fun cancellationInsideCustodySigningKeepsDurableSlotAndNeverBroadcasts() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -291,8 +339,274 @@ class QuantumPaymentOutboxTest {
             assertFalse("Atomic promotion left the source pending name", afterRenameFailure.exists())
             assertArrayEquals("Post-rename interruption lost the complete authorization", canonicalBytes, journal.readBytes())
             assertEquals(second.id, outbox.pending(identity)!!.id)
+
+            // Reset only this deliberately stranded public test authorization, then exercise
+            // recovery isolation on a genuinely RESERVED operation and on an empty outbox.
+            assertTrue(journal.delete())
+            val isolatedEntry = outbox.reserve(payment, now)
+            val authority = (observation.snapshot.status as QuantumSelfPayAccount.Status.Active).state.authority
+            val encryptedFile = encryptedFixture(identity, authority, profile)
+            fun hex(text: String) = text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val backup = QuantumBackupInspection.inspect(encryptedFile, "public journal password".toCharArray(),
+                profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+            val importStage = File(journal.parentFile, journal.nameWithoutExtension + ".import.next")
+            val failImport = QuantumPaymentOutbox(context) { point ->
+                if (point == "import_before_rename") throw IOException("Injected import rename interruption")
+            }
+            assertThrows(IOException::class.java) { failImport.prepareBackupImport(backup, profile) }
+            assertTrue(outbox.requiresRecovery(identity))
+            val expectedImportId = UUID.fromString(JSONObject(importStage.readText()).getString("id"))
+            val checkpoint = outbox.prepareBackupImport(backup, profile)
+            assertEquals(expectedImportId, checkpoint.id)
+            assertEquals(QuantumPaymentOutbox.ImportPhase.BOUND_SECRETS, checkpoint.phase)
+            assertFalse(importStage.exists())
+            var signerCalled = false
+            assertThrows(IllegalStateException::class.java) {
+                outbox.sign(isolatedEntry) { signerCalled = true; ByteArray(0) }
+            }
+            assertFalse(signerCalled)
+            outbox.cancelUnsigned(isolatedEntry)
+            assertNull(outbox.pending(identity))
+            val reopened = QuantumPaymentOutbox(context)
+            assertTrue(reopened.requiresRecovery(TosQuantumSelfPayIdentity.fromBoc(identity.toBoc())))
+            assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
+            assertEquals(checkpoint.id, reopened.prepareBackupImport(backup, profile).id)
+            val roles = reopened.observeBackupImport(backup, observation, now)
+            assertEquals(QuantumBackupRoleObservation.Match.MATCHES_CURRENT, roles.single().match)
+            assertEquals(QuantumPaymentOutbox.ImportPhase.OBSERVED_ROLES, reopened.prepareBackupImport(backup, profile).phase)
+            assertThrows(IllegalStateException::class.java) {
+                reopened.prepareBackupImport(inspection(identity, authority, profile, 1), profile)
+            }
+            val importFile = File(journal.parentFile, journal.nameWithoutExtension + ".import")
+            val unchanged = importFile.readBytes()
+            importStage.writeText(JSONObject(importFile.readText()).put("phase", 5).toString())
+            Os.chmod(importStage.absolutePath, 0x180)
+            assertThrows(IllegalStateException::class.java) { reopened.prepareBackupImport(backup, profile) }
+            assertArrayEquals(unchanged, importFile.readBytes())
+            assertTrue(outbox.requiresRecovery(identity))
+            assertTrue(importStage.delete())
+            assertThrows(Exception::class.java) { reopened.observeBackupImport(backup, observation, now + 301) }
+            var clock = now
+            var writes = 0
+            val materialPrefs = context.getSharedPreferences("import-material-$id", 0)
+            val wrapping = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+            val material = QuantumRecoveryMaterialVault(materialPrefs)
+            try {
+                val failedPassword = "public journal password".toCharArray()
+                assertThrows(IOException::class.java) {
+                    reopened.storeBackupImport(encryptedFile, failedPassword, profile, authority.namespace, observation, { clock }) { operation, file, pass, inspected ->
+                        writes += 1
+                        assertEquals(checkpoint.id, operation)
+                        assertTrue(reopened.requiresRecovery(identity))
+                        assertEquals(QuantumPaymentOutbox.ImportPhase.OBSERVED_ROLES, reopened.prepareBackupImport(backup, profile).phase)
+                        throw IOException("Injected protected material failure")
+                    }
+                }
+                assertArrayEquals(CharArray(failedPassword.size), failedPassword)
+                assertEquals(QuantumPaymentOutbox.ImportPhase.OBSERVED_ROLES, reopened.prepareBackupImport(backup, profile).phase)
+                assertThrows(Exception::class.java) {
+                    reopened.storeBackupImport(encryptedFile, "public journal password".toCharArray(), profile,
+                        authority.namespace, observation, { clock }) { operation, file, pass, inspected ->
+                        writes += 1; material.storeValidated(file, pass, inspected, operation, wrapping); clock += 301
+                    }
+                }
+                assertEquals(now + 301, clock)
+                assertTrue(materialPrefs.contains("quantum.recovery.material.v1.${checkpoint.id}"))
+                assertEquals(QuantumPaymentOutbox.ImportPhase.OBSERVED_ROLES, reopened.prepareBackupImport(backup, profile).phase)
+                clock = now
+                val successPassword = "public journal password".toCharArray()
+                val stored = reopened.storeBackupImport(encryptedFile, successPassword, profile,
+                    authority.namespace, observation, { clock }) { operation, file, pass, inspected ->
+                    writes += 1; material.storeValidated(file, pass, inspected, operation, wrapping)
+                }
+                assertEquals(checkpoint.id, stored.id)
+                assertEquals(QuantumPaymentOutbox.ImportPhase.PROTECTED_STORED, stored.phase)
+                assertTrue(reopened.requiresRecovery(identity))
+                assertArrayEquals(CharArray(successPassword.size), successPassword)
+                assertEquals(3, writes)
+                val retained = material.inspectStored(stored.id, backup.birth, backup.encryptedDigest, wrapping,
+                    profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+                var exportCalls = 0
+                val selection = mutableListOf(network.tos.security.pq.QuantumRole.PRIMARY)
+                val exportPassword = "public second export password".toCharArray()
+                val exported = reopened.exportBackupImport(retained, observation, selection, exportPassword, { clock }) { operation, current, roles, pass ->
+                    exportCalls += 1
+                    selection.clear(); selection.add(network.tos.security.pq.QuantumRole.RESCUE)
+                    assertEquals(listOf(network.tos.security.pq.QuantumRole.PRIMARY), roles)
+                    material.exportEncrypted(operation, retained, wrapping, current, roles, pass)
+                }
+                assertArrayEquals(CharArray(exportPassword.size), exportPassword)
+                val exportedInspection = QuantumBackupInspection.inspect(exported, "public second export password".toCharArray(),
+                    profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+                assertEquals(identity.address, exportedInspection.birth.address)
+                assertEquals(network.tos.security.pq.QuantumRole.PRIMARY, exportedInspection.roles.single().role)
+                var discarded = byteArrayOf()
+                val expiredPassword = "public second export password".toCharArray()
+                assertThrows(Exception::class.java) {
+                    reopened.exportBackupImport(retained, observation, listOf(network.tos.security.pq.QuantumRole.PRIMARY),
+                        expiredPassword, { clock }) { operation, current, roles, pass ->
+                        exportCalls += 1
+                        material.exportEncrypted(operation, retained, wrapping, current, roles, pass).also {
+                            discarded = it; clock += 301
+                        }
+                    }
+                }
+                assertEquals(now + 301, clock)
+                assertTrue(discarded.isNotEmpty() && discarded.all { it == 0.toByte() })
+                assertArrayEquals(CharArray(expiredPassword.size), expiredPassword)
+                clock = now
+                assertThrows(IllegalArgumentException::class.java) {
+                    reopened.exportBackupImport(retained, observation, listOf(network.tos.security.pq.QuantumRole.RESCUE),
+                        "public second export password".toCharArray(), { clock }) { _, _, _, _ ->
+                        exportCalls += 1; error("Unavailable role reached custody")
+                    }
+                }
+                assertEquals(2, exportCalls)
+                val publicPath = File(context.noBackupFilesDir, "quantum-recovery-records/${stored.id}.json")
+                try {
+                    assertThrows(IOException::class.java) {
+                        reopened.retainBackupImportRecord(backup, profile) { throw IOException("Protected read failed") }
+                    }
+                    assertFalse(publicPath.exists())
+                    assertThrows(IOException::class.java) {
+                        failImport.retainBackupImportRecord(backup, profile) { retained }
+                    }
+                    assertTrue(publicPath.exists())
+                    assertEquals(QuantumPaymentOutbox.ImportPhase.PROTECTED_STORED.ordinal,
+                        JSONObject(importFile.readText()).getInt("phase"))
+                    assertTrue(importStage.exists())
+                    assertTrue(reopened.requiresRecovery(identity))
+                    val durable = reopened.retainBackupImportRecord(backup, profile) { operation ->
+                        material.inspectStored(operation, backup.birth, backup.encryptedDigest, wrapping,
+                            profile.globalId, hex(profile.rootHash), hex(profile.fileHash), authority.namespace)
+                    }
+                    assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLIC_RECORD_DURABLE, durable.phase)
+                    assertFalse(importStage.exists())
+                    val publicRecord = QuantumRecoveryRecord.load(context, durable.id)
+                    assertEquals(backup.birth, publicRecord.identity)
+                    assertArrayEquals(backup.encryptedDigest, publicRecord.encryptedDigest)
+                    assertEquals("recovery_only", JSONObject(publicPath.readText()).getString("mode"))
+                    val originalPublicBytes = publicPath.readBytes()
+                    assertEquals(durable.id, reopened.retainBackupImportRecord(backup, profile) { retained }.id)
+                    assertArrayEquals(originalPublicBytes, publicPath.readBytes())
+                    assertThrows(IllegalStateException::class.java) {
+                        QuantumRecoveryRecord(durable.id, profile, backup.birth, ByteArray(32)).save(context)
+                    }
+                    assertArrayEquals(originalPublicBytes, publicPath.readBytes())
+                    assertThrows(IllegalStateException::class.java) {
+                        val otherProfile = QuantumNetworkProfile(profile.globalId, "06".repeat(32), profile.fileHash)
+                        QuantumRecoveryRecord(durable.id, otherProfile, backup.birth, backup.encryptedDigest).save(context)
+                    }
+                    assertArrayEquals(originalPublicBytes, publicPath.readBytes())
+                    publicPath.writeText("{")
+                    assertThrows(Exception::class.java) {
+                        reopened.retainBackupImportRecord(backup, profile) { retained }
+                    }
+                    assertEquals("{", publicPath.readText())
+                    assertTrue(reopened.requiresRecovery(identity))
+                    publicPath.writeBytes(originalPublicBytes)
+                    assertEquals(durable.id, reopened.retainBackupImportRecord(backup, profile) { retained }.id)
+                    val publicJournal = importFile.readBytes()
+                    val publicMarker = File(journal.parentFile, journal.nameWithoutExtension + ".recovery")
+                    assertTrue(importFile.delete())
+                    assertTrue(publicMarker.delete())
+                    assertTrue(reopened.requiresRecovery(identity))
+                    assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
+                    importFile.writeBytes(publicJournal)
+                    Os.chmod(importFile.absolutePath, 0x180)
+                    assertEquals(durable.id, reopened.prepareBackupImport(backup, profile).id)
+                    runBlocking {
+                        val transport = QuantumProofTransport { query, maximum ->
+                            val name = when (query.size) {
+                                4 -> "policy/material/masterchain-info.tl"
+                                168 -> "policy/material/chain-0000.tl"
+                                120 -> "active/material/account.tl"
+                                88, 96, 104 -> "policy/material/config.tl"
+                                else -> error("Unexpected public fixture query size ${query.size}")
+                            }
+                            bytes(name).also { check(it.size <= maximum) }
+                        }
+                        val reader = QuantumAccountReader(context, transport) { clock }
+                        val fresh = reader.observeRecoveryImport(durable, backup, profile)
+                        assertEquals(durable.id, fresh.id)
+                        assertThrows(Exception::class.java) { QuantumCreationRecord.load(context, durable.id) }
+                        var callbacks = 0
+                        try {
+                            reopened.publishBackupImport(backup, observation, { clock }) { callbacks += 1 }
+                            fail("Another UUID's observation reached publication")
+                        } catch (_: IllegalStateException) { }
+                        assertEquals(0, callbacks)
+                        val registryDir = File(context.cacheDir, "public-recovery-registry-${durable.id}").apply { check(mkdirs()) }
+                        val registryContext = object : android.content.ContextWrapper(context) {
+                            override fun getDatabasePath(name: String) = File(registryDir, name)
+                            override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?) =
+                                android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name), factory)
+                            override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?, handler: android.database.DatabaseErrorHandler?) =
+                                android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).path, factory, handler)
+                        }
+                        val database = network.tos.wallet.data.account.source.DatabaseSource(registryContext)
+                        val mirrorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                        val mirror = network.tos.wallet.data.rn.RNLegacy(registryContext, mirrorScope)
+                        val label = Wallet.Label("Public recovered fixture", "custom_wallet", 0xff293342.toInt())
+                        suspend fun publish(record: QuantumRecoveryRecord): network.tos.wallet.data.account.entities.WalletEntity {
+                            val wallet = database.registerQuantumAccount(network.tos.wallet.data.account.entities.WalletEntity(
+                                record.id.toString(), network.tos.wallet.data.account.entities.WalletIdentity.Quantum(record.identity),
+                                Wallet.Type.Default, label, initialized = false))
+                            mirror.addBoundQuantumWallet(wallet)
+                            return wallet
+                        }
+                        try {
+                            try {
+                                reopened.publishBackupImport(backup, fresh, { clock }) { record ->
+                                    database.registerQuantumAccount(network.tos.wallet.data.account.entities.WalletEntity(
+                                        record.id.toString(), network.tos.wallet.data.account.entities.WalletIdentity.Quantum(record.identity),
+                                        Wallet.Type.Default, label, initialized = false))
+                                    throw IOException("Mirror unavailable after database commit")
+                                }
+                                fail("Mirror failure advanced journal")
+                            } catch (_: IOException) { }
+                            assertEquals(1, database.getAccounts().size)
+                            assertTrue(mirror.getWallets().wallets.isEmpty())
+                            assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLIC_RECORD_DURABLE, reopened.prepareBackupImport(backup, profile).phase)
+                            try {
+                                reopened.publishBackupImport(backup, fresh, { clock }) { record ->
+                                    publish(record).also { clock += 301 }
+                                }
+                                fail("Expired post-publication proof advanced journal")
+                            } catch (_: Exception) { }
+                            assertEquals(1, mirror.getWallets().wallets.size)
+                            assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLIC_RECORD_DURABLE, reopened.prepareBackupImport(backup, profile).phase)
+                            clock = now
+                            repeat(2) {
+                                val wallet = reopened.publishBackupImport(backup, fresh, { clock }) { publish(it) }
+                                assertEquals(durable.id.toString(), wallet.id)
+                                assertEquals(QuantumPaymentOutbox.ImportPhase.PUBLISHED_RECOVERY_ONLY, reopened.prepareBackupImport(backup, profile).phase)
+                            }
+                            assertEquals(1, database.getAccounts().size)
+                            assertEquals(1, mirror.getWallets().wallets.size)
+                            assertEquals(observation.snapshot.balance, reader.read(durable.id, identity).balance)
+                            assertThrows(IllegalArgumentException::class.java) { reader.read(UUID.randomUUID(), identity) }
+                            assertTrue(reopened.requiresRecovery(identity))
+                            assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
+                        } finally {
+                            database.close(); mirrorScope.cancel(); registryDir.deleteRecursively()
+                            File(context.noBackupFilesDir, "quantum-proof-checkpoints/${durable.id}").deleteRecursively()
+                        }
+                    }
+                } finally { publicPath.delete() }
+                assertTrue(reopened.requiresRecovery(identity))
+                val marker = File(journal.parentFile, journal.nameWithoutExtension + ".recovery")
+                assertTrue(marker.delete())
+                assertTrue(reopened.requiresRecovery(identity))
+                assertThrows(IllegalStateException::class.java) { reopened.reserve(payment, now) }
+                assertEquals(stored.id, reopened.prepareBackupImport(backup, profile).id)
+                assertTrue(marker.exists())
+            } finally { check(materialPrefs.edit().clear().commit()) }
         } finally {
             journal.delete()
+            File(journal.parentFile, journal.nameWithoutExtension + ".recovery").delete()
+            File(journal.parentFile, journal.nameWithoutExtension + ".import").delete()
+            File(journal.parentFile, journal.nameWithoutExtension + ".import.next").delete()
             File(context.noBackupFilesDir, "quantum-proof-checkpoints/$id").deleteRecursively()
             File(context.noBackupFilesDir, "quantum-creation/$id.json").delete()
         }

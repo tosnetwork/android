@@ -1,10 +1,14 @@
 package network.tos.wallet.data.account
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.SharedPreferences
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import network.tos.security.pq.*
 import network.tos.wallet.data.account.pq.*
 import org.json.JSONObject
@@ -42,6 +46,73 @@ class QuantumWalletCreationTest {
     private fun clean(id: UUID) {
         File(context.noBackupFilesDir, "quantum-proof-checkpoints/$id").deleteRecursively()
         File(context.noBackupFilesDir, "quantum-creation/$id.json").delete()
+    }
+
+    @Test fun restoreIsolationFailurePreventsAllSecretStorageAndPublication() = runBlocking {
+        var id: UUID? = null
+        var isolated = false
+        var writes = 0
+        val creation = QuantumWalletCreation(
+            network = { uuid, selected -> id = uuid; prove(uuid, selected) },
+            saveRecord = { writes++ }, saveMnemonic = { _, _ -> writes++ },
+            storeRole = { _, _, _, _ -> writes++; error("Unexpected secret write") },
+            now = { fixtureNow },
+            beforeStore = { isolated = true; error("Injected durable isolation failure") },
+        )
+        try {
+            val failure = runCatching { creation.create(words, profile()) { writes++ } }.exceptionOrNull()
+            assertEquals("Injected durable isolation failure", failure?.message)
+            assertTrue(isolated)
+            assertEquals(0, writes)
+        } finally { id?.let { clean(it) } }
+    }
+
+    @Test fun cancellationDuringRestorePolicyPreventsSecretStorageAndPublication() = runBlocking {
+        var id: UUID? = null
+        var writes = 0
+        val operation = Job()
+        val creation = QuantumWalletCreation(
+            network = { uuid, selected -> id = uuid; prove(uuid, selected) },
+            saveRecord = { writes++ }, saveMnemonic = { _, _ -> writes++ },
+            storeRole = { _, _, _, _ -> writes++; error("Unexpected secret write") },
+            now = { fixtureNow },
+            beforeStore = { operation.cancel() },
+        )
+        try {
+            val failure = runCatching {
+                withContext(operation) { creation.create(words, profile()) { writes++ } }
+            }.exceptionOrNull()
+            assertTrue(failure is CancellationException)
+            assertEquals(0, writes)
+        } finally { operation.cancel(); id?.let { clean(it) } }
+    }
+
+    @Test fun durableRestoreIsolationPrecedesStorageAndRemainsOnResume() = runBlocking {
+        var id: UUID? = null
+        val events = mutableListOf<String>()
+        val isolatedRoot = File(context.cacheDir, "restore-isolation-${UUID.randomUUID()}").apply { check(mkdir()) }
+        val isolatedContext = object : ContextWrapper(context) {
+            override fun getNoBackupFilesDir(): File = isolatedRoot
+        }
+        val outbox = QuantumPaymentOutbox(isolatedContext)
+        val creation = QuantumWalletCreation(
+            network = { uuid, selected -> id = uuid; prove(uuid, selected) },
+            beforeStore = { record -> outbox.isolateRecoveredIdentity(record.identity); events.add("isolate") },
+            saveRecord = { record ->
+                assertTrue(QuantumPaymentOutbox(isolatedContext).requiresRecovery(record.identity)); events.add("record")
+            },
+            saveMnemonic = { _, _ -> events.add("mnemonic") },
+            storeRole = { _, role, _, seed -> events.add(role.name); QuantumCrypto.publicKey(role, seed) },
+            now = { fixtureNow },
+        )
+        try {
+            val original = creation.create(words, profile()) { events.add("publish"); it }
+            assertEquals(listOf("isolate", "record", "mnemonic", "PRIMARY", "RESCUE", "publish"), events)
+            events.clear()
+            creation.resume(original, words) { events.add("publish") }
+            assertEquals(listOf("isolate", "mnemonic", "PRIMARY", "RESCUE", "publish"), events)
+            assertTrue(QuantumPaymentOutbox(isolatedContext).requiresRecovery(original.identity))
+        } finally { id?.let { clean(it) }; isolatedRoot.deleteRecursively() }
     }
 
     @Test fun nativeProofCreationPersistsBothRolesAndReloadablePublicIdentity() = runBlocking {

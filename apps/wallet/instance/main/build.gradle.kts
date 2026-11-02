@@ -14,6 +14,7 @@ var isAPK = gradle.startParameter.projectProperties["isApk"]?.toBoolean() ?: fal
 android {
     namespace = Build.namespacePrefix("wallet")
     compileSdk = Build.compileSdkVersion
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("lib/security/src/androidTest/assets/quantum-backup-exchange-v1"))
 
     defaultConfig {
         applicationId = "network.tos.wallet"
@@ -122,6 +123,7 @@ dependencies {
     androidTestImplementation(libs.zxing)
     androidTestImplementation(project(ProjectModules.UIKit.core))
     androidTestImplementation(project(ProjectModules.Wallet.Data.account))
+    androidTestImplementation(project(ProjectModules.Wallet.Data.backup))
     androidTestImplementation(project(ProjectModules.Wallet.Data.core))
     androidTestImplementation(project(ProjectModules.Wallet.Data.tokens))
     androidTestImplementation(project(ProjectModules.Wallet.Data.rn))
