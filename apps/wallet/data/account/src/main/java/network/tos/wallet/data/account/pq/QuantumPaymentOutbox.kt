@@ -611,6 +611,11 @@ class QuantumPaymentOutbox internal constructor(context: Context, private val fa
         internal fun encode(bytes: ByteArray) = Base64.encodeToString(bytes, Base64.NO_WRAP)
         internal fun decode(text: String): ByteArray { require(text.length <= 2_796_204); return Base64.decode(text, Base64.NO_WRAP) }
         internal fun encodeIntent(intent: QuantumPaymentIntent) = JSONObject(intent.encode())
-        internal fun decodeIntent(value: JSONObject) = QuantumPaymentIntent.decode(value.toString())
+        internal fun decodeIntent(value: JSONObject): QuantumPaymentIntent = try {
+            QuantumPaymentIntent.decode(value.toString())
+        } catch (error: IllegalArgumentException) {
+            // Invalid caller input and a corrupt durable record are different boundaries.
+            throw IllegalStateException("Invalid persisted payment intent", error)
+        }
     }
 }

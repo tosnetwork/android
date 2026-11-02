@@ -15,6 +15,7 @@ android {
 
 dependencies {
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20231013")
     androidTestImplementation(libs.bcprovjdk)
     androidTestImplementation(libs.androidX.test)
     androidTestImplementation(libs.androidX.test.core)
