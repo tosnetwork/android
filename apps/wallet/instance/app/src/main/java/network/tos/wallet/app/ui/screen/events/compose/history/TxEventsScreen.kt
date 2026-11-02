@@ -1,6 +1,7 @@
 package network.tos.wallet.app.ui.screen.events.compose.history
 
 import android.os.Bundle
+import network.tos.wallet.app.ui.screen.events.quantum.QuantumHistoryScreen
 import android.view.View
 import androidx.compose.runtime.Composable
 import network.tos.wallet.app.koin.walletViewModel
@@ -21,6 +22,6 @@ class TxEventsScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet) {
 
     companion object {
 
-        fun newInstance(wallet: WalletEntity) = TxEventsScreen(wallet)
+        fun newInstance(wallet: WalletEntity): ComposeWalletScreen = if (wallet.isQuantum) QuantumHistoryScreen.newInstance(wallet) else TxEventsScreen(wallet)
     }
 }

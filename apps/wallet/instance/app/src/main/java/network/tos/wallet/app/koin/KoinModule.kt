@@ -34,7 +34,6 @@ import network.tos.wallet.app.ui.screen.wallet.picker.PickerViewModel
 import network.tos.wallet.app.ui.screen.settings.passcode.ChangePasscodeViewModel
 import network.tos.wallet.app.ui.screen.settings.security.SecurityViewModel
 import network.tos.wallet.app.ui.screen.settings.theme.ThemeViewModel
-import network.tos.wallet.app.ui.screen.stories.w5.W5StoriesViewModel
 import network.tos.wallet.app.ui.screen.tonconnect.TonConnectViewModel
 import network.tos.wallet.app.usecase.emulation.EmulationUseCase
 import network.tos.wallet.app.usecase.sign.SignUseCase
@@ -91,7 +90,6 @@ val koinModel = module {
     viewModelOf(::CurrencyPickerViewModel)
 
     viewModelOf(::LedgerConnectionViewModel)
-    viewModelOf(::W5StoriesViewModel)
     viewModelOf(::AddWalletViewModel)
     viewModelOf(::BatteryViewModel)
     viewModelOf(BaseWalletVM::EmptyViewViewModel)

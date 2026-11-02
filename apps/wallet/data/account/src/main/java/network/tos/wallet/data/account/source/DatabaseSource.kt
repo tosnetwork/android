@@ -5,19 +5,18 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import android.util.Log
 import androidx.core.database.getStringOrNull
 import network.tos.blockchain.ton.contract.walletVersion
+import network.tos.blockchain.ton.contract.WalletVersion
 import network.tos.extensions.closeSafe
 import network.tos.extensions.isNullOrEmpty
 import network.tos.extensions.toByteArray
 import network.tos.extensions.toParcel
-import network.tos.sqlite.withTransaction
 import network.tos.wallet.data.account.Wallet
 import network.tos.wallet.data.account.entities.WalletEntity
+import network.tos.wallet.data.account.entities.WalletIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.ton.api.pub.PublicKeyEd25519
 
 internal class DatabaseSource(
     context: Context,
@@ -25,7 +24,7 @@ internal class DatabaseSource(
 
     private companion object {
         private const val DATABASE_NAME = "account"
-        private const val DATABASE_VERSION = 5
+        private const val DATABASE_VERSION = 6
 
         private const val WALLET_TABLE_NAME = "wallet"
         private const val WALLET_TABLE_ID_COLUMN = "id"
@@ -41,6 +40,8 @@ internal class DatabaseSource(
         private const val WALLET_TABLE_INITIALIZED_COLUMN = "initialized"
         private const val WALLET_TABLE_NETWORK_COLUMN = "network_global_id"
 
+        private const val WALLET_TABLE_QUANTUM_IDENTITY_COLUMN = "quantum_identity"
+
         private val walletFields = arrayOf(
             WALLET_TABLE_ID_COLUMN,
             WALLET_TABLE_ID_PUBLIC_KEY_COLUMN,
@@ -52,13 +53,15 @@ internal class DatabaseSource(
             WALLET_TABLE_KEYSTONE_XFP_COLUMN,
             WALLET_TABLE_KEYSTONE_PATH_COLUMN,
             WALLET_TABLE_INITIALIZED_COLUMN,
-            WALLET_TABLE_NETWORK_COLUMN
+            WALLET_TABLE_NETWORK_COLUMN,
+            WALLET_TABLE_QUANTUM_IDENTITY_COLUMN
         ).joinToString(",")
 
         private fun WalletEntity.toValues(): ContentValues {
             val values = ContentValues()
             values.put(WALLET_TABLE_ID_COLUMN, id)
-            values.put(WALLET_TABLE_ID_PUBLIC_KEY_COLUMN, publicKey.key.toByteArray())
+            values.put(WALLET_TABLE_ID_PUBLIC_KEY_COLUMN, classicalPublicKey?.key?.toByteArray())
+            values.put(WALLET_TABLE_QUANTUM_IDENTITY_COLUMN, quantumIdentity?.toBoc())
             values.put(WALLET_TABLE_TYPE_COLUMN, type.id)
             values.put(WALLET_TABLE_VERSION_COLUMN, version.id)
             values.put(WALLET_TABLE_LABEL_COLUMN, label.toByteArray())
@@ -88,7 +91,8 @@ internal class DatabaseSource(
                 "$WALLET_TABLE_KEYSTONE_XFP_COLUMN TEXT," +
                 "$WALLET_TABLE_KEYSTONE_PATH_COLUMN TEXT," +
                 "$WALLET_TABLE_INITIALIZED_COLUMN INTEGER DEFAULT 0," +
-                "$WALLET_TABLE_NETWORK_COLUMN INTEGER" +
+                "$WALLET_TABLE_NETWORK_COLUMN INTEGER," +
+                "$WALLET_TABLE_QUANTUM_IDENTITY_COLUMN BLOB" +
                 ");")
 
         val walletIndexPrefix = "idx_$WALLET_TABLE_NAME"
@@ -113,6 +117,9 @@ internal class DatabaseSource(
         }
         if (oldVersion < 5 && newVersion >= 5) {
             db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_NETWORK_COLUMN INTEGER;")
+        }
+        if (oldVersion < 6 && newVersion >= 6) {
+            db.execSQL("ALTER TABLE $WALLET_TABLE_NAME ADD COLUMN $WALLET_TABLE_QUANTUM_IDENTITY_COLUMN BLOB;")
         }
     }
 
@@ -146,11 +153,12 @@ internal class DatabaseSource(
     }
 
     suspend fun insertAccounts(wallets: List<WalletEntity>) = withContext(Dispatchers.IO) {
-        writableDatabase.withTransaction {
-            for (wallet in wallets) {
-                writableDatabase.insertOrThrow(WALLET_TABLE_NAME, null, wallet.toValues())
-            }
-        }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (wallet in wallets) db.insertOrThrow(WALLET_TABLE_NAME, null, wallet.toValues())
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 
     suspend fun getAccounts(): List<WalletEntity> = withContext(Dispatchers.IO) {
@@ -191,7 +199,13 @@ internal class DatabaseSource(
         id
     }
 
-    private fun readAccounts(cursor: Cursor): List<WalletEntity> {
+    private fun readAccounts(cursor: Cursor): List<WalletEntity> = try {
+        readAccountRows(cursor)
+    } finally {
+        cursor.closeSafe()
+    }
+
+    private fun readAccountRows(cursor: Cursor): List<WalletEntity> {
         val idIndex = cursor.getColumnIndex(WALLET_TABLE_ID_COLUMN)
         val publicKeyIndex = cursor.getColumnIndex(WALLET_TABLE_ID_PUBLIC_KEY_COLUMN)
         val typeIndex = cursor.getColumnIndex(WALLET_TABLE_TYPE_COLUMN)
@@ -203,18 +217,28 @@ internal class DatabaseSource(
         val keystonePathIndex = cursor.getColumnIndex(WALLET_TABLE_KEYSTONE_PATH_COLUMN)
         val initializedIndex = cursor.getColumnIndex(WALLET_TABLE_INITIALIZED_COLUMN)
         val networkIndex = cursor.getColumnIndex(WALLET_TABLE_NETWORK_COLUMN)
+        val quantumIndex = cursor.getColumnIndexOrThrow(WALLET_TABLE_QUANTUM_IDENTITY_COLUMN)
         val accounts = mutableListOf<WalletEntity>()
         while (cursor.moveToNext()) {
             val label = cursor.getBlob(labelIndex).toParcel<Wallet.Label>() ?: continue
 
+            val version = walletVersion(cursor.getInt(versionIndex))
+            val typeId = cursor.getInt(typeIndex)
+            if (version == WalletVersion.QUANTUM_SELF_PAY) {
+                require(typeId == Wallet.Type.Default.id || typeId == Wallet.Type.Testnet.id)
+                require(listOf(ledgerDeviceIdIndex, ledgerAccountIndexIndex, keystoneXfpIndex, keystonePathIndex).all(cursor::isNull))
+            }
+            val identity = WalletIdentity.restore(
+                if (cursor.isNull(publicKeyIndex)) null else cursor.getBlob(publicKeyIndex),
+                if (cursor.isNull(quantumIndex)) null else cursor.getBlob(quantumIndex), version,
+                if (cursor.isNull(networkIndex)) null else cursor.getInt(networkIndex)
+            )
             var wallet = WalletEntity(
                 id = cursor.getString(idIndex),
-                publicKey = PublicKeyEd25519(cursor.getBlob(publicKeyIndex)),
-                type = Wallet.typeOf(cursor.getInt(typeIndex)),
-                version = walletVersion(cursor.getInt(versionIndex)),
+                identity = identity,
+                type = Wallet.typeOf(typeId),
                 label = label,
-                initialized = cursor.getInt(initializedIndex) == 1,
-                networkGlobalId = if (cursor.isNull(networkIndex)) null else cursor.getInt(networkIndex)
+                initialized = cursor.getInt(initializedIndex) == 1
             )
             if (wallet.type == Wallet.Type.Ledger) {
                 val ledger = WalletEntity.Ledger(
@@ -232,7 +256,6 @@ internal class DatabaseSource(
 
             accounts.add(wallet)
         }
-        cursor.closeSafe()
         return accounts
     }
 }

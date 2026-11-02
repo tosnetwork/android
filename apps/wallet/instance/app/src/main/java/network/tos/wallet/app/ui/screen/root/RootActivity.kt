@@ -422,6 +422,15 @@ class RootActivity : BaseWalletActivity() {
         initStateBase64: String? = null,
         validUnit: Long?
     ) {
+        if (wallet.isQuantum) {
+            if (bin != null || initStateBase64 != null || !nftAddress.isNullOrBlank() ||
+                (!tokenAddress.isNullOrBlank() && tokenAddress != network.tos.wallet.api.entity.TokenEntity.TON.address)) {
+                toast("This Quantum payment supports only a native TOS transfer with a text comment.")
+                return
+            }
+            add(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newInstance(wallet, targetAddress, amount?.toBigInteger(), text))
+            return
+        }
         if ((bin != null || initStateBase64 != null) && !amount.isPositive()) {
             toast(Localization.invalid_link)
             return

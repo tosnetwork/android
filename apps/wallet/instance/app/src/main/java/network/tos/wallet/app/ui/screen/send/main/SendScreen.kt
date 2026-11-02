@@ -996,6 +996,7 @@ class SendScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_s
             type: Type,
             bin: Cell? = null
         ): SendScreen {
+            require(!wallet.isQuantum) { "Quantum requires its dedicated payment route" }
             val args = SendArgs(
                 targetAddress = targetAddress,
                 tokenAddress = tokenAddress,

@@ -41,13 +41,9 @@ internal class StorageSource(context: Context) {
     }
 
     fun setSelectedId(id: String?) {
-        prefs.edit {
-            if (id.isNullOrBlank()) {
-                remove(SELECTED_ID)
-            } else {
-                putString(SELECTED_ID, id)
-            }
-        }
+        val editor = prefs.edit()
+        if (id.isNullOrBlank()) editor.remove(SELECTED_ID) else editor.putString(SELECTED_ID, id)
+        check(editor.commit()) { "Selected wallet persistence uncertain" }
     }
 
     private fun tonProofTokenKey(publicKey: PublicKeyEd25519): String {

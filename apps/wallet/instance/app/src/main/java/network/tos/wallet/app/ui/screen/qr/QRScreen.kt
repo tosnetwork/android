@@ -7,6 +7,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import network.tos.blockchain.ton.extensions.toUserFriendly
 import network.tos.extensions.getParcelableCompat
 import network.tos.wallet.app.core.AnalyticsHelper
@@ -62,11 +67,13 @@ class QRScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet), BaseFragment
     }
 
     private fun share() {
+        if (viewModel.address.isBlank()) return
         val intent = shareIntent(viewModel.address)
         startActivity(Intent.createChooser(intent, getString(Localization.share)))
     }
 
     private fun copy() {
+        if (viewModel.address.isBlank()) return
         val color = when (wallet.type) {
             Wallet.Type.Watch, Wallet.Type.Testnet -> requireContext().accentOrangeColor
             else -> requireContext().backgroundContentTintColor
@@ -77,6 +84,17 @@ class QRScreen(wallet: WalletEntity) : ComposeWalletScreen(wallet), BaseFragment
 
     @Composable
     override fun ScreenContent() {
+        var fundingReminderAccepted by remember(wallet.id) { mutableStateOf(!wallet.isQuantum) }
+        if (!fundingReminderAccepted) {
+            AlertDialog(
+                onDismissRequest = { finish() },
+                title = { Text("Before funding this Quantum wallet") },
+                text = { Text("Securely retain your original secret recovery material before sending funds here. Public QSI1 account information is not a secret backup and cannot restore signing access by itself.") },
+                confirmButton = { TextButton(onClick = { fundingReminderAccepted = true }) { Text("I understand") } },
+                dismissButton = { TextButton(onClick = { finish() }) { Text("Close") } },
+            )
+            return
+        }
         val hasTronBalance by viewModel.hasTronBalanceFlow.collectAsState(false)
         val tabsVisible = !hasToken && wallet.hasPrivateKey && !wallet.testnet && (!viewModel.isTronDisabled || hasTronBalance)
         val qrContent by remember {

@@ -23,7 +23,7 @@ class TosV1MnemonicTest {
         assertFalse(TosV1Mnemonic.isLegacyValid(words))
         val key = TosV1Mnemonic.privateKey(words).publicKey()
         assertEquals("a71563f5709a827fad271813afc670403589781f4ac7259c7b0282b6686b2589", hex(key.key.toByteArray()))
-        assertEquals("0:88269a9a5ecb30262608e6fb86f8ae3d534e8c77d5a9ae0140ce5217196a0cfe", TosWalletV5R1Contract(key, 3).address.toAccountId())
+        assertEquals("0:35410aca3b79f0d1c6b19536b6c24c6910661e9aa55e5849fce2a54c53a9604c", TosWalletV5R1Contract(key, 3).address.toAccountId())
         assertEquals(TosV1Mnemonic.Profile.LEGACY, TosV1Mnemonic.recoveryProfile(legacy.split(" ")))
         assertEquals("54298c04ae729978cb7c988270e86b20e00a752562411b3511634ec59beebf26", hex(TosV1Mnemonic.recoveryPrivateKey(legacy.split(" ")).publicKey().key.toByteArray()))
         assertFalse(TosV1Mnemonic.isValid(legacy.split(" ")))
@@ -40,7 +40,7 @@ class TosV1MnemonicTest {
         val legacyKey = TosV1Mnemonic.recoveryPrivateKey(words, TosV1Mnemonic.Profile.LEGACY).publicKey()
         assertEquals("7c2c64e1dca71c1add3777ebaeb611ad56229995d435ad7bf6ba29909d816ceb", hex(native.key.toByteArray()))
         assertEquals("cfe05748559fea1f676ba2e6ef9d2e2bf5767a59fe66584c0fc5fea1cb772166", hex(legacyKey.key.toByteArray()))
-        assertEquals("0:f1bf21eacb1b2725e4792d4eeae23dfd5402e8b060f67d2a72719aec49e5d727", TosWalletV5R1Contract(native, 3).address.toAccountId())
+        assertEquals("0:2bcb99f529beda2c0516f86695499d15d2b2af1dbbd6504310cf4ecc51f0c00b", TosWalletV5R1Contract(native, 3).address.toAccountId())
         assertEquals("0:b3b84ebb0b272a2ef7b9977fb625266651802eabb3a94237275feeec0b9c3842", WalletV5R1Contract(legacyKey, WalletV5R1Contract.W5Context.Client()).address.toAccountId())
     }
 

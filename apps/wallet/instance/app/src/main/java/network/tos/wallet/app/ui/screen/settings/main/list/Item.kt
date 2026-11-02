@@ -69,9 +69,6 @@ sealed class Item(type: Int, val name: String): BaseListItem(type) {
         name = "currency"
     )
 
-    class PqWallets(position: ListCell.Position): Text(
-        titleRes = R.string.pq_wallets, value = "ML-DSA / Falcon", position = position, name = "pq_wallets")
-
     class RpcNode(
         endpoint: String,
         position: ListCell.Position
@@ -223,26 +220,6 @@ sealed class Item(type: Int, val name: String): BaseListItem(type) {
         position = position,
         secondaryIcon = true,
         name = "rate"
-    )
-
-    data class W5(
-        override val position: ListCell.Position
-    ): Icon(
-        titleRes = Localization.w5_wallet,
-        iconRes = UIKitIcon.ic_wallet_28,
-        position = position,
-        secondaryIcon = false,
-        name = "w5"
-    )
-
-    data class V4R2(
-        override val position: ListCell.Position
-    ): Icon(
-        titleRes = Localization.v4r2_wallet,
-        iconRes = UIKitIcon.ic_wallet_28,
-        position = position,
-        secondaryIcon = false,
-        name = "v4r2"
     )
 
     data class Battery(

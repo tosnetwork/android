@@ -22,6 +22,7 @@ import network.tos.wallet.data.token.TokenRepository
 import network.tos.wallet.data.token.entities.AccountTokenEntity
 import network.tos.wallet.data.token.entities.TokenRateEntity
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
@@ -64,14 +65,17 @@ class AssetsManager(
 
     suspend fun getTONBalance(
         wallet: WalletEntity, currency: WalletCurrency = settingsRepository.currency
-    ) = getToken(
-        wallet = wallet, token = "TON", currency = currency
-    )?.balance ?: Coins.ZERO
+    ): Coins = if (wallet.isQuantum) {
+        QuantumBalanceProjection.token(wallet.accountId, accountRepository.readQuantumAccount(wallet), WalletCurrency.TON).balance.value
+    } else getToken(wallet = wallet, token = "TON", currency = currency)?.balance ?: Coins.ZERO
 
     suspend fun getToken(
         wallet: WalletEntity, token: String, currency: WalletCurrency = settingsRepository.currency
     ): AssetsEntity.Token? {
-        val tokens = getTokens(wallet, currency, false)
+        if (wallet.isQuantum && !TokenEntity.TON.address.equalsAddress(token)) return null
+        val tokens = try { getTokens(wallet, currency, false) }
+        catch (error: CancellationException) { throw error }
+        catch (error: Exception) { if (wallet.isQuantum) return null else throw error }
         return tokens.firstOrNull {
             it.token.address.equalsAddress(token)
         }
@@ -85,7 +89,9 @@ class AssetsManager(
         if (accountIds.isEmpty()) {
             emptyList()
         } else {
-            val tokens = getTokens(wallet, currency, false)
+            val tokens = try { getTokens(wallet, currency, false) }
+            catch (error: CancellationException) { throw error }
+            catch (error: Exception) { if (wallet.isQuantum) return@withContext emptyList() else throw error }
             tokens.filter {
                 accountIds.any { accountId -> it.token.address.equalsAddress(accountId) }
             }
@@ -98,9 +104,12 @@ class AssetsManager(
         refresh: Boolean,
     ): List<AssetsEntity.Token> {
         val safeMode = settingsRepository.isSafeModeEnabled(api)
-        val tokens =
+        val tokens = if (wallet.isQuantum) {
+            listOf(QuantumBalanceProjection.token(wallet.accountId, accountRepository.readQuantumAccount(wallet), currency))
+        } else {
             tokenRepository.get(currency, wallet.accountId, wallet.testnet, refresh)
                 ?: return emptyList()
+        }
         tokens.firstOrNull()?.let {
             if (wallet.initialized != it.balance.initializedAccount) {
                 accountRepository.setInitialized(wallet.id, it.balance.initializedAccount)
@@ -144,7 +153,12 @@ class AssetsManager(
         refresh: Boolean = false,
         sorted: Boolean = false,
     ): Coins? {
-        val totalBalance = calculateTotalBalance(wallet, currency, refresh, sorted) ?: return null
+        // Quantum totals are native TOS amounts. Their callers label this unit;
+        // an unavailable proof returns no total, never a zero fiat valuation.
+        val totalBalance = try { calculateTotalBalance(wallet, currency, refresh, sorted) }
+        catch (error: CancellationException) { throw error }
+        catch (error: Exception) { if (wallet.isQuantum) return null else throw error }
+            ?: return null
         cache.set(wallet, currency, sorted, totalBalance)
         return totalBalance
     }
@@ -167,7 +181,7 @@ class AssetsManager(
         refresh: Boolean,
         sorted: Boolean,
     ): Coins? {
-        var assets = getAssets(wallet, currency, refresh) ?: return null
+        var assets = getAssets(wallet, if (wallet.isQuantum) WalletCurrency.TON else currency, refresh) ?: return null
         if (sorted) {
             assets = assets.sort(wallet, settingsRepository)
         }

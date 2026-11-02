@@ -180,15 +180,6 @@ fun Context.getWalletBadges(
 ): CharSequence {
     var builder = SpannableStringBuilder()
 
-    if (version == WalletVersion.V5R1 || version == WalletVersion.V5BETA) {
-        val resId = if (version == WalletVersion.V5BETA) {
-            Localization.w5beta
-        } else {
-            Localization.w5
-        }
-        builder = builder.badgeGreen(this, resId)
-    }
-
     if (type != Wallet.Type.Default) {
         val resId = when (type) {
             Wallet.Type.Watch -> Localization.watch_only

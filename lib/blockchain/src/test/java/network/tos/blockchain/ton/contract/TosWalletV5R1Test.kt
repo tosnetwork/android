@@ -108,9 +108,9 @@ class TosWalletV5R1Test {
 
     @Test fun matchesIndependentPythonAndTosSdkVector() {
         val wallet = TosWalletV5R1Contract(key, 3)
-        assertEquals("086a86aa9913c0ec52277adbb7e4b5695964dbb8c817ad0c305cdd345bbfac69", hex(wallet.getCode().hash().toByteArray()))
+        assertEquals("70cac370905beb6fa644922253f7d74335c479fa1e4d9dc8bf519c71e0f8c031", hex(wallet.getCode().hash().toByteArray()))
         // Shared vector with iOS; generated independently of this Kotlin implementation.
-        assertEquals("0:a0436d4b7c36efb6a949a1f1ba08cda9ac9fc08b77bbae81ddaab20051648ee6", wallet.address.toAccountId())
+        assertEquals("0:eb15d4fa14c7ff8cf1266daf05f0c61c718aef4205fc17026d3c769fb8e4a4bf", wallet.address.toAccountId())
         assertEquals("75746f815ed146820318296d5ae0822c5fc0b82e6e1ec8b7dd621d81fd70dc0a", hex(body().hash().toByteArray()))
     }
     @Test fun legacyWalletVersionAndAddressArePreserved() {

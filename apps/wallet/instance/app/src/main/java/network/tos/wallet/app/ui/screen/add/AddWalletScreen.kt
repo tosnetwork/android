@@ -16,6 +16,7 @@ import network.tos.wallet.app.ui.screen.init.InitArgs
 import network.tos.wallet.app.ui.screen.init.InitScreen
 import network.tos.wallet.app.ui.screen.ledger.pair.PairLedgerScreen
 import org.koin.androidx.viewmodel.ext.android.viewModel
+import org.koin.android.ext.android.inject
 import org.koin.core.parameter.parametersOf
 import uikit.base.BaseFragment
 import uikit.extensions.applyNavBottomPadding
@@ -31,9 +32,13 @@ class AddWalletScreen: BaseListWalletScreen<ScreenContext.None>(ScreenContext.No
         parametersOf(requireArguments().getBoolean(ARG_WITH_NEW, false))
     }
 
+    private val accounts: network.tos.wallet.data.account.AccountRepository by inject()
+
     private val adapter = Adapter { item ->
         when(item.id) {
-            Item.NEW_WALLET_ID -> openScreen(InitScreen.newInstance(InitArgs.Type.New))
+            Item.NEW_WALLET_ID -> network.tos.wallet.app.ui.screen.pq.QuantumPendingCreationDialog.open(requireContext(), viewLifecycleOwner, accounts) { id ->
+                openScreen(InitScreen.newInstance(InitArgs.Type.New, quantumCreationId = id))
+            }
             Item.IMPORT_WALLET_ID -> openScreen(InitScreen.newInstance(InitArgs.Type.Import))
             Item.WATCH_WALLET_ID -> openScreen(InitScreen.newInstance(InitArgs.Type.Watch))
             Item.TESTNET_WALLET_ID -> openScreen(InitScreen.newInstance(InitArgs.Type.Testnet))

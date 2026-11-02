@@ -2,7 +2,10 @@ package network.tos.wallet.app.ui.screen.init
 
 import android.os.Bundle
 import android.view.View
+import android.text.InputType
 import androidx.core.view.doOnLayout
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import network.tos.ledger.ton.LedgerConnectData
@@ -15,10 +18,14 @@ import network.tos.wallet.app.ui.screen.init.step.PushScreen
 import network.tos.wallet.app.ui.screen.init.step.SelectScreen
 import network.tos.wallet.app.ui.screen.init.step.WatchScreen
 import network.tos.wallet.app.ui.screen.init.step.WordsScreen
+import network.tos.wallet.app.ui.screen.init.step.QuantumRecoveryPhraseScreen
+import network.tos.wallet.app.ui.screen.init.step.QuantumRecoveryCheckScreen
 import network.tos.wallet.app.R
+import network.tos.wallet.api.API
 import network.tos.uikit.color.backgroundPageColor
 import network.tos.wallet.data.account.entities.WalletEntity
 import org.koin.androidx.viewmodel.ext.android.viewModel
+import org.koin.android.ext.android.inject
 import org.koin.core.parameter.parametersOf
 import org.ton.api.pub.PublicKeyEd25519
 import uikit.base.BaseFragment
@@ -30,6 +37,7 @@ import uikit.widget.HeaderView
 class InitScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_init, ScreenContext.None), BaseFragment.SwipeBack {
 
     override val fragmentName: String = "InitScreen"
+    private val api: API by inject()
 
     private val args: InitArgs by lazy { InitArgs(requireArguments()) }
 
@@ -83,10 +91,61 @@ class InitScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_init, S
     }
 
     private fun onEvent(event: InitEvent) {
+        // Effect delivery may replace a preceding Loading(false) with the
+        // terminal error. Never leave the input-blocking overlay behind it.
+        if (event is InitEvent.CreationFailed || event is InitEvent.PendingPhraseIdentityMismatch ||
+            event is InitEvent.QuantumRecoveryNetworkUnavailable) {
+            setLoading(false)
+        }
         when (event) {
+            is InitEvent.CreationFailed -> androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle(R.string.quantum_creation_failed).setMessage(R.string.quantum_creation_failed_hint)
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton(R.string.rpc_node) { _, _ -> showRpcNodeDialog() }
+                .show()
+            is InitEvent.PendingPhraseIdentityMismatch -> androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle(R.string.quantum_pending_phrase_mismatch_title)
+                .setMessage(R.string.quantum_pending_phrase_mismatch_message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+            is InitEvent.QuantumRecoveryNetworkUnavailable -> androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle(R.string.rpc_node_unavailable)
+                .setMessage(R.string.rpc_node_connect_hint)
+                .setPositiveButton(R.string.rpc_node) { _, _ -> showRpcNodeDialog() }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
             is InitEvent.Back -> popBackStack()
             is InitEvent.Loading -> setLoading(event.loading)
         }
+    }
+
+    private fun showRpcNodeDialog() {
+        val input = AppCompatEditText(requireContext()).apply {
+            setText(api.tosRpcEndpoint(false))
+            hint = getString(R.string.rpc_node_address)
+            contentDescription = hint
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSelectAllOnFocus(true)
+        }
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.rpc_node)
+            .setMessage(R.string.rpc_node_hint)
+            .setView(network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.nodeEditor(requireContext(), input))
+            .setPositiveButton(R.string.rpc_node_save, null)
+            .setNeutralButton(R.string.rpc_node_reset) { _, _ -> api.resetCustomTosRpcEndpoint() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    api.setCustomTosRpcEndpoint(input.text?.toString().orEmpty())
+                    dialog.dismiss()
+                } catch (_: IllegalArgumentException) {
+                    input.error = getString(R.string.rpc_node_invalid)
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun onRoute(route: InitRoute) {
@@ -98,6 +157,8 @@ class InitScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_init, S
             InitRoute.CreatePasscode -> PasscodeScreen.newInstance(false)
             InitRoute.ReEnterPasscode -> PasscodeScreen.newInstance(true)
             InitRoute.ImportWords -> WordsScreen.newInstance(false)
+            InitRoute.QuantumRecoveryPhrase -> QuantumRecoveryPhraseScreen.newInstance()
+            InitRoute.QuantumRecoveryCheck -> QuantumRecoveryCheckScreen.newInstance()
             InitRoute.WatchAccount -> WatchScreen.newInstance()
             InitRoute.LabelAccount -> LabelScreen.newInstance()
             InitRoute.SelectAccount -> SelectScreen.newInstance()
@@ -147,7 +208,8 @@ class InitScreen: BaseWalletScreen<ScreenContext.None>(R.layout.fragment_init, S
             accounts: List<AccountItem>? = null,
             keystone: WalletEntity.Keystone? = null,
             watchRecoveryAccountId: String? = null,
-        ) = newInstance(InitArgs(type, name, publicKeyEd25519, ledgerConnectData, accounts, keystone, watchRecoveryAccountId))
+            quantumCreationId: String? = null,
+        ) = newInstance(InitArgs(type, name, publicKeyEd25519, ledgerConnectData, accounts, keystone, watchRecoveryAccountId, quantumCreationId))
 
         fun newInstance(args: InitArgs): InitScreen {
             val fragment = InitScreen()

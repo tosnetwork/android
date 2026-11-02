@@ -96,7 +96,7 @@ class NftViewModel(
         submitDomainAction {
             val value = CellBuilder.createCell {
                 storeUInt(0x9fd3, 16)
-                storeAddress(wallet.contract.address)
+                storeAddress(wallet.accountAddress)
                 storeUInt(0, 8)
             }
             TosDnsTransactionBuilder.Action.ChangeRecord(walletDnsCategory, value)

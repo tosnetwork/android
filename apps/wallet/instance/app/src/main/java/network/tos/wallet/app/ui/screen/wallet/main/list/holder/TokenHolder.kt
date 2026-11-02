@@ -33,7 +33,7 @@ class TokenHolder(parent: ViewGroup): Holder<Item.Token>(parent, R.layout.view_c
 
     override fun onBind(item: Item.Token) {
         itemView.background = item.position.drawable(context)
-        itemView.setOnClickListener(if (item.isTON) null else View.OnClickListener { openToken(item) })
+        itemView.setOnClickListener(if (item.isTON && !item.wallet.isQuantum) null else View.OnClickListener { openToken(item) })
         if (item.blacklist) {
             titleView.text = getString(Localization.fake)
             iconView.clear(null)

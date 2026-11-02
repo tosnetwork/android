@@ -1,6 +1,7 @@
 package network.tos.blockchain.ton.contract
 
 enum class WalletVersion(val id: Int, val title: String, val index: Int) {
+    QUANTUM_SELF_PAY(7, "quantumSelfPay", 8),
     TOSV5R1(6, "tosV5R1", 7),
     V5R1(5, "v5R1", 6),
     V5BETA(4, "v5Beta", 5),

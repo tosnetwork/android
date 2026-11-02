@@ -79,6 +79,13 @@ class TosQuantumAuth(
                 require(s.loadUInt(32).toLong() == 0x0ec3c86dL) { "Only send actions allowed" }
                 val mode = s.loadUInt(8).toInt()
                 require(mode and 2 != 0 && mode and 44 == 0 && mode and 192 != 192) { "Forbidden send mode" }
+                // The node refuses an ext_out send with any mode bit besides +1/+2 without
+                // honouring +2, so the wallet engine refuses it too (exit 147). A message
+                // too short to carry a constructor is left to the node, which skips it.
+                if (mode and 3.inv() != 0) {
+                    val head = s.refs[s.refsPosition + 1].beginParse()
+                    require(head.remainingBits < 2 || head.loadUInt(2).toInt() != 3) { "External out message needs send mode 2 or 3" }
+                }
                 current = s.loadRef(); count += 1
             }
         }

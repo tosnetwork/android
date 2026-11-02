@@ -179,15 +179,13 @@ internal class RNMigrationHelper(
 
     fun setBiometryEnabled(enabled: Boolean) {
         scope.launch {
-            val wallets = getWallets()
-            setWallets(wallets.copy(biometryEnabled = enabled))
+            rnLegacy.updateWalletPreferences(biometry = enabled)
         }
     }
 
     fun setLockScreenEnabled(enabled: Boolean) {
         scope.launch {
-            val wallets = getWallets()
-            setWallets(wallets.copy(lockScreenEnabled = enabled))
+            rnLegacy.updateWalletPreferences(lockScreen = enabled)
         }
     }
 

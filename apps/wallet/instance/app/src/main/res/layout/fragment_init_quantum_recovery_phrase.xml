@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<uikit.widget.ColumnLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <uikit.widget.HeaderView
+        android:id="@+id/header"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:icon="@drawable/ic_chevron_left_16" />
+
+    <uikit.widget.TextHeaderView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/offsetLarge"
+        android:layout_marginTop="@dimen/offsetMedium"
+        android:title="@string/quantum_backup_phrase_title"
+        android:description="@string/quantum_backup_phrase_hint" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/offsetMedium"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <uikit.widget.ColumnLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="@dimen/offsetMedium"
+            android:paddingVertical="@dimen/offsetMedium">
+
+            <uikit.widget.PhraseWords
+                android:id="@+id/words"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/offsetLarge"
+                android:text="@string/quantum_backup_profile_title"
+                android:textAppearance="@style/TextAppearance.Label1" />
+
+            <TextView
+                android:id="@+id/network_profile"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/offsetExtraSmall"
+                android:textIsSelectable="true"
+                android:typeface="monospace"
+                android:textAppearance="@style/TextAppearance.Body2" />
+
+        </uikit.widget.ColumnLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <Button
+        android:id="@+id/button"
+        style="@style/Widget.App.Button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/offsetLarge"
+        android:layout_marginTop="@dimen/offsetMedium"
+        android:layout_marginBottom="@dimen/offsetMedium"
+        android:text="@string/quantum_backup_phrase_reveal"
+        android:textAppearance="@style/TextAppearance.Label1" />
+</uikit.widget.ColumnLayout>

@@ -6,6 +6,7 @@ import network.tos.icu.Coins
 import network.tos.network.NetworkMonitor
 import network.tos.wallet.app.Environment
 import network.tos.wallet.app.RemoteConfig
+import network.tos.wallet.app.R
 import network.tos.wallet.app.core.DevSettings
 import network.tos.wallet.app.core.entities.AssetsEntity.Companion.sort
 import network.tos.wallet.app.extensions.hasPushPermission
@@ -32,6 +33,7 @@ import network.tos.wallet.data.rates.RatesRepository
 import network.tos.wallet.data.rates.entity.RatesEntity
 import network.tos.wallet.data.settings.SettingsRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,6 +82,7 @@ class WalletViewModel(
     private val _lastLtFlow = MutableStateFlow(0L)
     private val _statusFlow = MutableStateFlow<Status?>(null)
     val statusFlow = _statusFlow.asStateFlow().filterNotNull()
+    private val balanceUnavailable = MutableStateFlow(false)
 
     private val _stateMainFlow = MutableStateFlow<State.Main?>(null)
     private val stateMainFlow = _stateMainFlow.asStateFlow().filterNotNull()
@@ -97,8 +100,9 @@ class WalletViewModel(
         api.configFlow,
         settingsRepository.hiddenBalancesFlow,
         statusFlow,
-    ) { _, hiddenBalance, status ->
-        State.Settings(hiddenBalance, api.config, status)
+        balanceUnavailable,
+    ) { _, hiddenBalance, status, unavailable ->
+        State.Settings(hiddenBalance, api.config, if (unavailable) Status.BalanceUnavailable else status)
     }.distinctUntilChanged()
 
     private val _uiItemsFlow = MutableStateFlow<List<Item>?>(null)
@@ -120,8 +124,17 @@ class WalletViewModel(
     ) { _, _, _, lastLt -> lastLt }
 
     init {
+        var previousCustomRpcEndpoint = api.customTosRpcEndpoint
+        collectFlow(api.customTosRpcEndpointFlow) { endpoint ->
+            if (endpoint != previousCustomRpcEndpoint) {
+                previousCustomRpcEndpoint = endpoint
+                if (wallet.isQuantum) refresh()
+            }
+        }
+
         viewModelScope.launch {
-            val cached = screenCacheSource.getWalletScreen(wallet) ?: listOf(Item.Skeleton(true))
+            val cached = if (wallet.isQuantum) listOf(Item.Skeleton(true)) else
+                screenCacheSource.getWalletScreen(wallet) ?: listOf(Item.Skeleton(true))
             _uiItemsFlow.value = cached
         }
 
@@ -159,7 +172,8 @@ class WalletViewModel(
             val lastIsOnline = _stateMainFlow.value?.isOnline
 
             val isRequestUpdate =
-                _stateMainFlow.value == null || lastLt != currentLt || lastIsOnline != currentIsOnline
+                _stateMainFlow.value == null || lastLt != currentLt || lastIsOnline != currentIsOnline ||
+                    _stateMainFlow.value?.assets?.currency != getCurrency(wallet, currency)
 
             if (isRequestUpdate) {
                 setStatus(Status.Updating)
@@ -175,7 +189,7 @@ class WalletViewModel(
 
             val walletCurrency = getCurrency(wallet, currency)
 
-            val localAssets = getAssets(walletCurrency, false)
+            val localAssets = if (wallet.isQuantum) null else getAssets(walletCurrency, false)
             if (localAssets != null) {
                 val batteryBalance = getBatteryBalance(wallet)
                 val plugins = emptyList<io.tonapi.models.WalletPlugin>()
@@ -226,6 +240,7 @@ class WalletViewModel(
                         plugins = plugins,
                     )
                     _stateMainFlow.value = state
+                    balanceUnavailable.value = false
                     assetsManager.setCachedTotalBalance(
                         wallet,
                         walletCurrency,
@@ -269,7 +284,7 @@ class WalletViewModel(
 
             val lastUpdated = settingsRepository.getWalletLastUpdated(state.wallet.id)
 
-            val uiItems = state.uiItems(
+            val uiItems = if (wallet.isQuantum && status == Status.BalanceUnavailable) unavailableBalanceItems() else state.uiItems(
                 context = context,
                 wallet = state.wallet,
                 hiddenBalance = settings.hiddenBalance,
@@ -310,7 +325,7 @@ class WalletViewModel(
     }
 
     private suspend fun checkAutoRefresh() {
-        if (hasPendingTransaction()) {
+        if (wallet.isQuantum || hasPendingTransaction()) {
             withContext(Dispatchers.Main) {
                 refresh()
             }
@@ -352,17 +367,39 @@ class WalletViewModel(
         currency: WalletCurrency,
         refresh: Boolean
     ): State.Assets? = withContext(Dispatchers.IO) {
-        assetsManager.getAssets(wallet, currency, refresh)?.let {
-            State.Assets(
-                currency = currency,
-                list = it.sort(wallet, settingsRepository),
-                fromCache = !refresh,
-                rates = RatesEntity.empty(currency)
-            )
+        try {
+            assetsManager.getAssets(wallet, currency, refresh)?.let {
+                State.Assets(
+                    currency = currency,
+                    list = it.sort(wallet, settingsRepository),
+                    fromCache = !refresh,
+                    rates = RatesEntity.empty(currency)
+                )
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (!wallet.isQuantum) throw error
+            balanceUnavailable.value = true
+            setStatus(Status.BalanceUnavailable)
+            _uiItemsFlow.value = unavailableBalanceItems()
+            null
         }
     }
 
+    private fun unavailableBalanceItems(): List<Item> = listOf(
+        Item.Alert(
+            "Balance unavailable",
+            "The wallet balance could not be verified. Configure a TOS node or pull down to retry.",
+            getString(R.string.quantum_configure_node),
+            "tos://settings"
+        ),
+        Item.Actions(wallet, network.tos.wallet.api.entity.TokenEntity.TON, api.config.swapUri,
+            tronEnabled = false, isSwapDisabled = true, isStakingDisabled = true)
+    )
+
     private fun setCached(wallet: WalletEntity, items: List<Item>) {
+        if (wallet.isQuantum) return
         screenCacheSource.set(CACHE_NAME, wallet.id, items)
     }
 
@@ -379,7 +416,7 @@ class WalletViewModel(
             wallet: WalletEntity,
             currency: WalletCurrency
         ): WalletCurrency {
-            return if (wallet.testnet) WalletCurrency.TON else currency
+            return if (wallet.testnet || wallet.isQuantum) WalletCurrency.TON else currency
         }
 
         fun ScreenCacheSource.getWalletScreen(wallet: WalletEntity): List<Item>? {

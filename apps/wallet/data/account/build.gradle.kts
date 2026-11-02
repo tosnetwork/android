@@ -6,9 +6,17 @@ plugins {
 
 android {
     namespace = Build.namespacePrefix("wallet.data.account")
+    defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("scripts/fixtures"))
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("lib/security/src/androidTest/assets"))
+    // Reuse the captured native proofs without duplicating frozen binary material.
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("apps/wallet/instance/main/src/androidTest/assets/quantum-live-genesis"))
 }
 
 dependencies {
+    androidTestImplementation(libs.androidX.test)
+    androidTestImplementation(libs.androidX.test.core)
+    androidTestImplementation("androidx.test:runner:1.7.0")
     implementation(libs.okhttp)
     implementation(libs.kotlinX.serialization.json)
     implementation(libs.kotlinX.coroutines.android)

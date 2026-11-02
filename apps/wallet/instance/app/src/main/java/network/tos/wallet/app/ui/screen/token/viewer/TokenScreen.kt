@@ -1,6 +1,7 @@
 package network.tos.wallet.app.ui.screen.token.viewer
 
 import android.graphics.Rect
+import network.tos.wallet.app.ui.screen.events.quantum.QuantumHistoryScreen
 import android.os.Bundle
 import android.view.View
 import androidx.core.net.toUri
@@ -189,7 +190,8 @@ class TokenScreen(wallet: WalletEntity) :
             name: String,
             symbol: String,
             rawUsde: Boolean = false,
-        ): TokenScreen {
+        ): BaseFragment {
+            if (wallet.isQuantum && address == TokenEntity.TON.address) return QuantumHistoryScreen.newInstance(wallet, coinDetails = true)
             val fragment = TokenScreen(wallet)
             fragment.setArgs(TokenArgs(address, name, symbol, rawUsde))
             return fragment

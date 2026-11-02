@@ -14,7 +14,6 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.view.WindowInsetsCompat
 import network.tos.emoji.ui.EmojiView
-import network.tos.wallet.app.extensions.fixW5Title
 import network.tos.wallet.app.extensions.isLightTheme
 import network.tos.wallet.app.R
 import network.tos.uikit.color.backgroundContentTintColor
@@ -135,7 +134,7 @@ class WalletHeaderView @JvmOverloads constructor(
         }
 
         walletView.visibility = View.VISIBLE
-        nameView.text = walletLabel.name.fixW5Title()
+        nameView.text = walletLabel.name
         emojiView.setEmoji(walletLabel.emoji, Color.TRANSPARENT)
         walletView.backgroundTintList = ColorStateList.valueOf(walletLabel.color)
     }

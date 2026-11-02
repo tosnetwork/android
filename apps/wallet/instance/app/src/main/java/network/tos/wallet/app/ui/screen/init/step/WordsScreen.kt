@@ -1,6 +1,7 @@
 package network.tos.wallet.app.ui.screen.init.step
 
 import android.os.Bundle
+import android.os.Build
 import android.text.Editable
 import android.util.Log
 import android.view.Gravity
@@ -18,6 +19,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import network.tos.blockchain.MnemonicHelper
 import network.tos.blockchain.ton.TonMnemonic
+import network.tos.wallet.data.account.pq.QuantumNetworkProfile
 import network.tos.wallet.app.core.AnalyticsHelper
 import network.tos.wallet.app.extensions.clipboardText
 import network.tos.wallet.app.extensions.hideKeyboard
@@ -31,6 +33,7 @@ import network.tos.uikit.color.iconPrimaryColor
 import network.tos.uikit.color.textPrimaryColor
 import network.tos.wallet.localization.Localization
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,6 +95,14 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
         contentView = view.findViewById(R.id.content)
 
         wordInputs = contentView.findViewById<ColumnLayout>(R.id.inputs).getViews().filterIsInstance<WordEditText>()
+        // Recovery words are secrets. Do not serialize editable field values
+        // into Activity/Fragment saved view state or offer them to Autofill.
+        wordInputs.forEach { input ->
+            input.isSaveEnabled = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                input.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+            }
+        }
 
         button = view.findViewById(R.id.button)
         button.setOnClickListener { next() }
@@ -196,12 +207,22 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
                 navigation?.toast(Localization.incorrect_phrase)
                 return@launch
             }
-            if (native && legacy) {
+            if (native) {
+                val options = if (legacy) arrayOf(
+                    getString(R.string.restore_tos_wallet),
+                    getString(R.string.restore_quantum_wallet),
+                    getString(R.string.restore_legacy_wallet)
+                ) else arrayOf(getString(R.string.restore_tos_wallet), getString(R.string.restore_quantum_wallet))
+                // AlertDialog's message content replaces its item list. Keep the
+                // wallet-format choices visible for native and ambiguous phrases.
                 AlertDialog.Builder(requireContext()).setTitle(R.string.recovery_profile_title)
-                    .setMessage(R.string.recovery_profile_hint)
-                    .setPositiveButton(R.string.restore_tos_wallet) { _, _ -> continueRecovery(words, TosV1Mnemonic.Profile.TOS) }
-                    .setNeutralButton(R.string.restore_legacy_wallet) { _, _ -> continueRecovery(words, TosV1Mnemonic.Profile.LEGACY) }
-                    .setNegativeButton(android.R.string.cancel, null).show()
+                    .setItems(options) { _, which ->
+                        when (which) {
+                            0 -> continueRecovery(words, TosV1Mnemonic.Profile.TOS)
+                            1 -> continueQuantumRecovery(words)
+                            2 -> continueRecovery(words, TosV1Mnemonic.Profile.LEGACY)
+                        }
+                    }.setNegativeButton(android.R.string.cancel, null).show()
             } else if (legacy) {
                 AlertDialog.Builder(requireContext()).setTitle(R.string.legacy_recovery_title)
                     .setMessage(R.string.legacy_recovery_hint)
@@ -227,6 +248,48 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
         }
     }
 
+    private fun continueQuantumRecovery(words: List<String>) {
+        val profile = runCatching { QuantumNetworkProfile.effective(requireContext()) }.getOrElse {
+            navigation?.toast(it.localizedMessage ?: getString(R.string.quantum_network_invalid))
+            return
+        }
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.quantum_restore_network_confirmation_title)
+            .setMessage(getString(R.string.quantum_restore_network_confirmation,
+                profile.globalId, profile.rootHash, profile.fileHash))
+            .setPositiveButton(R.string.quantum_restore_network_continue) { _, _ ->
+                lifecycleScope.launch {
+                    setLoading()
+                    try {
+                        if (TonMnemonic.isValidTONKeychain(words)) {
+                            navigation?.toast(Localization.multi_account_secret_wrong)
+                        } else {
+                            initViewModel.preflightQuantumRecovery(profile)
+                            if (!initViewModel.setQuantumMnemonic(words, profile)) {
+                                navigation?.toast(Localization.incorrect_phrase)
+                            } else {
+                                // The process-local recovery session now owns
+                                // the phrase; remove the duplicate from the
+                                // input form before it remains on the back stack.
+                                wordInputs.forEach { it.text?.clear() }
+                            }
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        initViewModel.quantumRecoveryNetworkUnavailable()
+                    } finally {
+                        setDefault()
+                    }
+                }
+            }
+            .setNeutralButton(R.string.quantum_restore_network_change) { _, _ ->
+                network.tos.wallet.app.ui.screen.pq.QuantumNetworkDialog.show(requireContext())
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun setLoading() {
         button.text = ""
         button.isEnabled = false
@@ -239,6 +302,7 @@ class WordsScreen: BaseFragment(R.layout.fragment_init_words) {
         button.isEnabled = false
         loaderView.visibility = View.GONE
         wordInputs.forEach { it.isEnabled = true }
+        checkWords()
     }
 
     private fun onFocusChange(index: Int, hasFocus: Boolean) {

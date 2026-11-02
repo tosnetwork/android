@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "scope": "Final gate-closed build/device evidence plus separate unpublished availability-only actual App acceptance; not complete R03 or release acceptance",
+  "native_pin": "127fd94d9274d663b6ff96748ad8e571b9b797e8",
+  "raw_evidence_directory": "/Users/tomisetsu/validation/mobile-quantum-handoff",
+  "artifacts": {
+    "android-payment-final-closed-manifest.json": {
+      "bytes": 7858,
+      "sha256": "44f79b7e97a86c4e011fdfab92587a90aa4fef74c7411264ccf95cf83c321bb8"
+    },
+    "android-payment-arm64-native-manifest.json": {
+      "bytes": 1426,
+      "sha256": "475dba0fb82ff543347b9d2f8124c9f5917c3e22b17aea8468bdc972351f8d65"
+    },
+    "android-payment-final-closed-build.log": {
+      "bytes": 84088,
+      "sha256": "fcafdcd70e3e3ea90d11fc9543a537f7cadc8061d3780a57bd5b2f96ecc85a1a"
+    },
+    "android-payment-final-closed-proof-eight.log": {
+      "bytes": 289,
+      "sha256": "715e4124b917d034e66b13f096a135812f7bb24f96603a9be70e7f1004e18a4c"
+    },
+    "android-payment-final-closed-outbox-device.log": {
+      "bytes": 864,
+      "sha256": "c6ad3b672eb5e7a19562438f16f1ffcefc0322f14daf8ef6be3e970e86a81b9b"
+    },
+    "android-payment-final-closed-static.log": {
+      "bytes": 16,
+      "sha256": "9129a48eec6123d2ed4b2ab052b91c24841e04b844b7fd13478b05c89736fc02"
+    },
+    "android-payment-device-runner-controls.log": {
+      "bytes": 105,
+      "sha256": "13eebb6e8c87f5e9b291b204ee93afad24afee34ae394adff45a8b52c1a6416b"
+    },
+    "android-payment-availability-35f-20261028-01/index.json": {
+      "bytes": 941,
+      "sha256": "2deeb640613952878223c2f7202b6d246df0caaea281a7758e465015a1290b45"
+    },
+    "android-app-payment-acceptance-1793194619255987000/results.json": {
+      "bytes": 3393,
+      "sha256": "d73a702f1327c72b74f9d437ae27a4b9bca299ade97f7d5dafea9ff749b601ae"
+    },
+    "android-app-payment-acceptance-1793194619255987000/independent-credit/index.json": {
+      "bytes": 6825,
+      "sha256": "d68a2dc4dd465f1680cd3648cdddd7e7d66df5ef87e6bca688e07b850bc15d7a"
+    }
+  },
+  "actual_app_external_root": "b9235fc551f67826ac97d02b63928c8fb8dbf3d949ea493738657816a09f8248",
+  "sender_transaction": "dd85942d47649e5d47a08648c8e571028b0f3aec24ac49de5a95de7af2bfba91",
+  "recipient_transaction": "2f1548129ea0e813b3ab77c6e496ae1421115b849d5d036a8d3bb6f5b0a223da",
+  "amount_nanos": "1000000000"
+}

@@ -52,7 +52,10 @@ become stable and future changes require explicit, versioned migration tests.
 
 TOS V5R1 is stored as wallet version `6` (`tosV5R1`). Its signed request includes
 the node's `global_id` separately from the plain subwallet number, and uses the
-frozen TOS contract code. The network ID is discovered from chain configuration
+frozen TOS contract code (`TosWalletV5R1Contract.CODE`, also used by the PQ
+module-only account). That copy follows tosnetwork/tos: currently 1cef5d3ec, code
+hash `70cac370905beb6fa644922253f7d74335c479fa1e4d9dc8bf519c71e0f8c031`. A new code
+hash moves every TOS V5 address. The network ID is discovered from chain configuration
 and persisted with the wallet; the development chain ID `3` is not a production
 default. One native send holds one RPC endpoint and credential through sequence
 lookup, fee preview, signing, broadcast, and retry reconciliation.

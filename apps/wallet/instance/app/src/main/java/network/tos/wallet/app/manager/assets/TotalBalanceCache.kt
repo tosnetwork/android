@@ -18,6 +18,7 @@ internal class TotalBalanceCache(context: Context) {
         currency: WalletCurrency,
         sorted: Boolean
     ): Coins? {
+        if (wallet.isQuantum) return null
         val key = createKey(wallet, currency, sorted)
         return storageCache.getParcelable<Coins>(key)
     }
@@ -28,6 +29,7 @@ internal class TotalBalanceCache(context: Context) {
         sorted: Boolean,
         value: Coins
     ) {
+        if (wallet.isQuantum) return
         val key = createKey(wallet, currency, sorted)
         storageCache.putParcelable(key, value)
     }

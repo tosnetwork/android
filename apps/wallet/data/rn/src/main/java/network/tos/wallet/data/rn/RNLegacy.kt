@@ -17,6 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import org.json.JSONTokener
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -27,6 +30,7 @@ class RNLegacy(
 
     companion object {
         const val DEFAULT_KEYSTORE_ALIAS = "key_v1"
+        private val walletsMutex = Mutex()
     }
 
     private val sql: RNSql by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -36,9 +40,6 @@ class RNLegacy(
     private val seedStorage: RNSeedStorage by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         RNSeedStorage(context)
     }
-
-    @Volatile
-    private var cacheWallets: RNWallets? = null
 
     @Volatile
     private var requestMigration: Boolean? = null
@@ -316,86 +317,69 @@ class RNLegacy(
         return list
     }
 
-    suspend fun getWallets(): RNWallets {
-        return cacheWallets?.copy() ?: loadWallets().also { cacheWallets = it.copy() }
+    suspend fun getWallets(): RNWallets = withContext(Dispatchers.IO) {
+        walletsMutex.withLock { loadWallets() }
     }
 
-    suspend fun setWallets(wallets: RNWallets) {
-        cacheWallets = wallets.copy()
-        saveWallets(wallets)
+    suspend fun setWallets(wallets: RNWallets) = withContext(Dispatchers.IO) {
+        walletsMutex.withLock { saveWallets(wallets) }
     }
 
-    suspend fun setSelectedWallet(id: String) {
-        val wallets = getWallets()
-        if (wallets.selectedIdentifier != id) {
-            setWallets(wallets.copy(
-                selectedIdentifier = id
-            ))
+    private suspend fun updateWallets(change: (RNWallets) -> RNWallets) = withContext(Dispatchers.IO) {
+        walletsMutex.withLock {
+            // Always reload the committed row. An instance cache could hide corruption or lose
+            // another repository instance's concurrent creation.
+            val state = loadWallets()
+            val updated = change(state)
+            if (updated != state) saveWallets(updated)
         }
     }
 
-    suspend fun clear() {
-        cacheWallets = null
-        saveWallets(getWallets().copy(
-            wallets = emptyList()
-        ))
+    suspend fun setSelectedWallet(id: String) = updateWallets { it.copy(selectedIdentifier = id) }
+
+    suspend fun updateWalletPreferences(biometry: Boolean? = null, lockScreen: Boolean? = null) = updateWallets {
+        it.copy(biometryEnabled = biometry ?: it.biometryEnabled, lockScreenEnabled = lockScreen ?: it.lockScreenEnabled)
     }
 
-    suspend fun addWallet(wallet: RNWallet) {
-        val state = getWallets()
-        val newWallets = state.copy(
-            wallets = state.wallets.toMutableList().apply {
-                add(wallet)
-            }
-        )
-        setWallets(newWallets)
+    suspend fun clear() = updateWallets { it.copy(wallets = emptyList(), selectedIdentifier = "") }
+
+    /** Same enrollment is idempotent. Reusing an identifier for a different wallet is an error. */
+    suspend fun addWallet(wallet: RNWallet) = updateWallets { state ->
+        val existing = state.wallets.singleOrNull { it.identifier == wallet.identifier }
+        if (existing != null) {
+            require(existing.copy(name = wallet.name, color = wallet.color, emoji = wallet.emoji) == wallet) { "Wallet mirror identifier collision" }
+            state.copy(wallets = state.wallets.map { if (it.identifier == wallet.identifier) wallet else it })
+        } else state.copy(wallets = state.wallets + wallet)
     }
 
-    suspend fun edit(id: String, name: String, emoji: String, color: Int) {
-        val wallets = getWallets()
-        val index = wallets.wallets.indexOfFirst { it.identifier == id }
-        if (index == -1) {
-            return
-        }
-        val wallet = wallets.wallets[index]
-        val newWallet = wallet.copy(
-            name = name,
-            emoji = emoji,
-            color = RNWallet.resolveColor(color)
-        )
-        setWallets(wallets.copy(
-            wallets = wallets.wallets.toMutableList().apply {
-                set(index, newWallet)
-            }
-        ))
+    suspend fun edit(id: String, name: String, emoji: String, color: Int) = updateWallets { state ->
+        state.copy(wallets = state.wallets.map {
+            if (it.identifier == id) it.copy(name = name, emoji = emoji, color = RNWallet.resolveColor(color)) else it
+        })
     }
 
-    suspend fun delete(id: String) {
-        val wallets = getWallets()
-        val index = wallets.wallets.indexOfFirst { it.identifier == id }
-        if (index == -1) {
-            return
-        }
-        setWallets(wallets.copy(
-            wallets = wallets.wallets.toMutableList().apply {
-                removeAt(index)
-            }
-        ))
+    suspend fun delete(id: String) = updateWallets { state ->
+        state.copy(wallets = state.wallets.filterNot { it.identifier == id },
+            selectedIdentifier = if (state.selectedIdentifier == id) "" else state.selectedIdentifier)
     }
 
-    private suspend fun loadWallets(): RNWallets = withContext(Dispatchers.IO) {
-        val value = getJSONValue("walletsStore") ?: return@withContext RNWallets.empty
-        try {
-            RNWallets(value)
-        } catch (e: Throwable) {
-            RNWallets.empty
-        }
+    private fun loadWallets(): RNWallets {
+        val text = sql.getValueStrict("walletsStore") ?: return RNWallets.empty
+        val tokens = JSONTokener(text)
+        val value = tokens.nextValue() as? JSONObject ?: error("Invalid wallet mirror")
+        require(tokens.nextClean() == '\u0000') { "Trailing wallet mirror data" }
+        value.getJSONArray("wallets") // A damaged registry is not an empty registry.
+        return RNWallets(value).also(::validateWallets)
     }
 
-    private suspend fun saveWallets(wallets: RNWallets) = withContext(Dispatchers.IO) {
-        val json = wallets.toJSON()
-        json.put("__version", 2)
-        setJSONValue("walletsStore", json)
+    private fun validateWallets(wallets: RNWallets) {
+        val ids = wallets.wallets.map { it.identifier }
+        require(ids.all { it.isNotBlank() } && ids.toSet().size == ids.size) { "Invalid wallet mirror identifiers" }
     }
 
+    private fun saveWallets(wallets: RNWallets) {
+        validateWallets(wallets)
+        val json = wallets.toJSON().put("__version", 2)
+        sql.setValueStrict("walletsStore", json.toString())
+    }
 }

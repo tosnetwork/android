@@ -65,7 +65,8 @@ class PasscodeManager(
             }
         } catch (e: Throwable) {
             CrashReporter.recordException(e)
-            false
+            // Locked or damaged storage is not permission to replace an existing PIN.
+            true
         }
     }
 

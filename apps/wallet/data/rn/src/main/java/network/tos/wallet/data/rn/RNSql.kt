@@ -35,6 +35,19 @@ internal class RNSql(context: Context): SQLiteHelper(context, DATABASE_NAME, DAT
         initCursorWindowSize()
     }
 
+    /** Wallet registry reads distinguish a missing row from an unavailable database. */
+    fun getValueStrict(key: String): String? = readableDatabase.query(KV_TABLE_NAME,
+        arrayOf(KV_TABLE_VALUE_COLUMN), "$KV_TABLE_KEY_COLUMN = ?", arrayOf(key), null, null, null).use {
+        if (it.moveToFirst()) it.getString(0) else null
+    }
+
+    fun setValueStrict(key: String, value: String) {
+        val values = ContentValues().apply { put(KV_TABLE_KEY_COLUMN, key); put(KV_TABLE_VALUE_COLUMN, value) }
+        check(writableDatabase.insertWithOnConflict(KV_TABLE_NAME, null, values, SQLiteDatabase.CONFLICT_REPLACE) >= 0) {
+            "Wallet mirror persistence failed"
+        }
+    }
+
     fun getValue(key: String): String? {
         return getValue(key, 0)
     }

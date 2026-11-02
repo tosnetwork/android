@@ -25,8 +25,10 @@ grep -Fq '"applicationId": "network.tos.signer"' "$signer_dir/output-metadata.js
 
 unzip -Z1 "$wallet_apk" >"$apk_listing"
 for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-  grep -Fqx "lib/$abi/liblibsodium.so" "$apk_listing" \
-    || fail "wallet APK lacks the Sodium JNI library for $abi"
+  for library in liblibsodium.so libtosproofverify.so libtoswalletreceipt.so; do
+    grep -Fqx "lib/$abi/$library" "$apk_listing" \
+      || fail "wallet APK lacks $library for $abi"
+  done
 done
 
 android_sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
@@ -36,6 +38,10 @@ zipalign="$(dirname "$aapt2")/zipalign"
 readelf="$(find "$android_sdk_root/ndk" \( -type f -o -type l \) -name llvm-readelf 2>/dev/null | sort -V | tail -1)"
 test -x "$readelf" || fail "NDK llvm-readelf is unavailable"
 for apk in "$wallet_apk" "$signer_apk"; do
+  badging="$("$aapt2" dump badging "$apk")"
+  if grep -Fxq 'application-debuggable' <<<"$badging"; then
+    fail "Release APK is debuggable: $apk"
+  fi
   unzip -Z1 "$apk" >"$apk_listing"
   for abi in arm64-v8a armeabi-v7a x86 x86_64; do
     grep -Fqx "lib/$abi/libtos_mobile_pq.so" "$apk_listing" \

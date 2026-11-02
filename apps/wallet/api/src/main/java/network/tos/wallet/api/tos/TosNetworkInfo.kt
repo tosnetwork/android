@@ -8,8 +8,8 @@ data class TosNetworkInfo(val globalId: Int, val vmVersion: Long) {
     // compute/action successfully, with an actual outgoing message, at VM6.
     val supportsNativeV5: Boolean get() = vmVersion >= 6
     val supportsMlDsa: Boolean get() = vmVersion >= 16
-    // Experimental TOS-FALCON512-PADDED-v1 cannot execute on version-18 nodes.
-    val supportsFalcon: Boolean get() = vmVersion >= 19
+    // Opcode availability; this does not imply external-message gas admission.
+    val supportsFalcon: Boolean get() = vmVersion >= 16
 
     fun requireNativeV5(): TosNetworkInfo = apply {
         require(supportsNativeV5) { "This node cannot execute native TOS V5 wallets (VM6 required)" }

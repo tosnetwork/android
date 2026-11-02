@@ -83,6 +83,7 @@ sealed class Item(type: Int): BaseListItem(type), Parcelable {
         TransactionConfirmed,
         Unknown,
         LastUpdated,
+        BalanceUnavailable,
     }
 
     override fun writeToParcel(dest: Parcel, flags: Int) {
