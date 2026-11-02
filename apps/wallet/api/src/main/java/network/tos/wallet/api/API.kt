@@ -33,6 +33,7 @@ import network.tos.wallet.api.entity.value.Timestamp
 import network.tos.wallet.api.internal.ConfigRepository
 import network.tos.wallet.api.internal.InternalApi
 import network.tos.wallet.api.internal.SwapApi
+import network.tos.wallet.api.tos.TosTokenMetadata
 import network.tos.wallet.api.tos.TosSource
 import network.tos.wallet.api.tos.TosRpcSettings
 import network.tos.wallet.api.tron.TronApi
@@ -510,10 +511,10 @@ class API(
         extensions: List<String>? = null
     ): List<BalanceEntity>? {
         // TOS (W4): the jetton list comes from the TOS in-node wc=0 index
-        // (getAccountJettons -> owner's jetton-wallets); each wallet's balance + master
+        // (getAccountTokens -> owner's jetton-wallets); each wallet's balance + master
         // come from get_wallet_data; TEP-64 metadata (name/symbol/decimals/image) comes
         // from the node's getTokenData(master) (parsed on-chain content).
-        val jettonWallets = withRetry { tos.getAccountJettonWallets(accountId, testnet) } ?: emptyList()
+        val jettonWallets = tos.getAccountJettonWallets(accountId, testnet)
         return jettonWallets.mapNotNull { jettonWallet ->
             val data = withRetry { tos.getJettonWalletData(jettonWallet, testnet) }
                 ?: return@mapNotNull null
@@ -535,16 +536,13 @@ class API(
 
     private fun jettonTokenFromNode(master: String, testnet: Boolean): TokenEntity? {
         val meta = withRetry { tos.getTokenData(master, testnet) } ?: return null
-        if (meta.optString("@type") != "ext.tokens.jettonMasterData") return null
-        val offchain = fetchTep64Metadata(meta.optString("jetton_metadata_uri"))
-        fun value(nodeKey: String, jsonKey: String): String? =
-            meta.optString(nodeKey).takeIf { it.isNotBlank() }
-                ?: offchain?.optString(jsonKey)?.takeIf { it.isNotBlank() }
-        val symbol = value("jetton_symbol", "symbol") ?: "JETTON"
-        val name = value("jetton_name", "name")
-            ?: "Jetton ${master.takeLast(6)}"
-        val decimals = value("jetton_decimals", "decimals")?.toIntOrNull() ?: 9
-        val image = value("jetton_image", "image")
+        if (meta.optString("@type") != "ext.tokens.tokenMasterData") return null
+        val metadata = TosTokenMetadata(meta)
+        val offchain = fetchTep64Metadata(metadata.uri)
+        val symbol = metadata.symbol(offchain)
+        val name = metadata.name(master, offchain)
+        val decimals = metadata.decimals(offchain)
+        val image = metadata.image(offchain)
         return TokenEntity(
             blockchain = network.tos.wallet.api.entity.value.Blockchain.TON,
             address = master,
