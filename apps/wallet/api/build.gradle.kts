@@ -51,4 +51,5 @@ dependencies {
 tasks.withType<Test>().configureEach {
     inputs.property("tosTestRpc", providers.environmentVariable("TOS_TEST_RPC").orElse(""))
     inputs.property("tosTestAddress", providers.environmentVariable("TOS_TEST_ADDRESS").orElse(""))
+    inputs.property("tosTokenMetadataTestUrl", providers.environmentVariable("TOS_TOKEN_METADATA_TEST_URL").orElse(""))
 }

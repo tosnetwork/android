@@ -8,10 +8,19 @@ import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class TosTokenOffchainMetadataTest {
     private fun decode(text: String) = TosTokenOffchainMetadata.decode(text.toByteArray(Charsets.UTF_8))
+
+    /** Explicit network acceptance; ordinary CI still runs the hermetic cases below. */
+    @Test fun explicitLiveHTTPSFixtureUsesProductionClient() {
+        val uri = System.getenv("TOS_TOKEN_METADATA_TEST_URL").orEmpty()
+        assumeTrue("Requires an explicitly selected immutable HTTPS QA fixture", uri.isNotEmpty())
+        val result = TosTokenOffchainMetadataClient().read(uri)
+        assertEquals(TosTokenOffchainMetadata("TOS HTTPS QA", "HTTPSQA", 6), result)
+    }
 
     @Test fun issuerFieldsAndPrecisionAreBoundedWithoutFloatingPoint() {
         assertEquals(TosTokenOffchainMetadata("测试币", "CR", 6), decode("""{"name":"测试币","symbol":"CR","decimals":"6"}"""))
