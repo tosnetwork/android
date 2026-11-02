@@ -45,6 +45,7 @@ class QuantumTokenAssets internal constructor(
                 return QuantumTokenAssets(owner.snapshot, emptyList(), false, false, 0, true)
             }
             val tokens = ArrayList<Token>()
+            val metadataClient = network.tos.wallet.api.tos.TosTokenOffchainMetadataClient()
             var unread = 0
             // Do not let a large or hostile discovery index hold a refresh indefinitely.
             val deadline = System.nanoTime() + 30_000_000_000L
@@ -63,8 +64,12 @@ class QuantumTokenAssets internal constructor(
                 }
                 val content = try { TokenContent.decode(observed.masterState.content) }
                 catch (error: Exception) { rethrowCancellation(error); null }
-                tokens.add(Token(hint.master, hint.wallet, observed.balance, content?.name, content?.symbol,
-                    content?.decimals, content?.uri, content == null))
+                val needsRemote = content?.uri != null && (content.name == null || content.symbol == null || content.decimals == null)
+                val remote = if (needsRemote) try { metadataClient.read(checkNotNull(content?.uri)) }
+                    catch (error: Exception) { rethrowCancellation(error); null } else null
+                tokens.add(Token(hint.master, hint.wallet, observed.balance, content?.name ?: remote?.name,
+                    content?.symbol ?: remote?.symbol, content?.decimals ?: remote?.decimals,
+                    content?.uri, content == null || (needsRemote && remote == null)))
             }
             // Reads share this checkpoint; none may be returned as current after its freshness window.
             owner.requireFresh(System.currentTimeMillis() / 1000)
