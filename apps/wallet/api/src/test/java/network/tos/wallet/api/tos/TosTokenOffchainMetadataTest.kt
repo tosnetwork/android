@@ -22,6 +22,11 @@ class TosTokenOffchainMetadataTest {
         assertEquals(TosTokenOffchainMetadata("TOS HTTPS QA", "HTTPSQA", 6), result)
     }
 
+    @Test fun lenientQuotedKeysCannotHideDepthFromTheMetadataLimit() {
+        val input = "{'ignore\"':" + "[".repeat(20) + "0" + "]".repeat(20) + ",'tail\"':0}"
+        assertThrows(Exception::class.java) { decode(input) }
+    }
+
     @Test fun issuerFieldsAndPrecisionAreBoundedWithoutFloatingPoint() {
         assertEquals(TosTokenOffchainMetadata("测试币", "CR", 6), decode("""{"name":"测试币","symbol":"CR","decimals":"6"}"""))
         assertEquals(9, decode("{}").decimals)
@@ -34,7 +39,8 @@ class TosTokenOffchainMetadataTest {
 
     @Test fun malformedOversizedAndDeepJSONAreRejectedBeforeProjection() {
         for (value in listOf("[]", "{}{}", "{\"name\":7}", "{\"symbol\":\"${"x".repeat(33)}\"}",
-            "{\"name\":\"${"测".repeat(43)}\"}", "{\"ignored\":" + "[".repeat(9) + "0" + "]".repeat(9) + "}")) {
+            "{\"name\":\"${"测".repeat(43)}\"}", "{\"ignored\":" + "[".repeat(9) + "0" + "]".repeat(9) + "}",
+            "{'decimals':'6'}", "{decimals:6}", "{\"decimals\":6,}")) {
             assertThrows(Exception::class.java) { decode(value) }
         }
         assertThrows(Exception::class.java) { TosTokenOffchainMetadata.decode(byteArrayOf(123, 34, -1, 34, 58, 48, 125)) }

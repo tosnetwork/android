@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.Authenticator
 import okhttp3.CookieJar
 import okhttp3.ConnectionPool
@@ -49,6 +51,9 @@ data class TosTokenOffchainMetadata(val name: String?, val symbol: String?, val 
                 }
             }
             require(started && finished && !quoted && stack.isEmpty())
+            // JSONObject accepts non-JSON quoted keys; those can disagree with
+            // the scanner's string boundaries and conceal excessive nesting.
+            require(Json.parseToJsonElement(text) is JsonObject)
             val json = JSONObject(text)
             fun field(key: String, cap: Int): String? {
                 val value = json.opt(key)
