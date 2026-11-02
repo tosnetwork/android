@@ -88,6 +88,54 @@ class QuantumAccountReader(
         return Observation(id, identity, profile, network, proof, account.snapshot(now())).also { it.requireFresh(now()) }
     }
 
+    /** Token discovery rows are hints; only this proof path returns verified units. */
+    internal data class TokenObservation(
+        val owner: Observation,
+        val master: org.ton.block.AddrStd,
+        val wallet: org.ton.block.AddrStd,
+        val masterState: network.tos.blockchain.ton.contract.TokenMasterState,
+        val state: network.tos.blockchain.ton.contract.TokenWalletState?,
+        private val masterProof: QuantumVerifiedRead,
+        private val walletProof: QuantumVerifiedRead,
+    ) {
+        val balance: java.math.BigInteger get() = state?.balance ?: java.math.BigInteger.ZERO
+        fun requireFresh(now: Long) {
+            owner.requireFresh(now)
+            for ((proof, address) in listOf(masterProof to master, walletProof to wallet)) {
+                proof.requireLive(now, MAXIMUM_AGE)
+                owner.network.requireSameCheckpoint(proof)
+                require(now - proof.provenAccountTime(rawAddressFor(address)) in -60..MAXIMUM_AGE)
+            }
+        }
+    }
+
+    internal fun observeReferenceToken(owner: Observation, master: org.ton.block.AddrStd,
+                                       wallet: org.ton.block.AddrStd): TokenObservation {
+        val code = network.tos.blockchain.ton.contract.TokenContractCodes.referenceWallet
+        val masterCode = network.tos.blockchain.ton.contract.TokenContractCodes.referenceMaster
+        val tokenCodec = network.tos.blockchain.ton.contract.TokenWalletState
+        owner.requireFresh(now())
+        require(wallet == tokenCodec.address(owner.identity.address, master, code)) { "Unbound Token index row" }
+        val session = QuantumProofSession(context, owner.id, owner.profile.anchor())
+        fun read(address: org.ton.block.AddrStd): QuantumVerifiedRead {
+            val proof = session.readBound(owner.network.requestAtCheckpoint(rawAddressFor(address), maximumAge = MAXIMUM_AGE), now(), transport)
+            owner.network.requireSameCheckpoint(proof)
+            proof.requireLive(now(), MAXIMUM_AGE)
+            return proof
+        }
+        val masterProof = read(master)
+        val masterBytes = masterProof.accountState(rawAddressFor(master), masterCode.hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) })
+        val masterData = network.tos.blockchain.ton.contract.TosQuantumAccountState.data(masterBytes, master, masterCode)
+        val masterState = network.tos.blockchain.ton.contract.TokenMasterState.decode(masterData, code)
+        val walletProof = read(wallet)
+        val state = if (walletProof.provenAccountState(rawAddressFor(wallet)) == null) null else {
+            val bytes = walletProof.accountState(rawAddressFor(wallet), code.hash().toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) })
+            val data = network.tos.blockchain.ton.contract.TosQuantumAccountState.data(bytes, wallet, code)
+            tokenCodec.decode(data, wallet, owner.identity.address, master, code)
+        }
+        return TokenObservation(owner, master, wallet, masterState, state, masterProof, walletProof).also { it.requireFresh(now()) }
+    }
+
     companion object {
         private const val MAXIMUM_AGE = 300L
         internal fun rawAddressFor(address: org.ton.block.AddrStd): String =
