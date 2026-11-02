@@ -52,6 +52,13 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
             val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             target.setPadding(0, bars.top, 0, bars.bottom); insets
         }
+        if (!BuildConfig.DEBUG) {
+            status = text("Advanced recovery is unavailable in this release. Payments remain restricted.").apply {
+                contentDescription = "quantum.recovery.status"
+            }
+            button("Close", "quantum.recovery.close") { finish() }
+            return
+        }
         text("Secure recovered wallet")
         text("${wallet.label.name}\n${wallet.address}")
         text("Locking disables the current primary key. It does not replace your keys or finish recovery. Payments stay restricted until recovery and a new backup are complete.")
