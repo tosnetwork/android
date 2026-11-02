@@ -6,6 +6,9 @@ import org.ton.boc.BagOfCells
 import java.math.BigInteger
 import java.util.UUID
 
+class QuantumInsufficientBalanceException internal constructor() :
+    IllegalStateException("Insufficient value before fees")
+
 /** A proof-bound unsigned payment; no custody access or broadcast permission. */
 class QuantumPreparedPayment internal constructor(
     internal val observation: QuantumAccountReader.Observation, val intent: QuantumPaymentIntent,
@@ -33,7 +36,7 @@ class QuantumPreparedPayment internal constructor(
             }
             is QuantumSelfPayAccount.Status.Frozen -> error("Wallet is frozen")
         }
-        check(observedBalance >= intent.amount) { "Insufficient value before fees" }
+        if (observedBalance < intent.amount) throw QuantumInsufficientBalanceException()
         val time = maxOf(now, observation.network.masterchainTime,
             observation.proof.provenAccountTime(QuantumAccountReader.rawAddress(identity)))
         expiresAt = original?.deadline ?: (time + ttl); require(expiresAt in (time + 1)..0xffffffffL)
