@@ -1,6 +1,8 @@
 package network.tos.wallet.api.tos
 
 import androidx.collection.ArrayMap
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import network.tos.network.postJSON
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -117,6 +119,9 @@ class TosRpcClient(
                 }
             }
             check(finished && stack.isEmpty() && !quoted)
+            // JSONObject accepts single-quoted keys; its string boundaries can
+            // disagree with the scanner and conceal excessive nesting.
+            check(Json.parseToJsonElement(text) is JsonObject)
             val envelope = JSONObject(text)
             val replyId = envelope.opt("id")
             check(envelope.opt("jsonrpc") == "2.0" && (replyId is Int || replyId is Long) &&

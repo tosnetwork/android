@@ -41,6 +41,11 @@ class TosTokenReadTest {
         assertThrows(Exception::class.java) { client().callTokenRead("getTokenData", JSONObject()) }
         assertEquals(requests + 1, server.requestCount)
     }
+    @Test fun lenientQuotedKeysCannotHideNestingFromTheRPCLimit() {
+        val result = "{'ignore\"':" + "[".repeat(80) + "0" + "]".repeat(80) + ",'tail\"':0}"
+        enqueue("""{"jsonrpc":"2.0","id":1,"result":REPLACE}""".replace("REPLACE", result))
+        assertThrows(Exception::class.java) { client().callTokenRead("getTokenData", JSONObject()) }
+    }
     private val master = "0:" + "22".repeat(32)
     private val wallet = "0:" + "11".repeat(32)
     private fun index(rows: String, state: String = "{}") = JSONObject("""{"@type":"wallet.accountTokens","index_state":STATE,"tokens":ROWS}""".replace("STATE", state).replace("ROWS", rows))
