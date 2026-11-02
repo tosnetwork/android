@@ -585,6 +585,16 @@ class AccountRepository(
             .read(UUID.fromString(wallet.id), identity)
     }
 
+    /** One frozen endpoint and one authenticated owner checkpoint for the entire asset refresh. */
+    suspend fun readQuantumAssets(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumTokenAssets =
+        runInterruptible(Dispatchers.IO) {
+            val identity = requireNotNull(wallet.quantumIdentity) { "Quantum identity required" }
+            val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
+            val reader = QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
+            val rpc = network.tos.wallet.api.tos.TosRpcClient(quantumHttpClient, { endpoint.toString() })
+            network.tos.wallet.data.account.pq.QuantumTokenAssets.read(reader, rpc, UUID.fromString(wallet.id), identity)
+        }
+
     /** Proof-anchored cells for product history; no ordinary event cache is consulted. */
     suspend fun readQuantumHistory(wallet: WalletEntity, cursor: QuantumHistoryReader.Cursor? = null,
                                    limit: Int = 20): QuantumHistoryReader.Page {
@@ -1469,7 +1479,8 @@ class AccountRepository(
         UUID.fromString(wallet.id), requireNotNull(wallet.quantumIdentity))
     private suspend fun checkQuantumRecipient(wallet: WalletEntity, intent: network.tos.blockchain.ton.contract.QuantumPaymentIntent) {
         // Metadata is advisory only and cannot change the raw signed recipient.
-        val raw = "${intent.recipient.workchainId}:" + intent.recipient.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+        val recipient = intent.tokenTransfer?.recipient ?: intent.recipient
+        val raw = "${recipient.workchainId}:" + recipient.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
         val hints = api.resolveAccount(raw, wallet.testnet)
         check(hints?.isScam != true) { "Recipient is marked unsafe" }
         check(hints?.memoRequired != true || !intent.comment.isNullOrEmpty()) { "Recipient requires a comment" }

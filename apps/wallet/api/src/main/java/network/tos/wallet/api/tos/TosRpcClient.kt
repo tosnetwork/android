@@ -1,8 +1,15 @@
 package network.tos.wallet.api.tos
 
 import androidx.collection.ArrayMap
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import network.tos.network.postJSON
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicLong
@@ -62,6 +69,66 @@ class TosRpcClient(
             }
         }
         return json.opt("result") ?: JSONObject()
+    }
+
+    /** Bounded discovery/metadata only. The returned object is not a balance proof. */
+    fun callTokenRead(method: String, params: JSONObject, testnet: Boolean = false): JSONObject {
+        require(method in setOf("getAccountTokens", "getTokenData"))
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("Token read cancelled")
+        val (baseUrl, apiKey) = endpointConfigProvider?.invoke(testnet)
+            ?: (baseUrlProvider(testnet) to apiKeyProvider())
+        val id = idCounter.incrementAndGet()
+        val body = JSONObject().put("jsonrpc", "2.0").put("id", id).put("method", method).put("params", params).toString()
+        require(body.toByteArray(Charsets.UTF_8).size <= 16_384)
+        val request = Request.Builder().url(TosRpcEndpoint.jsonRpcUrl(baseUrl))
+            .post(body.toRequestBody("application/json".toMediaType())).apply {
+                apiKey?.takeIf { it.isNotBlank() }?.let { header("X-API-Key", it) }
+            }.build()
+        val boundedClient = httpClient.newBuilder().followRedirects(false).followSslRedirects(false)
+            .callTimeout(10, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
+        boundedClient.newCall(request).execute().use { response ->
+            check(response.isSuccessful)
+            val payload = checkNotNull(response.body)
+            val cap = 2_097_152
+            check(payload.contentLength() <= cap)
+            val bytes = ByteArrayOutputStream()
+            payload.byteStream().use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException("Token read cancelled")
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    check(count <= cap - bytes.size())
+                    bytes.write(buffer, 0, count)
+                }
+            }
+            val text = bytes.toString("UTF-8")
+            val stack = ArrayList<Char>()
+            var quoted = false; var escaped = false; var finished = false
+            for (character in text) {
+                if (!quoted && stack.isEmpty() && !character.isWhitespace()) check(!finished && character == '{')
+                if (quoted) {
+                    if (escaped) escaped = false else if (character == '\\') escaped = true else if (character == '"') quoted = false
+                } else when (character) {
+                    '"' -> quoted = true
+                    '{', '[' -> { stack.add(character); check(stack.size <= 64) }
+                    '}', ']' -> {
+                        check(stack.isNotEmpty() && stack.removeAt(stack.lastIndex) == if (character == '}') '{' else '[')
+                        if (stack.isEmpty()) finished = true
+                    }
+                }
+            }
+            check(finished && stack.isEmpty() && !quoted)
+            // JSONObject accepts single-quoted keys; its string boundaries can
+            // disagree with the scanner and conceal excessive nesting.
+            check(Json.parseToJsonElement(text) is JsonObject)
+            val envelope = JSONObject(text)
+            val replyId = envelope.opt("id")
+            check(envelope.opt("jsonrpc") == "2.0" && (replyId is Int || replyId is Long) &&
+                (replyId as Number).toLong() == id && !envelope.has("error") &&
+                (!envelope.has("ok") || envelope.opt("ok") == true))
+            return envelope.getJSONObject("result")
+        }
     }
 
     fun callObject(method: String, params: JSONObject = JSONObject(), testnet: Boolean = false): JSONObject {

@@ -368,6 +368,11 @@ class WalletViewModel(
         refresh: Boolean
     ): State.Assets? = withContext(Dispatchers.IO) {
         try {
+            if (wallet.isQuantum) {
+                val assets = assetsManager.getQuantumDisplayAssets(wallet, currency)
+                return@withContext State.Assets(currency, assets.list.sort(wallet, settingsRepository), !refresh,
+                    RatesEntity.empty(currency), assets.notice)
+            }
             assetsManager.getAssets(wallet, currency, refresh)?.let {
                 State.Assets(
                     currency = currency,

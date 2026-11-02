@@ -13,6 +13,7 @@ class QuantumInsufficientBalanceException internal constructor() :
 class QuantumPreparedPayment internal constructor(
     internal val observation: QuantumAccountReader.Observation, val intent: QuantumPaymentIntent,
     now: Long, ttl: Long, original: QuantumPaymentOutbox.Entry? = null,
+    private val tokenObservation: QuantumAccountReader.TokenObservation? = null,
 ) {
     val identity = observation.identity
     val profile = observation.profile
@@ -37,6 +38,13 @@ class QuantumPreparedPayment internal constructor(
             is QuantumSelfPayAccount.Status.Frozen -> error("Wallet is frozen")
         }
         if (observedBalance < intent.amount) throw QuantumInsufficientBalanceException()
+        intent.tokenTransfer?.let { token ->
+            val observed = checkNotNull(tokenObservation) { "Token proof required before payment" }
+            require(token.owner == identity.address && observed.owner === observation &&
+                observed.master == token.master && observed.wallet == token.wallet) { "Token proof binding mismatch" }
+            observed.requireFresh(now)
+            check(observed.balance >= token.units) { "Insufficient Token balance" }
+        }
         val time = maxOf(now, observation.network.masterchainTime,
             observation.proof.provenAccountTime(QuantumAccountReader.rawAddress(identity)))
         expiresAt = original?.deadline ?: (time + ttl); require(expiresAt in (time + 1)..0xffffffffL)
@@ -56,6 +64,7 @@ class QuantumPreparedPayment internal constructor(
     internal fun simulationRequest() = simulationBytes.copyOf()
     fun requireFresh(now: Long) {
         observation.requireFresh(now); network.requireSameCheckpoint(observation.proof, now)
+        tokenObservation?.requireFresh(now)
         check(now in 1 until expiresAt) { "Authorization expired" }
     }
 }

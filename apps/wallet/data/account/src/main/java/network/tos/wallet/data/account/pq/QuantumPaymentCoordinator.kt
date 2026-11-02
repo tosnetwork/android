@@ -63,10 +63,23 @@ class QuantumPaymentCoordinator internal constructor(
     suspend fun pending(id: UUID, identity: TosQuantumSelfPayIdentity): QuantumPaymentOutbox.Entry? = perform(identity) { job ->
         job.check(); pending(QuantumPaymentOutbox(context), id, identity)
     }
+    private fun tokenProof(reader: QuantumAccountReader, owner: QuantumAccountReader.Observation,
+                           intent: QuantumPaymentIntent): QuantumAccountReader.TokenObservation? = intent.tokenTransfer?.let { token ->
+        require(token.owner == owner.identity.address) { "Token owner differs from signing wallet" }
+        val observed = reader.observeToken(owner, token.master, token.wallet)
+        val content = network.tos.blockchain.ton.contract.TokenContent.decode(observed.masterState.content)
+        val precision = content.decimals ?: network.tos.wallet.api.tos.TosTokenOffchainMetadataClient()
+            .read(checkNotNull(content.uri)).decimals
+        require(token.decimals == precision) { "Token precision changed; refresh before confirming" }
+        check(observed.balance >= token.units) { "Insufficient Token balance" }
+        return@let observed
+    }
     suspend fun prepare(id: UUID, identity: TosQuantumSelfPayIdentity, intent: QuantumPaymentIntent, ttl: Long = 120): QuantumPreparedPayment = perform(identity) { job ->
         require(ttl in 1..3600)
-        val observation = QuantumAccountReader(context, relay(job), now).observe(id, identity, intArrayOf(8, 19, 48))
-        job.check(); QuantumPreparedPayment(observation, intent, now(), ttl)
+        val reader = QuantumAccountReader(context, relay(job), now)
+        val observation = reader.observe(id, identity, intArrayOf(8, 19, 48))
+        val token = tokenProof(reader, observation, intent)
+        job.check(); QuantumPreparedPayment(observation, intent, now(), ttl, tokenObservation = token)
     }
     /** User consent for local signing/estimation only. This never broadcasts. */
     suspend fun authorizeAndEstimate(payment: QuantumPreparedPayment): QuantumPaymentQuote = perform(payment.identity) { job ->
@@ -106,8 +119,10 @@ class QuantumPaymentCoordinator internal constructor(
     suspend fun estimatePending(id: UUID, identity: TosQuantumSelfPayIdentity): QuantumPaymentQuote = perform(identity) { job ->
         val entry = checkNotNull(pending(QuantumPaymentOutbox(context), id, identity))
         check(entry.phase == QuantumPaymentOutbox.Phase.SIGNED) { "Query authenticated outcome before recovery" }
-        val observation = QuantumAccountReader(context, relay(job), now).observe(id, identity, intArrayOf(8, 19, 48))
-        val payment = QuantumPreparedPayment(observation, entry.intent, now(), 1, entry)
+        val reader = QuantumAccountReader(context, relay(job), now)
+        val observation = reader.observe(id, identity, intArrayOf(8, 19, 48))
+        val token = tokenProof(reader, observation, entry.intent)
+        val payment = QuantumPreparedPayment(observation, entry.intent, now(), 1, entry, token)
         job.check()
         val simulation = QuantumProofSession(context, id, payment.anchorBytes)
             .simulate(payment.simulationRequest(), now(), checkNotNull(entry.signedBOC), relay(job))
