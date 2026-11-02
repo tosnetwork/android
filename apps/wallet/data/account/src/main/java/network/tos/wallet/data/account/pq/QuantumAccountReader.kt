@@ -109,10 +109,11 @@ class QuantumAccountReader(
         }
     }
 
-    internal fun observeReferenceToken(owner: Observation, master: org.ton.block.AddrStd,
+    internal fun observeToken(owner: Observation, master: org.ton.block.AddrStd,
                                        wallet: org.ton.block.AddrStd): TokenObservation {
-        val code = network.tos.blockchain.ton.contract.TokenContractCodes.referenceWallet
-        val masterCode = network.tos.blockchain.ton.contract.TokenContractCodes.referenceMaster
+        val family = network.tos.blockchain.ton.contract.TokenContractCodes.family(owner.identity.address, master, wallet)
+        val code = family.wallet
+        val masterCode = family.master
         val tokenCodec = network.tos.blockchain.ton.contract.TokenWalletState
         owner.requireFresh(now())
         require(wallet == tokenCodec.address(owner.identity.address, master, code)) { "Unbound Token index row" }

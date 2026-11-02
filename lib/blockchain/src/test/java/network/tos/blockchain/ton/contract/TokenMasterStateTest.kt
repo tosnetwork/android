@@ -36,4 +36,18 @@ class TokenMasterStateTest {
         assertEquals(BagOfCells(fixture).roots.single().hash(), code.hash())
         assertNotEquals(TokenContractCodes.referenceMaster.hash(), code.hash())
     }
+    @Test fun nativeFamilyPinsAndDerivedAddressMatchIndependentFift() {
+        fun fixture(name: String) = BagOfCells(checkNotNull(javaClass.classLoader?.getResourceAsStream(name)).use { it.readBytes() }).roots.single()
+        val owner = AddrStd.parse("0:" + "11".repeat(32)); val master = AddrStd.parse("0:" + "22".repeat(32))
+        val wallet = AddrStd.parse("0:5c2e7defab4c288bc81524d1594af7a14a984c4d789ac2acf28a4e8b589f9293")
+        assertEquals(fixture("token-wallet-tol.boc").hash(), TokenContractCodes.nativeWallet.hash())
+        assertEquals(fixture("token-minter-tol.boc").hash(), TokenContractCodes.nativeMaster.hash())
+        assertEquals(wallet, TokenWalletState.address(owner, master, TokenContractCodes.nativeWallet))
+        assertEquals(BigInteger.ZERO, TokenWalletState.decode(fixture("token-native-wallet-data.boc"), wallet, owner, master, TokenContractCodes.nativeWallet).balance)
+        assertEquals("native-tol-v1", TokenContractCodes.family(owner, master, wallet).name)
+        val reference = TokenWalletState.address(owner, master, TokenContractCodes.referenceWallet)
+        assertEquals("sdk-func-v1", TokenContractCodes.family(owner, master, reference).name)
+        assertThrows(IllegalArgumentException::class.java) { TokenContractCodes.family(master, master, wallet) }
+    }
+
 }

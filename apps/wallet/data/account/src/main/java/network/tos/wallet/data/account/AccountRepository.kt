@@ -585,6 +585,16 @@ class AccountRepository(
             .read(UUID.fromString(wallet.id), identity)
     }
 
+    /** One frozen endpoint and one authenticated owner checkpoint for the entire asset refresh. */
+    suspend fun readQuantumAssets(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumTokenAssets =
+        runInterruptible(Dispatchers.IO) {
+            val identity = requireNotNull(wallet.quantumIdentity) { "Quantum identity required" }
+            val endpoint = TosRpcEndpoint.jsonRpcUrl(api.tosRpcEndpoint(false)).toHttpUrl()
+            val reader = QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
+            val rpc = network.tos.wallet.api.tos.TosRpcClient(quantumHttpClient, { endpoint.toString() })
+            network.tos.wallet.data.account.pq.QuantumTokenAssets.read(reader, rpc, UUID.fromString(wallet.id), identity)
+        }
+
     /** Proof-anchored cells for product history; no ordinary event cache is consulted. */
     suspend fun readQuantumHistory(wallet: WalletEntity, cursor: QuantumHistoryReader.Cursor? = null,
                                    limit: Int = 20): QuantumHistoryReader.Page {
