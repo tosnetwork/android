@@ -28,6 +28,12 @@ jobs:
         # The embedded proof verifier builds secp256k1 through autogen.sh,
         # which needs autotools that the hosted macOS image does not provide.
         run: brew install cmake ninja autoconf automake libtool pkg-config
+      - name: Install Android SDK native build tools
+        shell: bash
+        run: |
+          test -n "$ANDROID_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.22.1" "ndk;27.0.12077973"
+          test -x "$ANDROID_HOME/cmake/3.22.1/bin/cmake"
       - name: Install pinned Quantum Rust toolchain and platform targets
         shell: bash
         run: |
