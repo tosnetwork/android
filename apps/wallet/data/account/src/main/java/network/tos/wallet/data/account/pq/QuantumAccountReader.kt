@@ -125,6 +125,10 @@ class QuantumAccountReader(
         }
         private val encoded = stateJSON.copyOf()
         val stateJSON: ByteArray get() = encoded.copyOf()
+        fun provenShardTime(now: Long): Long {
+            requireFresh(now)
+            return proof.provenAccountTime(rawAddressFor(address))
+        }
         fun requireFresh(now: Long) {
             network.requireLive(now, MAXIMUM_AGE)
             network.requireSameCheckpoint(proof)

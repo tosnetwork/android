@@ -25,7 +25,9 @@ class PrivacyLiveTest {
 
     @Test fun authenticatedEmptyPoolSummaryRechecksFreshnessAndCancellation() = exerciseAuthenticatedPool(summary = true)
 
-    private fun exerciseAuthenticatedPool(summary: Boolean) {
+    @Test fun originalProtectedMasterFeedsTheUserObservationReader() = exerciseAuthenticatedPool(summary = true, originalMaster = true)
+
+    private fun exerciseAuthenticatedPool(summary: Boolean, originalMaster: Boolean = false) {
         val encoded = InstrumentationRegistry.getArguments().getString("privacyLiveConfig").orEmpty()
         assumeTrue("Provide privacyLiveConfig for isolated live-pool validation", encoded.isNotEmpty())
         val bytes = Base64.decode(encoded, Base64.NO_WRAP)
@@ -46,14 +48,30 @@ class PrivacyLiveTest {
         val original = JSONObject(fixture.toString(Charsets.UTF_8)).getJSONObject("accounts").getJSONObject("active")
             .getString("identity_boc").let { TosQuantumSelfPayIdentity.fromBoc(Base64.decode(it, Base64.NO_WRAP)) }
         val authority = original.wallet.initialAuthority
-        val identity = TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(QuantumSelfPayAuthority(3,
-            authority.namespace, authority.primaryKey, authority.rescueKey)))
+        // Public mnemonic already used by QuantumWalletCreationTest; no funded/user material.
+        val words = "twice half glass steak version only friend bone addict during joke offer fog punch panel true regular letter topple often afraid hint ready exhibit".split(" ")
+        val identity = if (!originalMaster) TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(QuantumSelfPayAuthority(3,
+            authority.namespace, authority.primaryKey, authority.rescueKey))) else {
+            var master = ByteArray(0); var primary = ByteArray(0); var rescue = ByteArray(0)
+            try {
+                master = network.tos.blockchain.TosQuantumMnemonic.masterAndWipePassword(words, CharArray(0))
+                primary = network.tos.security.pq.QuantumKdf.deriveAndWipe(network.tos.security.pq.QuantumKdf.Material.PRIMARY,
+                    master.copyOf(), authority.namespace, 3, 0, 0)
+                rescue = network.tos.security.pq.QuantumKdf.deriveAndWipe(network.tos.security.pq.QuantumKdf.Material.RESCUE,
+                    master.copyOf(), authority.namespace, 3, 0, 0)
+                TosQuantumSelfPayIdentity(TosQuantumSelfPayWallet(QuantumSelfPayAuthority(3, authority.namespace,
+                    network.tos.security.pq.QuantumCrypto.publicKey(network.tos.security.pq.QuantumRole.PRIMARY, primary),
+                    network.tos.security.pq.QuantumCrypto.publicKey(network.tos.security.pq.QuantumRole.RESCUE, rescue))))
+            } finally { master.fill(0); primary.fill(0); rescue.fill(0) }
+        }
         val address = AddrStd.parse("0:" + config.getString("pool_account"))
         val code = BagOfCells(Base64.decode(config.getString("code_boc"), Base64.NO_WRAP)).roots.single()
         val client = OkHttpClient()
         val transport = QuantumProofHttpTransport(endpoint, client)
         fun now() = System.currentTimeMillis() / 1000
+        val custody = if (originalMaster) QuantumCreationCustody(context) else null
         try {
+            custody?.saveMnemonic(id, words)
             val session = QuantumProofSession(context, id, profile.anchor())
             val request = JSONObject().put("mode", "live").put("max_age_seconds", 300)
                 .put("config_params", org.json.JSONArray(listOf(19, 21))).toString().toByteArray()
@@ -63,6 +81,22 @@ class PrivacyLiveTest {
             val manifestHash = hash("poseidon_manifest_hash")
             val vkHash = hash("groth16_vk_hash")
             val observation = reader.observePool(id, identity, profile, address, code, profileHash, manifestHash, vkHash)
+            if (originalMaster) {
+                val record = QuantumCreationRecord(id, profile, identity)
+                record.save(context)
+                val selection = network.tos.wallet.data.account.privacy.PrivacyPoolSelection(profile,
+                    "0:" + config.getString("pool_account"), Base64.decode(config.getString("code_boc"), Base64.NO_WRAP),
+                    config.getString("profile_hash"), config.getString("poseidon_manifest_hash"), config.getString("groth16_vk_hash"))
+                val observed = PrivacyBalanceReader(reader, QuantumHistoryHttpTransport(endpoint, client), ::now)
+                    .read(QuantumCreationRecord.load(context, id), selection, { false }) { body ->
+                        requireNotNull(custody).withOriginalPrivacyMaster(id, identity, body)
+                    }
+                assertEquals("0", observed.summary.unspentBalance)
+                assertEquals("0", observed.summary.totalOutputs)
+                assertEquals(selection.pool, observed.pool); assertEquals(3, observed.globalId)
+                assertTrue(observed.checkedAt - observed.provenShardTime in -60..300)
+                assertEquals("Explicit local deployment pins", observed.configurationSource)
+            }
             val completed = PrivacyHistorySynchronizer.synchronize(observation,
                 QuantumHistoryHttpTransport(endpoint, client), { false }, ::now)
             completed.use {
@@ -119,6 +153,8 @@ class PrivacyLiveTest {
                 assertArrayEquals(ByteArray(32), seed)
             }
         } finally {
+            custody?.delete(id)
+            if (originalMaster) File(context.noBackupFilesDir, "quantum-creation/$id.json").delete()
             client.dispatcher.executorService.shutdown()
             client.connectionPool.evictAll()
             File(context.noBackupFilesDir, "quantum-proof-checkpoints/$id").deleteRecursively()

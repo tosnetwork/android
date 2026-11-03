@@ -5,6 +5,16 @@ import org.junit.Test
 import java.util.UUID
 
 class PrivacyHistoryLeaseTest {
+    @Test fun transferredLeaseMustBeHeldForTheExactObservation() {
+        val a = UUID.randomUUID(); val b = UUID.randomUUID()
+        PrivacyHistorySynchronizer.Lease(a).use { lease ->
+            lease.requireHeld(a)
+            assertThrows(IllegalStateException::class.java) { lease.requireHeld(b) }
+            lease.requireHeld(a)
+            lease.close()
+            assertThrows(IllegalStateException::class.java) { lease.requireHeld(a) }
+        }
+    }
     @Test fun boundsDuplicateFailureAndIdempotentRelease() {
         val a = UUID.randomUUID(); val b = UUID.randomUUID(); val c = UUID.randomUUID()
         PrivacyHistorySynchronizer.Lease(a).use { first ->

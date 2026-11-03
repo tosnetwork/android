@@ -18,6 +18,7 @@ internal object PrivacyHistorySynchronizer {
         override fun close() {
             if (held.compareAndSet(true, false)) synchronized(active) { active.remove(id) }
         }
+        internal fun requireHeld(expected: UUID) { check(id == expected && held.get()) { "Privacy history lease mismatch" } }
     }
     class Completed internal constructor(observation: QuantumAccountReader.PoolObservation,
                                          private val history: PrivacyHistoryWalk.Completed,
@@ -58,8 +59,8 @@ internal object PrivacyHistorySynchronizer {
     }
     /** Capacity remains held until the completed native ledger/archive is closed. */
     fun synchronize(observation: QuantumAccountReader.PoolObservation, query: QuantumHistoryReader.Query,
-                    stopped: () -> Boolean, now: () -> Long): Completed {
-        val lease = Lease(observation.id)
+                    stopped: () -> Boolean, now: () -> Long, lease: Lease = Lease(observation.id)): Completed {
+        lease.requireHeld(observation.id)
         try {
             val raw = PrivacyHistoryWalk.Query { address, lt, hash ->
                 val encoded = query.transaction(address, lt, hash)
