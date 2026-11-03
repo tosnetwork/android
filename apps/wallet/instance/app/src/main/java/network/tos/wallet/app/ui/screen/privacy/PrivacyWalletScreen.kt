@@ -10,6 +10,8 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import network.tos.wallet.app.R
@@ -29,7 +31,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** Separate privacy wallet and receipt screen. */
-class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_pq_wallets, wallet) {
+class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConfiguration? = null) : WalletContextScreen(R.layout.fragment_pq_wallets, wallet) {
+    data class PaymentConfiguration(val phase1: java.io.File, val ceremony: java.io.File, val approvedRelay: ByteArray)
+
     override val fragmentName = "PrivacyWalletScreen"
     override val viewModel: BaseWalletVM.EmptyViewViewModel by viewModel()
     private val accounts: AccountRepository by inject()
@@ -74,6 +78,9 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
             imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             this@PrivacyWalletScreen.layout.addView(this)
         }
+        payment?.let { configuration ->
+            button("Send privately through Tor", "privacy.send") { startPayment(configuration) }
+        }
         button("Check pending private payment", "privacy.pending") { refresh(forPending = true) }
         button("Check private recipient", "privacy.recipient.check") { validateRecipient() }
         for ((text, id) in listOf("Private transfer" to "send",
@@ -92,6 +99,72 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
         this.text = text; contentDescription = id; isAllCaps = false
         setOnClickListener { action() }; this@PrivacyWalletScreen.layout.addView(this)
     }
+    private fun startPayment(configuration: PaymentConfiguration) {
+        if (job?.isActive == true || !foreground.get()) return
+        val input = recipient.text.toString().trim()
+        val destination = runCatching { android.util.Base64.decode(input, android.util.Base64.NO_WRAP) }.getOrNull()
+        if (destination?.size != 2573 || android.util.Base64.encodeToString(destination, android.util.Base64.NO_WRAP) != input) {
+            status.text = "Enter a valid private recipient descriptor."
+            return
+        }
+        val amountInput = android.widget.EditText(requireContext()).apply {
+            hint = "Amount in nanoTOS"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            isSaveEnabled = false
+        }
+        val tag = sequence.incrementAndGet()
+        val stopped = { !foreground.get() || sequence.get() != tag }
+        job = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val value = confirmPayment("Private payment amount", null, amountInput) ?: return@launch
+                val amount = value.toULongOrNull()
+                if (amount == null || amount == 0uL || amount.toString() != value) {
+                    status.text = "Enter a positive amount in nanoTOS."
+                    return@launch
+                }
+                if (!passcodes.hasPinCode() || stopped()) return@launch
+                authenticating = true
+                val allowed = try { passcodes.confirmation(requireContext(), "Authorize private payment") }
+                    finally { authenticating = false }
+                if (!allowed || stopped()) return@launch
+                status.text = "Verifying recipient and loading the payment prover…"
+                check(accounts.validatePrivacyRecipient(wallet, input, stopped))
+                accounts.loadPrivacyPaymentProver(wallet, configuration.phase1, configuration.ceremony, stopped).use { prover ->
+                    status.text = "Requesting a relay quote through Tor…"
+                    accounts.requestPrivacyRelayOffer(wallet, configuration.approvedRelay, stopped).use { offer ->
+                        val details = offer.details()
+                        val confirmed = confirmPayment("Confirm private payment",
+                            "Amount ${amount} nanoTOS\nRelay fee ${details.fee} nanoTOS\nRoute Tor\nRecipient ${input.take(20)}…${input.takeLast(20)}")
+                        if (confirmed == null || stopped()) return@launch
+                        status.text = "Preparing and submitting the private payment through Tor…"
+                        accounts.stagePrivacyPayment(wallet, destination, value, details.fee, details.identity, prover, offer, stopped)
+                            .use { accounts.submitOrRetryPrivacyPayment(it, stopped) }
+                        if (!stopped()) status.text = "Relay responded. Check pending payment to verify chain confirmation."
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (!stopped()) status.text = "Unable to complete private payment through Tor. Check pending payment before trying again."
+            }
+        }
+    }
+
+    private suspend fun confirmPayment(
+        title: String, message: String?, input: android.widget.EditText? = null,
+    ): String? = suspendCancellableCoroutine { continuation ->
+        val dialog = android.app.AlertDialog.Builder(requireContext()).setTitle(title)
+            .setNegativeButton("Cancel") { _, _ -> if (continuation.isActive) continuation.resume(null) }
+            .setPositiveButton("Continue") { _, _ ->
+                if (continuation.isActive) continuation.resume(input?.text?.toString() ?: "")
+            }
+        if (input != null) dialog.setView(input)
+        if (message != null) dialog.setMessage(message)
+        val shown = dialog.create()
+        shown.setOnDismissListener { if (continuation.isActive) continuation.resume(null) }
+        continuation.invokeOnCancellation { view?.post { shown.dismiss() } }
+        shown.show()
+    }
+
     private fun validateRecipient() {
         if (job?.isActive == true || !foreground.get()) return
         val input = recipient.text.toString()
