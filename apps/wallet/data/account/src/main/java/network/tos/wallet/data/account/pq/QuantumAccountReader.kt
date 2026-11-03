@@ -99,7 +99,30 @@ class QuantumAccountReader(
         val address: org.ton.block.AddrStd,
         stateJSON: ByteArray,
         private val proof: QuantumVerifiedRead,
+        poolDataBOC: ByteArray,
+        accountRoot: ByteArray,
     ) {
+        private val poolData = poolDataBOC.copyOf()
+        private val rootHash = accountRoot.copyOf()
+        /** All initial expectations originate in this verified same-checkpoint capability. */
+        fun replayRequest(now: Long): ByteArray {
+            requireFresh(now)
+            val raw = rawAddressFor(address)
+            require(raw.startsWith("0:") && rootHash.size == 32)
+            val head = proof.provenTransactionHead(raw)
+            val gas = network.provenConfigParam(21)
+            fun root(bytes: ByteArray) = BagOfCells(bytes).roots.single().also {
+                require(it.type == CellType.ORDINARY && it.levelMask.level == 0)
+            }
+            fun hex(bytes: ByteArray) = QuantumPaymentQuote.hex(bytes)
+            fun base64(bytes: ByteArray) = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            return JSONObject().put("version", 1).put("global_id", profile.globalId)
+                .put("account_id", raw.substring(2)).put("last_hash", head.hash).put("last_lt", head.logicalTime)
+                .put("account_root", hex(rootHash)).put("shard_time", proof.provenAccountTime(raw).toString())
+                .put("pool_state_boc", base64(poolData)).put("pool_data_hash", hex(root(poolData).hash().toByteArray()))
+                .put("gas_boc", base64(gas)).put("gas_hash", hex(root(gas).hash().toByteArray()))
+                .toString().toByteArray(Charsets.UTF_8)
+        }
         private val encoded = stateJSON.copyOf()
         val stateJSON: ByteArray get() = encoded.copyOf()
         fun requireFresh(now: Long) {
@@ -143,7 +166,8 @@ class QuantumAccountReader(
             java.security.MessageDigest.getInstance("SHA-256").digest(key).contentEquals(keyPin)) {
             "Privacy pool deployment pins do not match"
         }
-        return PoolObservation(id, profile, network, address, decoded, proof).also { it.requireFresh(now()) }
+        return PoolObservation(id, profile, network, address, decoded, proof,
+            org.ton.boc.BagOfCells(data).toByteArray(), BagOfCells(bytes).roots.single().hash().toByteArray()).also { it.requireFresh(now()) }
     }
 
     /** Token discovery rows are hints; only this proof path returns verified units. */

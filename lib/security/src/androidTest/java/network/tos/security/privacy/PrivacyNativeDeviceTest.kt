@@ -15,6 +15,60 @@ class PrivacyNativeDeviceTest {
         return assets.open(name).bufferedReader().use { JSONObject(it.readText()) }
     }
 
+    @Test fun historyWalkVerifiesThenReplaysAndOwnsItsArchive() {
+        val f = fixture("privacy-session.json")
+        val request = f.getJSONObject("request").toString().toByteArray(Charsets.UTF_8)
+        val tx = f.getJSONArray("transactions")
+        val bocs = (0 until tx.length()).map { android.util.Base64.decode(tx.getString(it), android.util.Base64.NO_WRAP) }
+        val original = bocs.map { it.copyOf() }
+        var cursor = bocs.lastIndex; var checks = 0; var previous: ULong? = null
+        try {
+            PrivacyHistoryWalk.replay(request, PrivacyHistoryWalk.Query { address, lt, hash ->
+                assertEquals("0:" + f.getJSONObject("request").getString("account_id"), address)
+                assertTrue(hash.matches(Regex("[0-9a-f]{64}")))
+                previous?.let { assertTrue(lt.toULong() < it) }; previous = lt.toULong()
+                if (cursor < bocs.lastIndex) bocs[cursor + 1][0] = (bocs[cursor + 1][0].toInt() xor 1).toByte()
+                bocs[cursor--]
+            }, recheck = { checks++ }).use { completed ->
+                assertEquals(2, checks); assertEquals(-1, cursor)
+                completed.transactions().zip(original).forEach { (actual, expected) -> assertArrayEquals(expected, actual) }
+                val outside = completed.transactions(); outside[0][0] = (outside[0][0].toInt() xor 1).toByte()
+                assertArrayEquals(original[0], completed.transactions()[0])
+                assertEquals("13", JSONObject(String(completed.info(), Charsets.UTF_8)).getString("total_outputs"))
+                completed.close()
+                assertThrows(IllegalStateException::class.java) { completed.transactions() }
+                assertThrows(IllegalStateException::class.java) { completed.info() }
+            }
+        } catch (failure: Exception) {
+            throw AssertionError("Valid fetched history did not remain isolated", failure)
+        }
+    }
+    @Test fun historyWalkRejectsBadRPCFinalRecheckCancellationAndDeadline() {
+        val f = fixture("privacy-session.json")
+        val request = f.getJSONObject("request").toString().toByteArray(Charsets.UTF_8)
+        val tx = f.getJSONArray("transactions")
+        val bocs = (0 until tx.length()).map { android.util.Base64.decode(tx.getString(it), android.util.Base64.NO_WRAP) }
+        assertThrows(IllegalStateException::class.java) {
+            PrivacyHistoryWalk.replay(request, PrivacyHistoryWalk.Query { _, _, _ -> bocs.first() }, recheck = {}).use { }
+        }
+        var checks = 0; var cursor = bocs.lastIndex
+        val finalError = assertThrows(IllegalArgumentException::class.java) {
+            PrivacyHistoryWalk.replay(request, PrivacyHistoryWalk.Query { _, _, _ -> bocs[cursor--] }, recheck = {
+                checks++; require(checks != 2) { "Final proof recheck refused" }
+            }).use { }
+        }
+        assertEquals("Final proof recheck refused", finalError.message); assertEquals(2, checks); assertEquals(-1, cursor)
+        for (deadline in listOf(false, true)) {
+            var cancelled = false; var clock = 0L; var queries = 0
+            val error = assertThrows(IllegalStateException::class.java) {
+                PrivacyHistoryWalk.replay(request, PrivacyHistoryWalk.Query { _, _, _ ->
+                    queries++; if (deadline) clock = 601_000_000_000L else cancelled = true; bocs.last()
+                }, stopped = { cancelled }, recheck = {}, nanoTime = { clock }).use { }
+            }
+            assertEquals("Privacy sync cancelled or expired", error.message); assertEquals(1, queries)
+        }
+    }
+
     @Test fun replaySessionRequiresFinishAndClosesFailedOwners() {
         val fixture = fixture("privacy-session.json")
         val request = fixture.getJSONObject("request").toString().toByteArray(Charsets.UTF_8)
