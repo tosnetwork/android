@@ -85,11 +85,15 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         }
         button("Check pending private payment", "privacy.pending") { refresh(forPending = true) }
         button("Check private recipient", "privacy.recipient.check") { validateRecipient() }
-        for ((text, id) in listOf("Private transfer" to "send",
-            "Deposit: ordinary wallet → privacy pool" to "deposit", "Withdraw: privacy pool → ordinary address" to "withdraw")) {
+        if (payment == null) button("Private transfer", "privacy.send") {}.isEnabled = false
+        for ((text, id) in listOf("Deposit: ordinary wallet → privacy pool" to "deposit", "Withdraw: privacy pool → ordinary address" to "withdraw")) {
             button(text, "privacy.$id") {}.isEnabled = false
         }
-        label("Private transfers, deposits and withdrawals are still in development.", "privacy.actions.unavailable")
+        label(
+            if (payment == null) "Private transfers, deposits and withdrawals are still in development."
+            else "Tor payments are enabled for this test wallet. Deposits and withdrawals are still in development.",
+            "privacy.actions.unavailable",
+        )
         button("Return to ordinary wallet", "privacy.close") { finish() }
     }
 

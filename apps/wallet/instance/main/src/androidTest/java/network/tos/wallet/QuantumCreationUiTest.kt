@@ -411,7 +411,7 @@ class QuantumCreationUiTest {
             assertTrue(File(context.noBackupFilesDir, "quantum-backup-export").listFiles()!!.isEmpty())
             val id = createdDocument.get().orEmpty()
             assertTrue("Expected only a public document identifier", id.matches(Regex("saved-[0-9a-f-]{36}")))
-            val uri = android.provider.DocumentsContract.buildDocumentUri("network.tos.wallet.test.public.backups", id)
+            val uri = android.provider.DocumentsContract.buildDocumentUri("${instrumentation.context.packageName}.public.backups", id)
             val cipher = checkNotNull(context.contentResolver.openInputStream(uri)).use { input ->
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
@@ -1303,7 +1303,7 @@ class QuantumCreationUiTest {
                 .textStartsWith("Replacement-key backup saved, read back and recorded")), 90000))
             val document = created.get().orEmpty()
             assertTrue(document.matches(Regex("saved-[0-9a-f-]{36}")))
-            val uri = android.provider.DocumentsContract.buildDocumentUri("network.tos.wallet.test.public.backups", document)
+            val uri = android.provider.DocumentsContract.buildDocumentUri("${instrumentation.context.packageName}.public.backups", document)
             val cipher = checkNotNull(context.contentResolver.openInputStream(uri)).use { input ->
                 val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
                 while (true) {
