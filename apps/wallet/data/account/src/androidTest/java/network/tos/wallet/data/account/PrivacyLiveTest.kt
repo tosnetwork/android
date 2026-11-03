@@ -30,10 +30,14 @@ class PrivacyLiveTest {
     @Test fun consecutiveReceiptsReserveDistinctIndices() =
         exerciseAuthenticatedPool(summary = false, originalMaster = true, receive = true)
 
+    @Test fun installedPaymentProverAuditsAgainstVerifiedPool() =
+        exerciseAuthenticatedPool(summary = false, prover = true)
+
     private fun exerciseAuthenticatedPool(
         summary: Boolean,
         originalMaster: Boolean = false,
         receive: Boolean = false,
+        prover: Boolean = false,
     ) {
         val encoded = InstrumentationRegistry.getArguments().getString("privacyLiveConfig").orEmpty()
         assumeTrue("Provide privacyLiveConfig for isolated live-pool validation", encoded.isNotEmpty())
@@ -132,13 +136,18 @@ class PrivacyLiveTest {
                 assertEquals("Explicit local deployment pins", observed.configurationSource)
             }
             val completed = PrivacyHistorySynchronizer.synchronize(observation,
-                QuantumHistoryHttpTransport(endpoint, client), { false }, ::now)
+                QuantumHistoryHttpTransport(endpoint, client), { false }, ::now, forReceive = prover)
             completed.use {
                 assertTrue(it.transactions().isNotEmpty())
                 assertFalse(it.intentAccepted(ByteArray(32).apply { this[31] = 1 }, ::now))
                 val info = JSONObject(it.info(now()).toString(Charsets.UTF_8))
                 assertEquals("0", info.getString("total_outputs"))
                 assertEquals("0", info.getString("native_liability"))
+                if (prover) {
+                    val root = java.io.File(context.filesDir, "tos-privacy-prover")
+                    it.loadPaymentProver(java.io.File(root, "phase1-zcash-2m15.bin"),
+                        java.io.File(root, "ceremony"), ::now).use { }
+                }
                 if (summary) {
                     // Public deterministic test seed; this empty-pool case does not prove
                     // nonempty private note discovery, ownership or product backup recovery.
