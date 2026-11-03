@@ -11,10 +11,40 @@ plugins {
 val isCI = project.hasProperty("android.injected.signing.store.file")
 var isAPK = gradle.startParameter.projectProperties["isApk"]?.toBoolean() ?: false
 
+val privacyReleaseDir = providers.gradleProperty("tosPrivacyReleaseDir").orNull
+val privacyReleaseAssets = layout.buildDirectory.dir("generated/privacyReleaseAssets")
+val stagePrivacyReleaseAssets = privacyReleaseDir?.let { path ->
+    require(providers.gradleProperty("tosPrivacyProving").orNull == "true") {
+        "tosPrivacyReleaseDir requires tosPrivacyProving=true"
+    }
+    val material = rootProject.file(path)
+    require(material.resolve("relay.json").isFile &&
+        material.resolve("phase1").isDirectory && material.resolve("ceremony").isDirectory) {
+        "Privacy payment material requires relay.json, phase1 and ceremony"
+    }
+    tasks.register<Sync>("stagePrivacyReleaseAssets") {
+        from(material) {
+            include("relay.json", "phase1/**", "ceremony/**")
+            into("PrivacyPayment")
+        }
+        into(privacyReleaseAssets)
+    }
+}
+
+if (stagePrivacyReleaseAssets != null) {
+    tasks.matching { it.name.startsWith("merge") && it.name.endsWith("ReleaseAssets") }.configureEach {
+        dependsOn(stagePrivacyReleaseAssets)
+    }
+}
+
 android {
     namespace = Build.namespacePrefix("wallet")
     compileSdk = Build.compileSdkVersion
     sourceSets["androidTest"].assets.srcDir(rootProject.file("lib/security/src/androidTest/assets/quantum-backup-exchange-v1"))
+
+    if (stagePrivacyReleaseAssets != null) {
+        sourceSets["release"].assets.srcDir(privacyReleaseAssets)
+    }
 
     defaultConfig {
         applicationId = "network.tos.wallet"

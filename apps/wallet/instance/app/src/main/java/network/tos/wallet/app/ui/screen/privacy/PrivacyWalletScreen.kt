@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** Separate privacy wallet and receipt screen. */
 class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConfiguration? = null) : WalletContextScreen(R.layout.fragment_pq_wallets, wallet) {
-    data class PaymentConfiguration(val phase1: java.io.File, val ceremony: java.io.File, val approvedRelay: ByteArray, val approvedRecoveryRelay: ByteArray)
+    data class PaymentConfiguration(val phase1: java.io.File, val ceremony: java.io.File, val approvedRelay: ByteArray, val approvedRecoveryRelay: ByteArray, val bundled: Boolean = false)
 
     override val fragmentName = "PrivacyWalletScreen"
     override val viewModel: BaseWalletVM.EmptyViewViewModel by viewModel()
@@ -135,6 +135,12 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
                 if (!allowed || stopped()) return@launch
                 status.text = "Verifying recipient and loading the payment prover…"
                 check(accounts.validatePrivacyRecipient(wallet, input, stopped))
+                if (configuration.bundled) {
+                    val context = requireContext().applicationContext
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        installBundledMaterial(context, configuration.phase1.parentFile!!)
+                    }
+                }
                 accounts.loadPrivacyPaymentProver(wallet, configuration.phase1, configuration.ceremony, stopped).use { prover ->
                     status.text = "Requesting a relay quote through Tor…"
                     accounts.requestPrivacyRelayOffer(wallet, configuration.approvedRelay, stopped).use { offer ->
@@ -339,7 +345,54 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
     override fun onDestroyView() { leaveForeground(); super.onDestroyView() }
     companion object {
         fun newInstance(wallet: WalletEntity, context: android.content.Context) =
-            PrivacyWalletScreen(wallet, simulatorFixture(context))
+            PrivacyWalletScreen(wallet, simulatorFixture(context) ?: bundledRelease(context))
+
+        private fun bundledRelease(context: android.content.Context): PaymentConfiguration? = runCatching {
+            val version = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+            val directory = java.io.File(context.noBackupFilesDir, "PrivacyPayment-$version")
+            val phase1 = directory.resolve("phase1")
+            val ceremony = directory.resolve("ceremony")
+            val offer = context.assets.open("PrivacyPayment/relay.json").use { stream ->
+                val limit = 256 * 1024
+                val buffer = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(8192)
+                while (true) {
+                    val count = stream.read(chunk)
+                    if (count < 0) break
+                    require(buffer.size() + count <= limit)
+                    buffer.write(chunk, 0, count)
+                }
+                buffer.toByteArray()
+            }
+            val recovery = org.json.JSONObject(offer.decodeToString()).apply { remove("lifetime") }
+            PaymentConfiguration(phase1, ceremony, offer, recovery.toString().encodeToByteArray(), bundled = true)
+        }.getOrNull()
+
+        @Synchronized
+        private fun installBundledMaterial(context: android.content.Context, destination: java.io.File) {
+            if (destination.isDirectory) return
+            val staging = java.nio.file.Files.createTempDirectory(
+                context.noBackupFilesDir.toPath(), "privacy-payment-"
+            ).toFile()
+            try {
+                fun copyAsset(path: String, target: java.io.File) {
+                    val children = context.assets.list(path).orEmpty()
+                    if (children.isEmpty()) {
+                        context.assets.open(path).use { input -> target.outputStream().use { input.copyTo(it) } }
+                    } else {
+                        check(target.mkdir())
+                        children.forEach { name -> copyAsset("$path/$name", target.resolve(name)) }
+                    }
+                }
+                for (name in listOf("phase1", "ceremony")) {
+                    copyAsset("PrivacyPayment/$name", staging.resolve(name))
+                    check(staging.resolve(name).isDirectory)
+                }
+                check(staging.renameTo(destination))
+            } finally {
+                staging.deleteRecursively()
+            }
+        }
 
         private fun simulatorFixture(context: android.content.Context): PaymentConfiguration? {
             if (!BuildConfig.DEBUG) return null
