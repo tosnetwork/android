@@ -724,6 +724,17 @@ class AccountRepository(
             }
         }
 
+    suspend fun recoverPrivacyPayment(
+        wallet: WalletEntity, approvedRelay: ByteArray, stopped: () -> Boolean,
+    ): PrivacyNative.PaymentSubmission? =
+        withPrivacyStore(wallet, stopped, discard = { it?.close() }) { reader, record, selection, root ->
+            val request = org.json.JSONObject(approvedRelay.decodeToString())
+                .put("root", root.decodeToString()).toString().encodeToByteArray()
+            reader.recoverPayment(record, selection, request, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
     private suspend fun <T> withPrivacyStore(
         wallet: WalletEntity, stopped: () -> Boolean, discard: (T) -> Unit,
         operation: (PrivacyBalanceReader, QuantumCreationRecord, PrivacyPoolSelection, ByteArray) -> T,

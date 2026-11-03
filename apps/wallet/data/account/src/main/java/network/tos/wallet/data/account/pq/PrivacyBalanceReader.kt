@@ -65,6 +65,20 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             }
         }
 
+    fun recoverPayment(
+        record: QuantumCreationRecord, selection: PrivacyPoolSelection, request: ByteArray,
+        stopped: () -> Boolean,
+        master: ((ByteArray) -> PrivacyNative.PaymentSubmission?) -> PrivacyNative.PaymentSubmission?,
+    ): PrivacyNative.PaymentSubmission? =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            master { seed ->
+                try {
+                    running()
+                    completed.recoverPaymentAndWipeSeed(seed, request, now)
+                } finally { seed.fill(0) }
+            }
+        }
+
     private fun <T> withReplay(
         record: QuantumCreationRecord,
         selection: PrivacyPoolSelection,
