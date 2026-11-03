@@ -53,6 +53,15 @@ class PrivacyPaymentPoolTest {
         }
         val recipientText = InstrumentationRegistry.getArguments().getString("paymentTestRecipient")
         if (recipientText != null) {
+            val insufficient = InstrumentationRegistry.getArguments().getString("verifyInsufficientFunds") == "true"
+            val before = accounts.readPrivacyBalance(wallet)
+            check(before is PrivacyBalanceState.Observed)
+            val balance = before.summary.unspentBalance
+            if (insufficient) {
+                check(balance == InstrumentationRegistry.getArguments().getString("expectedPrivacyBalance"))
+            } else {
+                check(balance == "1000000000")
+            }
             val recipient = Base64.decode(recipientText, Base64.NO_WRAP)
             check(recipient.size == 2573)
             check(accounts.validatePrivacyRecipient(wallet, recipientText) { false })
@@ -62,9 +71,17 @@ class PrivacyPaymentPoolTest {
             val ceremony = java.io.File(fixture.getString("ceremony"))
             accounts.loadPrivacyPaymentProver(wallet, phase1, ceremony) { false }.use { prover ->
                 val relay = fixture.getJSONObject("relay").toString().encodeToByteArray()
-                accounts.requestPrivacyRelayOffer(wallet, relay) { false }.use { offer ->
+                accounts.requestPrivacyRelayOffer(wallet, relay) { false }.use offerScope@{ offer ->
                     val quote = offer.details()
                     check(quote.fee == "1")
+                    if (insufficient) {
+                        val result = runCatching {
+                            accounts.stagePrivacyPayment(wallet, recipient, balance, quote.fee,
+                                quote.identity, prover, offer) { false }.close()
+                        }
+                        check(result.isFailure) { "Amount plus fee exceeds the verified balance" }
+                        return@offerScope
+                    }
                     accounts.stagePrivacyPayment(wallet, recipient, "100000000", quote.fee,
                         quote.identity, prover, offer) { false }.use { payment ->
                         accounts.submitOrRetryPrivacyPayment(payment) { false }
