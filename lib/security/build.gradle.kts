@@ -77,11 +77,13 @@ val proofBuilds = proofAbis.map { abi ->
 }
 tasks.named("preBuild") { dependsOn(proofBuilds) }
 
+val privacyProving = providers.gradleProperty("tosPrivacyProving").map(String::toBooleanStrict).orElse(false)
 val privacyBuilds = proofAbis.map { abi ->
     tasks.register<Exec>("buildPrivacyCore${abi.replace("-", "").replace("_", "")}") {
         workingDir(rootProject.projectDir)
         inputs.file(rootProject.file("scripts/build_privacy_native.py"))
         inputs.file(rootProject.file("scripts/privacy-native-revision.txt"))
+        inputs.property("privacyProving", privacyProving)
         outputs.file(privacyOutput.map { it.file("$abi/libshielded_pool_mobile.a") })
         outputs.file(privacyOutput.map { it.file("$abi/tos_shielded_mobile.h") })
         outputs.file(privacyOutput.map { it.file("$abi/PROVENANCE.json") })
@@ -89,6 +91,7 @@ val privacyBuilds = proofAbis.map { abi ->
         commandLine("python3", rootProject.file("scripts/build_privacy_native.py").absolutePath,
             "--platform", "android", "--ndk", File(android.sdkDirectory, "ndk/${Build.ndkVersion}").absolutePath,
             "--output", privacyOutput.get().dir(abi).asFile.absolutePath, "--abi", abi)
+        if (privacyProving.get()) args("--proving")
     }
 }
 tasks.named("preBuild") { dependsOn(privacyBuilds) }
