@@ -53,11 +53,12 @@ class PrivacyPaymentPoolTest {
         }
         val recipientText = InstrumentationRegistry.getArguments().getString("paymentTestRecipient")
         if (recipientText != null) {
+            val loseResponse = InstrumentationRegistry.getArguments().getString("verifyLostResponse") == "true"
             val insufficient = InstrumentationRegistry.getArguments().getString("verifyInsufficientFunds") == "true"
             val before = accounts.readPrivacyBalance(wallet)
             check(before is PrivacyBalanceState.Observed)
             val balance = before.summary.unspentBalance
-            if (insufficient) {
+            if (insufficient || loseResponse) {
                 check(balance == InstrumentationRegistry.getArguments().getString("expectedPrivacyBalance"))
             } else {
                 check(balance == "1000000000")
@@ -84,7 +85,12 @@ class PrivacyPaymentPoolTest {
                     }
                     accounts.stagePrivacyPayment(wallet, recipient, "100000000", quote.fee,
                         quote.identity, prover, offer) { false }.use { payment ->
-                        accounts.submitOrRetryPrivacyPayment(payment) { false }
+                        if (loseResponse) {
+                            val result = runCatching { accounts.submitOrRetryPrivacyPayment(payment) { false } }
+                            check(result.isFailure) { "Expected injected response loss after staging" }
+                        } else {
+                            accounts.submitOrRetryPrivacyPayment(payment) { false }
+                        }
                     }
                 }
             }

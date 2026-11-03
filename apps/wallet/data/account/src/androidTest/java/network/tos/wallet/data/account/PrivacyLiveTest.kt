@@ -153,8 +153,11 @@ class PrivacyLiveTest {
                     val seed = ByteArray(32) { 0x42 }
                     val recipient = JSONObject(it.summaryAndWipeSeed(seed, ::now).decodeToString())
                     assertArrayEquals(ByteArray(32), seed)
-                    assertEquals("1100000000", recipient.getString("unspent_balance"))
-                    assertEquals("2", recipient.getString("unique_unspent_notes"))
+                    val arguments = InstrumentationRegistry.getArguments()
+                    assertEquals(arguments.getString("expectedRecipientBalance") ?: "1100000000",
+                        recipient.getString("unspent_balance"))
+                    assertEquals(arguments.getString("expectedRecipientNotes") ?: "2",
+                        recipient.getString("unique_unspent_notes"))
                     assertEquals("0", recipient.getString("diagnostics_count"))
                 } else if (fundedFixture) {
                     assertEquals("1", info.getString("total_outputs"))
