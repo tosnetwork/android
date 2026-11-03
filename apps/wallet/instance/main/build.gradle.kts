@@ -20,9 +20,9 @@ android {
         applicationId = "network.tos.wallet"
         minSdk = Build.minSdkVersion
         targetSdk = Build.compileSdkVersion
-        versionCode = 4
+        versionCode = 5
 
-        versionName = "1.0.3"
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
