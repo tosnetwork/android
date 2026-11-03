@@ -69,6 +69,17 @@ internal object PrivacyHistorySynchronizer {
                 }
             } finally { seed.fill(0) }
         }
+        fun pendingStatusAndWipeSeed(seed: ByteArray, root: ByteArray, now: () -> Long,
+                                     stopped: () -> Boolean) = synchronized(lock) {
+            try {
+                val verified = checkNotNull(observation)
+                val binding = verified.receiveBinding(now())
+                history.pendingStatusAndWipeSeed(seed, root, binding) {
+                    if (stopped()) throw kotlinx.coroutines.CancellationException("Privacy status cancelled")
+                    verified.requireFresh(now())
+                }
+            } finally { seed.fill(0) }
+        }
         fun receiveAndWipeSeed(seed: ByteArray, root: ByteArray, now: () -> Long,
                                stopped: () -> Boolean): ByteArray {
             try {

@@ -1,5 +1,6 @@
 package network.tos.wallet.data.account
 
+import network.tos.security.privacy.PrivacyNative.Replay.PendingStatus
 import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.TosQuantumMnemonic
 import network.tos.wallet.data.account.entities.WalletIdentity
@@ -698,6 +699,24 @@ class AccountRepository(
 
     /** The caller authenticates the wallet owner before requesting a descriptor. */
     suspend fun issuePrivacyReceipt(wallet: WalletEntity, stopped: () -> Boolean): ByteArray =
+        withPrivacyStore(wallet, stopped, discard = { it.fill(0) }) { reader, record, selection, root ->
+            reader.receive(record, selection, root, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    /** The caller authenticates the wallet owner before observing a pending payment. */
+    suspend fun privacyPendingStatus(wallet: WalletEntity, stopped: () -> Boolean): PendingStatus =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
+            reader.pendingStatus(record, selection, root, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    private suspend fun <T> withPrivacyStore(
+        wallet: WalletEntity, stopped: () -> Boolean, discard: (T) -> Unit,
+        operation: (PrivacyBalanceReader, QuantumCreationRecord, PrivacyPoolSelection, ByteArray) -> T,
+    ): T =
         withContext(Dispatchers.IO) {
             val stored = checkNotNull(database.getAccount(wallet.id))
             check(stored.identity == wallet.identity && stored.isQuantum && !keyguardManager.isDeviceLocked)
@@ -706,7 +725,7 @@ class AccountRepository(
             check(record.identity == stored.quantumIdentity && quantumCustody.hasOriginalPrivacyMaster(id))
             val selection = checkNotNull(PrivacyPoolRegistry(context).selected(record.profile))
             val endpoint = quantumPaymentEndpoint()
-            val descriptor = runInterruptible {
+            val result = runInterruptible {
                 val parent = context.noBackupFilesDir
                 val root = java.io.File(parent, "tos-privacy")
                 try {
@@ -717,12 +736,11 @@ class AccountRepository(
                 val fd = android.system.Os.open(parent.absolutePath,
                     android.system.OsConstants.O_RDONLY, 0)
                 try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
-                PrivacyBalanceReader(
+                val reader = PrivacyBalanceReader(
                     QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
                     QuantumHistoryHttpTransport(endpoint, quantumHttpClient),
-                ).receive(record, selection, root.absolutePath.toByteArray(Charsets.UTF_8), stopped) { body ->
-                    quantumCustody.withOriginalPrivacyMaster(id, record.identity, body)
-                }
+                )
+                operation(reader, record, selection, root.absolutePath.toByteArray(Charsets.UTF_8))
             }
             try {
                 currentCoroutineContext().ensureActive()
@@ -731,9 +749,9 @@ class AccountRepository(
                 check(quantumCustody.hasOriginalPrivacyMaster(id))
                 currentCoroutineContext().ensureActive()
                 check(!stopped() && !keyguardManager.isDeviceLocked)
-                descriptor
+                result
             } catch (failure: Throwable) {
-                descriptor.fill(0)
+                discard(result)
                 throw failure
             }
         }

@@ -16,6 +16,7 @@ internal object PrivacyNativeBridge {
     external fun summaryReplay(handle: Long, seed: ByteArray): ByteArray?
     external fun replayIntentAccepted(handle: Long, digest: ByteArray): ByteArray?
     external fun validateRecipient(handle: Long, descriptor: ByteArray): Boolean
+    external fun pendingStatus(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
     external fun receiveReplay(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
     external fun freeReplay(handle: Long)
 }
@@ -135,23 +136,40 @@ object PrivacyNative {
         /** Reserve and issue on a worker after authenticating this replay and its binding.
          * A cancellation after the native call may consume the reserved index.
          */
-        fun receiveAndWipeSeed(
+        fun receiveAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
+                               requireCurrent: () -> Unit): ByteArray =
+            walletReplayAndWipeSeed(seed, root, binding, requireCurrent, PrivacyNativeBridge::receiveReplay)
+
+        enum class PendingStatus { NO_RECORD, UNOBSERVED, ACCEPTED }
+
+        fun pendingStatusAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
+                                     requireCurrent: () -> Unit): PendingStatus {
+            val result = walletReplayAndWipeSeed(seed, root, binding, requireCurrent, PrivacyNativeBridge::pendingStatus)
+            return when (result.singleOrNull()?.toInt()) {
+                0 -> PendingStatus.NO_RECORD
+                1 -> PendingStatus.UNOBSERVED
+                2 -> PendingStatus.ACCEPTED
+                else -> error("Invalid privacy payment status")
+            }
+        }
+
+        private fun walletReplayAndWipeSeed(
             seed: ByteArray,
             root: ByteArray,
             binding: ByteArray,
             requireCurrent: () -> Unit,
+            operation: (Long, ByteArray, ByteArray, ByteArray) -> ByteArray?,
         ): ByteArray = synchronized(lock) {
             PrivacySummaryRead.readAndWipeSeed(seed, checkCurrent = {
                 check(handle != 0L) { "Privacy replay is closed" }
                 check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
-                    "Privacy receipt issuance must run on a worker thread"
+                    "Privacy wallet replay must run on a worker thread"
                 }
-                if (Thread.currentThread().isInterrupted) throw InterruptedException("Privacy receipt cancelled")
+                if (Thread.currentThread().isInterrupted) throw InterruptedException("Privacy wallet replay cancelled")
                 requireCurrent()
             }) {
                 require(root.size in 1..4096 && binding.size == 228)
-                PrivacyNativeBridge.receiveReplay(handle, seed, root, binding)
-                    ?: error("Privacy receipt issuance failed")
+                operation(handle, seed, root, binding) ?: error("Privacy wallet replay failed")
             }
         }
 

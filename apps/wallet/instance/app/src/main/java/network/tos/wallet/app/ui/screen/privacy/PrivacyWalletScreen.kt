@@ -74,6 +74,7 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
             imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             this@PrivacyWalletScreen.layout.addView(this)
         }
+        button("Check pending private payment", "privacy.pending") { refresh(forPending = true) }
         button("Check private recipient", "privacy.recipient.check") { validateRecipient() }
         for ((text, id) in listOf("Private transfer" to "send",
             "Deposit: ordinary wallet → privacy pool" to "deposit", "Withdraw: privacy pool → ordinary address" to "withdraw")) {
@@ -115,7 +116,7 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
         }
     }
 
-    private fun refresh(forReceipt: Boolean = false) {
+    private fun refresh(forReceipt: Boolean = false, forPending: Boolean = false) {
         if (job?.isActive == true || !foreground.get()) return
         val tag = sequence.incrementAndGet()
         clearReceipt()
@@ -136,7 +137,11 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
                     return@launch
                 }
                 authenticating = true
-                val accepted = try { passcodes.confirmation(requireContext(), if (forReceipt) "Create private receipt" else "Read privacy wallet") }
+                val accepted = try { passcodes.confirmation(requireContext(), when {
+                    forReceipt -> "Create private receipt"
+                    forPending -> "Check pending private payment"
+                    else -> "Read privacy wallet"
+                }) }
                     finally { authenticating = false }
                 currentCoroutineContext().ensureActive()
                 if (!accepted || !foreground.get()) {
@@ -144,7 +149,16 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
                     return@launch
                 }
                 val stopped = { !foreground.get() || sequence.get() != tag }
-                if (forReceipt) {
+                if (forPending) {
+                    val pending = accounts.privacyPendingStatus(wallet, stopped)
+                    currentCoroutineContext().ensureActive()
+                    if (isAdded && !stopped()) status.text = when (pending.name) {
+                        "NO_RECORD" -> "No pending private payment."
+                        "UNOBSERVED" -> "The pool has not yet observed this payment. Its original request is retained."
+                        "ACCEPTED" -> "The pool accepted this private payment."
+                        else -> error("Unexpected privacy payment status")
+                    }
+                } else if (forReceipt) {
                     val descriptor = accounts.issuePrivacyReceipt(wallet, stopped)
                     try {
                         currentCoroutineContext().ensureActive()

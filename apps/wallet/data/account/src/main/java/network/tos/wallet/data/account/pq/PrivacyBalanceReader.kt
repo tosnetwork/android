@@ -1,6 +1,7 @@
 package network.tos.wallet.data.account.pq
 
 import kotlinx.coroutines.CancellationException
+import network.tos.security.privacy.PrivacyNative.Replay.PendingStatus
 import network.tos.wallet.data.account.privacy.PrivacyBalanceState
 import network.tos.wallet.data.account.privacy.PrivacyBalanceSummary
 import network.tos.wallet.data.account.privacy.PrivacyPoolSelection
@@ -27,6 +28,13 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
                 stopped: () -> Boolean, master: ((ByteArray) -> ByteArray) -> ByteArray): ByteArray =
         withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
             master { seed -> completed.receiveAndWipeSeed(seed, root, now) { running(); false } }
+        }
+
+    fun pendingStatus(record: QuantumCreationRecord, selection: PrivacyPoolSelection, root: ByteArray,
+                      stopped: () -> Boolean,
+                      master: ((ByteArray) -> PendingStatus) -> PendingStatus): PendingStatus =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            master { seed -> completed.pendingStatusAndWipeSeed(seed, root, now) { running(); false } }
         }
 
     fun validateRecipient(record: QuantumCreationRecord, selection: PrivacyPoolSelection,

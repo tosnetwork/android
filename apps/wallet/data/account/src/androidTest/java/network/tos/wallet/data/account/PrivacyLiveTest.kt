@@ -100,6 +100,10 @@ class PrivacyLiveTest {
                     try {
                         val balanceReader = PrivacyBalanceReader(reader, QuantumHistoryHttpTransport(endpoint, client), ::now)
                         val rootBytes = root.absolutePath.toByteArray(Charsets.UTF_8)
+                        val pending = balanceReader.pendingStatus(record, selection, rootBytes, { false }) { body ->
+                            requireNotNull(custody).withOriginalPrivacyMaster(id, identity, body)
+                        }
+                        assertEquals(network.tos.security.privacy.PrivacyNative.Replay.PendingStatus.NO_RECORD, pending)
                         repeat(2) { expected ->
                             val descriptor = balanceReader.receive(record, selection, rootBytes, { false }) { body ->
                                 requireNotNull(custody).withOriginalPrivacyMaster(id, identity, body)

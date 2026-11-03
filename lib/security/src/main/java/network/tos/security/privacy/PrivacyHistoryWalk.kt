@@ -30,6 +30,13 @@ object PrivacyHistoryWalk {
                 recheck()
             }) { replay.summaryAndWipeSeed(seed) }
         }
+        fun pendingStatusAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
+                                     requireCurrent: () -> Unit): PrivacyNative.Replay.PendingStatus = synchronized(lock) {
+            try {
+                checkNotNull(archive) { "Privacy history archive is closed" }
+                replay.pendingStatusAndWipeSeed(seed, root, binding, requireCurrent)
+            } finally { seed.fill(0) }
+        }
         fun receiveAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
                                requireCurrent: () -> Unit): ByteArray = synchronized(lock) {
             try {

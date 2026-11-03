@@ -178,9 +178,9 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_validateRecipient(
   return result && tos_shielded_response_status(result.get()) == 0;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL
-Java_network_tos_security_privacy_PrivacyNativeBridge_receiveReplay(
-    JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding) {
+static jbyteArray wallet_replay_operation(JNIEnv *env, jlong handle, jbyteArray seed, jbyteArray root,
+                                          jbyteArray binding, decltype(&tos_shielded_replay_receive) operation,
+                                          size_t result_size) {
   if (replay_handle(handle) == nullptr || seed == nullptr || root == nullptr ||
       binding == nullptr || env->GetArrayLength(seed) != 32 ||
       env->GetArrayLength(binding) != 228) return nullptr;
@@ -196,9 +196,21 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_receiveReplay(
   if (env->ExceptionCheck()) return nullptr;
   env->GetByteArrayRegion(binding, 0, 228, reinterpret_cast<jbyte *>(pins.data()));
   if (env->ExceptionCheck()) return nullptr;
-  return copy_response(env, tos_shielded_replay_receive(
+  return copy_response(env, operation(
       replay_handle(handle), key.bytes.data(), key.bytes.size(), path.data(),
-      static_cast<size_t>(root_length), pins.data(), pins.size()), 2573);
+      static_cast<size_t>(root_length), pins.data(), pins.size()), result_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_receiveReplay(
+    JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding) {
+  return wallet_replay_operation(env, handle, seed, root, binding, tos_shielded_replay_receive, 2573);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_pendingStatus(
+    JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding) {
+  return wallet_replay_operation(env, handle, seed, root, binding, tos_shielded_replay_pending_status, 1);
 }
 
 extern "C" JNIEXPORT void JNICALL
