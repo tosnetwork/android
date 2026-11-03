@@ -666,6 +666,36 @@ class AccountRepository(
         } catch (_: Exception) { PrivacyBalanceState.Failed(PrivacyBalanceState.Failure.VERIFICATION_OR_TRANSPORT) }
     }
 
+    /** Public recipient preflight for the currently selected wallet and pool. */
+    suspend fun validatePrivacyRecipient(wallet: WalletEntity, input: String, stopped: () -> Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val encoded = input.trim()
+            if (encoded.length != 3432) return@withContext false
+            val descriptor = try {
+                android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP)
+            } catch (_: IllegalArgumentException) {
+                return@withContext false
+            }
+            if (descriptor.size != 2573 ||
+                android.util.Base64.encodeToString(descriptor, android.util.Base64.NO_WRAP) != encoded
+            ) return@withContext false
+            val stored = checkNotNull(database.getAccount(wallet.id))
+            check(stored.identity == wallet.identity && stored.isQuantum && !keyguardManager.isDeviceLocked)
+            val record = QuantumCreationRecord.load(context, UUID.fromString(wallet.id))
+            check(record.identity == stored.quantumIdentity)
+            val selection = checkNotNull(PrivacyPoolRegistry(context).selected(record.profile))
+            val endpoint = quantumPaymentEndpoint()
+            val valid = runInterruptible {
+                PrivacyBalanceReader(
+                    QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+                    QuantumHistoryHttpTransport(endpoint, quantumHttpClient),
+                ).validateRecipient(record, selection, descriptor, stopped)
+            }
+            if (stopped()) throw kotlinx.coroutines.CancellationException("Privacy page left foreground")
+            check(database.getAccount(wallet.id)?.identity == stored.identity && !keyguardManager.isDeviceLocked)
+            valid
+        }
+
     /** The caller authenticates the wallet owner before requesting a descriptor. */
     suspend fun issuePrivacyReceipt(wallet: WalletEntity, stopped: () -> Boolean): ByteArray =
         withContext(Dispatchers.IO) {

@@ -39,6 +39,7 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
     private lateinit var status: TextView
     private lateinit var refresh: Button
     private lateinit var receive: Button
+    private lateinit var recipient: android.widget.EditText
     private lateinit var receipt: TextView
     private val foreground = AtomicBoolean(false)
     private val sequence = AtomicLong()
@@ -62,6 +63,18 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
         label("This reads through your configured TOS node. It does not use a Tor relayer or make all wallet traffic anonymous.", "privacy.route")
         receive = button("Private receive", "privacy.receive") { refresh(forReceipt = true) }
         receipt = label("", "privacy.receipt").apply { setTextIsSelectable(true); visibility = View.GONE }
+        recipient = android.widget.EditText(requireContext()).apply {
+            hint = "Private recipient descriptor"
+            contentDescription = "privacy.recipient"
+            isSaveEnabled = false
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(3432))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            this@PrivacyWalletScreen.layout.addView(this)
+        }
+        button("Check private recipient", "privacy.recipient.check") { validateRecipient() }
         for ((text, id) in listOf("Private transfer" to "send",
             "Deposit: ordinary wallet → privacy pool" to "deposit", "Withdraw: privacy pool → ordinary address" to "withdraw")) {
             button(text, "privacy.$id") {}.isEnabled = false
@@ -78,6 +91,30 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
         this.text = text; contentDescription = id; isAllCaps = false
         setOnClickListener { action() }; this@PrivacyWalletScreen.layout.addView(this)
     }
+    private fun validateRecipient() {
+        if (job?.isActive == true || !foreground.get()) return
+        val input = recipient.text.toString()
+        val tag = sequence.incrementAndGet()
+        val stopped = { !foreground.get() || sequence.get() != tag }
+        status.text = "Checking private recipient…"
+        job = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val valid = accounts.validatePrivacyRecipient(wallet, input, stopped)
+                currentCoroutineContext().ensureActive()
+                if (!stopped() && isAdded) {
+                    status.text = when {
+                        recipient.text.toString() != input -> "Recipient changed. Check it again."
+                        valid -> "Recipient descriptor is valid for this pool. No payment submitted."
+                        else -> "Invalid recipient descriptor for this pool."
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (!stopped() && isAdded) status.text = "Could not verify the recipient against the selected pool."
+            }
+        }
+    }
+
     private fun refresh(forReceipt: Boolean = false) {
         if (job?.isActive == true || !foreground.get()) return
         val tag = sequence.incrementAndGet()
@@ -161,6 +198,7 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
     }
     private fun leaveForeground() {
         clearReceipt()
+        if (::recipient.isInitialized) recipient.text.clear()
         foreground.set(false); sequence.incrementAndGet(); job?.cancel(); job = null
         if (::amount.isInitialized) { show(PrivacyBalanceState.Unverified); refresh.isEnabled = true; receive.isEnabled = true }
     }

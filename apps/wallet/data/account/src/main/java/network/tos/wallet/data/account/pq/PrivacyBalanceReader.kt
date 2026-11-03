@@ -29,6 +29,14 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             master { seed -> completed.receiveAndWipeSeed(seed, root, now) { running(); false } }
         }
 
+    fun validateRecipient(record: QuantumCreationRecord, selection: PrivacyPoolSelection,
+                          descriptor: ByteArray, stopped: () -> Boolean): Boolean =
+        withReplay(record, selection, stopped, forReceive = false) { _, completed, running ->
+            val valid = completed.validateRecipient(descriptor, now)
+            running()
+            valid
+        }
+
     private fun <T> withReplay(
         record: QuantumCreationRecord,
         selection: PrivacyPoolSelection,

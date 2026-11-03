@@ -108,14 +108,10 @@ class PrivacyLiveTest {
                             assertEquals(2573, descriptor.size)
                             assertEquals(0x53484431, wire.int)
                             assertEquals(expected.toLong(), wire.getLong(37))
-                            PrivacyHistorySynchronizer.synchronize(
-                                observation, QuantumHistoryHttpTransport(endpoint, client), { false }, ::now,
-                            ).use { replay ->
-                                assertTrue(replay.validateRecipient(descriptor, ::now))
-                                val wrongDomain = descriptor.copyOf()
-                                wrongDomain[36] = (wrongDomain[36].toInt() xor 1).toByte()
-                                assertFalse(replay.validateRecipient(wrongDomain, ::now))
-                            }
+                            assertTrue(balanceReader.validateRecipient(record, selection, descriptor) { false })
+                            val wrongDomain = descriptor.copyOf()
+                            wrongDomain[36] = (wrongDomain[36].toInt() xor 1).toByte()
+                            assertFalse(balanceReader.validateRecipient(record, selection, wrongDomain) { false })
                         }
                     } finally {
                         assertTrue(root.deleteRecursively())
