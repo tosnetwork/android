@@ -1,6 +1,7 @@
 package network.tos.wallet.data.account.pq
 
 import kotlinx.coroutines.CancellationException
+import network.tos.security.privacy.PrivacyNative
 import network.tos.security.privacy.PrivacyNative.Replay.PendingStatus
 import network.tos.wallet.data.account.privacy.PrivacyBalanceState
 import network.tos.wallet.data.account.privacy.PrivacyBalanceSummary
@@ -43,6 +44,25 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             val valid = completed.validateRecipient(descriptor, now)
             running()
             valid
+        }
+
+    fun stagePayment(
+        record: QuantumCreationRecord, selection: PrivacyPoolSelection, root: ByteArray,
+        recipient: ByteArray, amount: String, fee: String, quoteIdentity: String,
+        prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer,
+        stopped: () -> Boolean,
+        master: ((ByteArray) -> PrivacyNative.PaymentSubmission) -> PrivacyNative.PaymentSubmission,
+    ): PrivacyNative.PaymentSubmission =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            master { seed ->
+                try {
+                    running()
+                    completed.stageConfirmedPaymentAndWipeSeed(
+                        seed, java.io.File(root.decodeToString()), recipient, amount, fee,
+                        quoteIdentity, prover, offer, now,
+                    )
+                } finally { seed.fill(0) }
+            }
         }
 
     private fun <T> withReplay(

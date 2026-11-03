@@ -1,5 +1,6 @@
 package network.tos.wallet.data.account
 
+import network.tos.security.privacy.PrivacyNative
 import network.tos.security.privacy.PrivacyNative.Replay.PendingStatus
 import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.TosQuantumMnemonic
@@ -709,6 +710,16 @@ class AccountRepository(
     suspend fun privacyPendingStatus(wallet: WalletEntity, stopped: () -> Boolean): PendingStatus =
         withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
             reader.pendingStatus(record, selection, root, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    suspend fun stagePrivacyPayment(
+        wallet: WalletEntity, recipient: ByteArray, amount: String, fee: String, quoteIdentity: String,
+        prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer, stopped: () -> Boolean,
+    ): PrivacyNative.PaymentSubmission =
+        withPrivacyStore(wallet, stopped, discard = { it.close() }) { reader, record, selection, root ->
+            reader.stagePayment(record, selection, root, recipient, amount, fee, quoteIdentity, prover, offer, stopped) { body ->
                 quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
             }
         }
