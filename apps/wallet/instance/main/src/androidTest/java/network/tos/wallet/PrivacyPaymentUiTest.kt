@@ -23,13 +23,21 @@ class PrivacyPaymentUiTest {
 
     @Test fun cancelQuotedPaymentOnPrivacyPaymentScreen() = exerciseCancellation(finalReview = true)
 
-    private fun exerciseCancellation(finalReview: Boolean) {
+    @Test fun submitQuotedPaymentOnPrivacyPaymentScreen() = exerciseCancellation(finalReview = true, submit = true)
+
+    private fun exerciseCancellation(finalReview: Boolean, submit: Boolean = false) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val recipient = InstrumentationRegistry.getArguments().getString("paymentTestRecipient")
         assumeTrue("Provide an isolated recipient descriptor", !recipient.isNullOrEmpty())
         check(instrumentation.targetContext.packageName == "network.tos.wallet.uk")
         val accounts = GlobalContext.get().get<AccountRepository>()
         val wallet = runBlocking { accounts.getWallets().single() }
+        if (submit) {
+            check(InstrumentationRegistry.getArguments().getString("submitIsolatedPayment") == "true")
+            val before = runBlocking { accounts.readPrivacyBalance(wallet) }
+            check(before is network.tos.wallet.data.account.privacy.PrivacyBalanceState.Observed)
+            check(before.summary.unspentBalance == "1099999998")
+        }
         ActivityScenario.launch(RootActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.add(PrivacyWalletScreen.newInstance(wallet, activity))
@@ -54,7 +62,19 @@ class PrivacyPaymentUiTest {
                 }
                 check(displayed) { "The verified amount, fee, route and recipient must appear in the final dialog" }
             }
-            onView(withText("Cancel")).perform(click())
+            onView(withText(if (submit) "Continue" else "Cancel")).perform(click())
+            if (submit) {
+                val deadline = android.os.SystemClock.elapsedRealtime() + 180_000
+                var responded = false
+                while (!responded && android.os.SystemClock.elapsedRealtime() < deadline) {
+                    responded = runCatching {
+                        onView(withContentDescription("privacy.status")).check(matches(
+                            withText("Relay responded. Check pending payment to verify chain confirmation.")))
+                    }.isSuccess
+                    if (!responded) android.os.SystemClock.sleep(1000)
+                }
+                check(responded) { "The approved payment did not reach the relay response state" }
+            }
             if (!finalReview) {
                 onView(withContentDescription("privacy.status"))
                     .check(matches(withText("Refresh to obtain a verified observation.")))
