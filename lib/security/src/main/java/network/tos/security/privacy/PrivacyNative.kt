@@ -7,6 +7,7 @@ internal object PrivacyNativeBridge {
     external fun descriptor(seed: ByteArray, domain: ByteArray, index: Long): ByteArray?
     external fun scan(seed: ByteArray, request: ByteArray): ByteArray?
     external fun poolState(boc: ByteArray): ByteArray?
+    external fun historyTransaction(request: ByteArray): ByteArray?
 }
 
 /** Synchronous wallet crypto only. Call off the UI thread with authenticated pool data.
@@ -42,6 +43,28 @@ object PrivacyNative {
             check(JSONObject(String(decoded, Charsets.UTF_8)).getString("data_hash") == expected) {
                 "Pool state does not match the account proof"
             }
+            decoded
+        }
+    }
+
+    /** Expectations come from a verified account or the checked newer history link.
+     * A single link cannot establish complete history or a private balance.
+     */
+    fun decodeHistoryTransaction(boc: ByteArray, expectedHash: ByteArray, logicalTime: ULong,
+                                 accountID: ByteArray, postStateHash: ByteArray, maximumTime: Long): ByteArray {
+        require(boc.isNotEmpty() && boc.size <= MAX_REQUEST_BYTES && logicalTime > 0uL)
+        require(listOf(expectedHash, accountID, postStateHash).all { it.size == 32 })
+        require(maximumTime in 0..0xffffffffL)
+        fun hex(data: ByteArray) = data.joinToString("") { "%02x".format(it.toInt() and 255) }
+        val request = JSONObject().put("version", 1)
+            .put("boc", android.util.Base64.encodeToString(boc, android.util.Base64.NO_WRAP))
+            .put("expected_hash", hex(expectedHash)).put("expected_lt", logicalTime.toString())
+            .put("account_id", hex(accountID)).put("post_state_hash", hex(postStateHash))
+            .put("maximum_time", maximumTime.toString()).toString().toByteArray(Charsets.UTF_8)
+        require(request.size <= MAX_REQUEST_BYTES)
+        return synchronized(lock) {
+            val decoded = PrivacyNativeBridge.historyTransaction(request) ?: error("Privacy history binding failed")
+            check(decoded.size in 1..MAX_RESPONSE_BYTES)
             decoded
         }
     }

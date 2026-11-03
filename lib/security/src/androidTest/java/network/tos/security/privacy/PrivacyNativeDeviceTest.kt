@@ -15,6 +15,22 @@ class PrivacyNativeDeviceTest {
         return assets.open(name).bufferedReader().use { JSONObject(it.readText()) }
     }
 
+    @Test fun historyTransactionChecksEveryBinding() {
+        val request = fixture("privacy-history.json").getJSONObject("request")
+        fun hash(name: String) = request.getString(name).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val boc = android.util.Base64.decode(request.getString("boc"), android.util.Base64.NO_WRAP)
+        val expected = hash("expected_hash"); val account = hash("account_id"); val state = hash("post_state_hash")
+        val lt = request.getString("expected_lt").toULong(); val time = request.getString("maximum_time").toLong()
+        val result = JSONObject(String(PrivacyNative.decodeHistoryTransaction(boc, expected, lt, account, state, time), Charsets.UTF_8))
+        assertEquals(lt.toString(), result.getString("logical_time"))
+        assertEquals("transact", result.getJSONObject("event").getString("kind"))
+        for (i in 0..4) assertThrows(IllegalStateException::class.java) {
+            PrivacyNative.decodeHistoryTransaction(boc, if (i == 0) ByteArray(32) { 1 } else expected,
+                if (i == 1) ULong.MAX_VALUE else lt, if (i == 2) ByteArray(32) { 1 } else account,
+                if (i == 3) ByteArray(32) { 1 } else state, if (i == 4) 0 else time)
+        }
+    }
+
     @Test fun actualRustDescriptorsIncludeTheFullUnsignedIndexAndWipeSeed() {
         val vectors = fixture("privacy-descriptors.json").getJSONArray("vectors")
         val domain = ByteArray(32).apply { this[31] = 7 }
