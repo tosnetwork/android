@@ -15,6 +15,7 @@ object PrivacyHistoryWalk {
             val archive = checkNotNull(this.archive) { "Privacy history archive is closed" }
             archive.map { it.copyOf() }
         }
+        fun intentAccepted(digest: ByteArray): Boolean = replay.intentAccepted(digest)
         fun validateRecipient(descriptor: ByteArray): Boolean = replay.validateRecipient(descriptor)
         fun info(): ByteArray = replay.info()
         fun scanAndWipeSeed(seed: ByteArray, offset: Int, count: Int): ByteArray = replay.scanAndWipeSeed(seed, offset, count)

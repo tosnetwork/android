@@ -28,6 +28,14 @@ internal object PrivacyHistorySynchronizer {
         fun transactions(): List<ByteArray> = synchronized(lock) {
             checkNotNull(observation); history.transactions()
         }
+        fun intentAccepted(digest: ByteArray, now: () -> Long): Boolean = synchronized(lock) {
+            val verified = checkNotNull(observation)
+            verified.requireFresh(now())
+            val accepted = history.intentAccepted(digest)
+            verified.requireFresh(now())
+            accepted
+        }
+
         fun validateRecipient(descriptor: ByteArray, now: () -> Long): Boolean = synchronized(lock) {
             val verified = checkNotNull(observation)
             verified.requireFresh(now())

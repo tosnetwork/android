@@ -14,6 +14,7 @@ internal object PrivacyNativeBridge {
     external fun replayInfo(handle: Long): ByteArray?
     external fun scanReplay(handle: Long, seed: ByteArray, offset: Int, count: Int): ByteArray?
     external fun summaryReplay(handle: Long, seed: ByteArray): ByteArray?
+    external fun replayIntentAccepted(handle: Long, digest: ByteArray): ByteArray?
     external fun validateRecipient(handle: Long, descriptor: ByteArray): Boolean
     external fun receiveReplay(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
     external fun freeReplay(handle: Long)
@@ -96,6 +97,15 @@ object PrivacyNative {
             try { check(PrivacyNativeBridge.finishReplay(handle) == 0) { "Privacy history is incomplete" } }
             catch (failure: Throwable) { discard(); throw failure }
         }
+        fun intentAccepted(digest: ByteArray): Boolean = synchronized(lock) {
+            check(handle != 0L) { "Privacy replay is closed" }
+            when (PrivacyNativeBridge.replayIntentAccepted(handle, digest)?.singleOrNull()?.toInt()) {
+                0 -> false
+                1 -> true
+                else -> error("Privacy intent observation failed")
+            }
+        }
+
         fun validateRecipient(descriptor: ByteArray): Boolean = synchronized(lock) {
             check(handle != 0L) { "Privacy replay is closed" }
             PrivacyNativeBridge.validateRecipient(handle, descriptor)

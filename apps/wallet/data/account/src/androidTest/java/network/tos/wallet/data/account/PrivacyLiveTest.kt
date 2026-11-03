@@ -131,6 +131,7 @@ class PrivacyLiveTest {
                 QuantumHistoryHttpTransport(endpoint, client), { false }, ::now)
             completed.use {
                 assertTrue(it.transactions().isNotEmpty())
+                assertFalse(it.intentAccepted(ByteArray(32).apply { this[31] = 1 }, ::now))
                 val info = JSONObject(it.info(now()).toString(Charsets.UTF_8))
                 assertEquals("0", info.getString("total_outputs"))
                 assertEquals("0", info.getString("native_liability"))
