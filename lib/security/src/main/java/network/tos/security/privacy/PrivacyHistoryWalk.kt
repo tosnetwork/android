@@ -62,6 +62,13 @@ object PrivacyHistoryWalk {
             }
         } finally { seed.fill(0) }
 
+        fun recoverPaymentAndWipeSeed(seed: ByteArray, request: ByteArray) = try {
+            synchronized(lock) {
+                checkNotNull(archive)
+                replay.recoverPaymentAndWipeSeed(seed, request)
+            }
+        } finally { seed.fill(0) }
+
         override fun close() = synchronized(lock) { replay.close(); archive = null }
     }
     /** Run on a worker. Query enforces reception/transport timeout and cancellation limits. */

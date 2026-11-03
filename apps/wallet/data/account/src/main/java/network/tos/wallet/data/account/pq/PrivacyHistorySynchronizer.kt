@@ -147,6 +147,23 @@ internal object PrivacyHistorySynchronizer {
             }
         } finally { seed.fill(0) }
 
+        fun recoverPaymentAndWipeSeed(
+            seed: ByteArray, request: ByteArray, now: () -> Long
+        ): PrivacyNative.PaymentSubmission? = try {
+            synchronized(lock) {
+                val verified = checkNotNull(observation)
+                verified.requireFresh(now())
+                val payment = history.recoverPaymentAndWipeSeed(seed, request)
+                try {
+                    verified.requireFresh(now())
+                    payment
+                } catch (failure: Throwable) {
+                    payment?.close()
+                    throw failure
+                }
+            }
+        } finally { seed.fill(0) }
+
         override fun close() = synchronized(lock) {
             try { history.close() } finally { observation = null; lease.close() }
         }
