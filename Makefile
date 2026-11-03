@@ -75,3 +75,7 @@ test_all: test_brand_boundary test_v1_static test_unit test_classic_recovery_con
 test_ci: test_all compile test_lint test_release_artifacts
 
 test_v1_acceptance: test_all compile test_lint test_v1_localnet test_v1_emulator test_quantum_model test_signer_tos_emulator test_v1_emulator_matrix test_release_artifacts
+
+.PHONY: test_privacy_native_device
+test_privacy_native_device:
+	$(GRADLE) :lib:security:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=network.tos.security.privacy.PrivacyNativeDeviceTest

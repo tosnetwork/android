@@ -73,7 +73,20 @@ def main():
         if head.returncode != 0 or head.stdout.strip() != revision:
             if provided:
                 raise RuntimeError("Provided privacy source does not match the pinned revision")
-            run(["git", "-C", source, "fetch", "--depth=1", "origin", revision])
+            run(["git", "-C", source, "config", "remote.origin.promisor", "true"])
+            run(["git", "-C", source, "config", "remote.origin.partialclonefilter", "blob:none"])
+            run(
+                [
+                    "git",
+                    "-C",
+                    source,
+                    "fetch",
+                    "--filter=blob:none",
+                    "--depth=1",
+                    "origin",
+                    revision,
+                ]
+            )
             run(["git", "-C", source, "checkout", "--detach", revision])
         if output(["git", "-C", source, "rev-parse", "HEAD"]) != revision:
             raise RuntimeError("Privacy source revision mismatch")
