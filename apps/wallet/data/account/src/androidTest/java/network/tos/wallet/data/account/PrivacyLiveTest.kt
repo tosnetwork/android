@@ -36,12 +36,16 @@ class PrivacyLiveTest {
     @Test fun depositedPrivateNoteIsRecoveredFromVerifiedHistory() =
         exerciseAuthenticatedPool(summary = false, fundedFixture = true)
 
+    @Test fun relayedPaymentIsRecoveredByIndependentRecipient() =
+        exerciseAuthenticatedPool(summary = false, relayedFixture = true)
+
     private fun exerciseAuthenticatedPool(
         summary: Boolean,
         originalMaster: Boolean = false,
         receive: Boolean = false,
         prover: Boolean = false,
         fundedFixture: Boolean = false,
+        relayedFixture: Boolean = false,
     ) {
         val encoded = InstrumentationRegistry.getArguments().getString("privacyLiveConfig").orEmpty()
         assumeTrue("Provide privacyLiveConfig for isolated live-pool validation", encoded.isNotEmpty())
@@ -145,7 +149,14 @@ class PrivacyLiveTest {
                 assertTrue(it.transactions().isNotEmpty())
                 assertFalse(it.intentAccepted(ByteArray(32).apply { this[31] = 1 }, ::now))
                 val info = JSONObject(it.info(now()).toString(Charsets.UTF_8))
-                if (fundedFixture) {
+                if (relayedFixture) {
+                    val seed = ByteArray(32) { 0x42 }
+                    val recipient = JSONObject(it.summaryAndWipeSeed(seed, ::now).decodeToString())
+                    assertArrayEquals(ByteArray(32), seed)
+                    assertEquals("1100000000", recipient.getString("unspent_balance"))
+                    assertEquals("2", recipient.getString("unique_unspent_notes"))
+                    assertEquals("0", recipient.getString("diagnostics_count"))
+                } else if (fundedFixture) {
                     assertEquals("1", info.getString("total_outputs"))
                     assertEquals("1000000000", info.getString("native_liability"))
                     val seed = ByteArray(32) { 0x42 }
