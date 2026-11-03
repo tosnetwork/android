@@ -749,6 +749,18 @@ class AccountRepository(
             }
         }
 
+    /** The relay response is provisional until verified against chain history. */
+    suspend fun submitOrRetryPrivacyPayment(
+        payment: PrivacyNative.PaymentSubmission, stopped: () -> Boolean,
+    ): ByteArray = withContext(Dispatchers.IO) {
+        runInterruptible {
+            check(!stopped() && !keyguardManager.isDeviceLocked)
+            val response = payment.submitOrRetry()
+            check(!stopped() && !keyguardManager.isDeviceLocked)
+            response
+        }
+    }
+
     private suspend fun <T> withPrivacyStore(
         wallet: WalletEntity, stopped: () -> Boolean, discard: (T) -> Unit,
         operation: (PrivacyBalanceReader, QuantumCreationRecord, PrivacyPoolSelection, ByteArray) -> T,
