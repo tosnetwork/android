@@ -156,6 +156,18 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_summaryReplay(JNIEnv *env,
   if (env->ExceptionCheck()) return nullptr;
   return copy_response(env, tos_shielded_replay_summary(replay_handle(handle), key.bytes.data(), key.bytes.size()));
 }
+extern "C" JNIEXPORT jboolean JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_validateRecipient(
+    JNIEnv *env, jobject, jlong handle, jbyteArray descriptor) {
+  std::array<uint8_t, 2573> bytes{};
+  if (!handle || !descriptor || env->GetArrayLength(descriptor) != static_cast<jsize>(bytes.size())) return JNI_FALSE;
+  env->GetByteArrayRegion(descriptor, 0, bytes.size(), reinterpret_cast<jbyte *>(bytes.data()));
+  if (env->ExceptionCheck()) return JNI_FALSE;
+  Response result(tos_shielded_replay_validate_recipient(replay_handle(handle), bytes.data(), bytes.size()),
+                  tos_shielded_response_free);
+  return result && tos_shielded_response_status(result.get()) == 0;
+}
+
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_network_tos_security_privacy_PrivacyNativeBridge_receiveReplay(
     JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding) {
