@@ -40,7 +40,7 @@ class WalletScreen(wallet: WalletEntity): MainScreen.Child(R.layout.fragment_wal
         super.onViewCreated(view, savedInstanceState)
         headerView = view.findViewById(R.id.header)
         view.findViewById<View>(R.id.privacy_wallet).setOnClickListener {
-            navigation?.add(network.tos.wallet.app.ui.screen.privacy.PrivacyWalletScreen.newInstance(wallet))
+            navigation?.add(network.tos.wallet.app.ui.screen.privacy.PrivacyWalletScreen.newInstance(wallet, requireContext()))
         }
         headerView.onWalletClick = { navigation?.add(PickerScreen.newInstance(from = "wallet")) }
         headerView.onSettingsClick = { navigation?.add(SettingsScreen.newInstance(wallet, "wallet")) }

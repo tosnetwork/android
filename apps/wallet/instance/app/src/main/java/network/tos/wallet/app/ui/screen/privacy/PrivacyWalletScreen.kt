@@ -14,6 +14,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import network.tos.wallet.app.BuildConfig
 import network.tos.wallet.app.R
 import network.tos.wallet.app.ui.base.BaseWalletVM
 import network.tos.wallet.app.ui.base.WalletContextScreen
@@ -332,5 +333,24 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         super.onHiddenChanged(hidden)
     }
     override fun onDestroyView() { leaveForeground(); super.onDestroyView() }
-    companion object { fun newInstance(wallet: WalletEntity) = PrivacyWalletScreen(wallet) }
+    companion object {
+        fun newInstance(wallet: WalletEntity, context: android.content.Context) =
+            PrivacyWalletScreen(wallet, simulatorFixture(context))
+
+        private fun simulatorFixture(context: android.content.Context): PaymentConfiguration? {
+            if (!BuildConfig.DEBUG) return null
+            return runCatching {
+                val fixture = java.io.File(context.filesDir, "tos-privacy-payment-fixture.json")
+                require(fixture.length() in 1..(256L * 1024L))
+                val fields = org.json.JSONObject(fixture.readText())
+                val phase1 = java.io.File(fields.getString("phase1"))
+                val ceremony = java.io.File(fields.getString("ceremony"))
+                require(phase1.isAbsolute && ceremony.isAbsolute)
+                val relay = fields.getJSONObject("relay")
+                val offer = relay.toString().encodeToByteArray()
+                relay.remove("lifetime")
+                PaymentConfiguration(phase1, ceremony, offer, relay.toString().encodeToByteArray())
+            }.getOrNull()
+        }
+    }
 }
