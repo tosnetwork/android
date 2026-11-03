@@ -33,11 +33,15 @@ class PrivacyLiveTest {
     @Test fun installedPaymentProverAuditsAgainstVerifiedPool() =
         exerciseAuthenticatedPool(summary = false, prover = true)
 
+    @Test fun depositedPrivateNoteIsRecoveredFromVerifiedHistory() =
+        exerciseAuthenticatedPool(summary = false, fundedFixture = true)
+
     private fun exerciseAuthenticatedPool(
         summary: Boolean,
         originalMaster: Boolean = false,
         receive: Boolean = false,
         prover: Boolean = false,
+        fundedFixture: Boolean = false,
     ) {
         val encoded = InstrumentationRegistry.getArguments().getString("privacyLiveConfig").orEmpty()
         assumeTrue("Provide privacyLiveConfig for isolated live-pool validation", encoded.isNotEmpty())
@@ -141,8 +145,19 @@ class PrivacyLiveTest {
                 assertTrue(it.transactions().isNotEmpty())
                 assertFalse(it.intentAccepted(ByteArray(32).apply { this[31] = 1 }, ::now))
                 val info = JSONObject(it.info(now()).toString(Charsets.UTF_8))
-                assertEquals("0", info.getString("total_outputs"))
-                assertEquals("0", info.getString("native_liability"))
+                if (fundedFixture) {
+                    assertEquals("1", info.getString("total_outputs"))
+                    assertEquals("1000000000", info.getString("native_liability"))
+                    val seed = ByteArray(32) { 0x42 }
+                    val fundedSummary = JSONObject(it.summaryAndWipeSeed(seed, ::now).decodeToString())
+                    assertArrayEquals(ByteArray(32), seed)
+                    assertEquals("1000000000", fundedSummary.getString("unspent_balance"))
+                    assertEquals("1", fundedSummary.getString("unique_unspent_notes"))
+                    assertEquals("0", fundedSummary.getString("diagnostics_count"))
+                } else {
+                    assertEquals("0", info.getString("total_outputs"))
+                    assertEquals("0", info.getString("native_liability"))
+                }
                 if (prover) {
                     val root = java.io.File(context.filesDir, "tos-privacy-prover")
                     it.loadPaymentProver(java.io.File(root, "phase1"),
