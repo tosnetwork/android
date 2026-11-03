@@ -46,6 +46,21 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             valid
         }
 
+    fun loadPaymentProver(
+        record: QuantumCreationRecord, selection: PrivacyPoolSelection,
+        phase1: java.io.File, ceremony: java.io.File, stopped: () -> Boolean,
+    ): PrivacyNative.PaymentProver =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            val prover = completed.loadPaymentProver(phase1, ceremony, now)
+            try {
+                running()
+                prover
+            } catch (failure: Throwable) {
+                prover.close()
+                throw failure
+            }
+        }
+
     fun requestRelayOffer(
         record: QuantumCreationRecord, selection: PrivacyPoolSelection,
         approvedRelay: ByteArray, stopped: () -> Boolean,
