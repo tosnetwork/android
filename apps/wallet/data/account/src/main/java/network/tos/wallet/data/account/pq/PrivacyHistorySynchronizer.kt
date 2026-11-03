@@ -1,6 +1,8 @@
 package network.tos.wallet.data.account.pq
 
 import network.tos.security.privacy.PrivacyHistoryWalk
+import network.tos.security.privacy.PrivacyNative
+import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -111,6 +113,39 @@ internal object PrivacyHistorySynchronizer {
                 throw failure
             }
         }
+
+        fun stageConfirmedPaymentAndWipeSeed(
+            seed: ByteArray,
+            root: java.io.File,
+            recipient: ByteArray,
+            amount: String,
+            fee: String,
+            quoteIdentity: String,
+            prover: PrivacyNative.PaymentProver,
+            offer: PrivacyNative.RelayOffer,
+            now: () -> Long,
+        ): PrivacyNative.PaymentSubmission = try {
+            synchronized(lock) {
+                val verified = checkNotNull(observation)
+                require(root.isAbsolute)
+                val request = JSONObject()
+                    .put("root", root.path)
+                    .put("recipient", android.util.Base64.encodeToString(recipient, android.util.Base64.NO_WRAP))
+                    .put("amount", amount)
+                    .put("fee", fee)
+                    .put("quote_identity", quoteIdentity)
+                    .put("proven_time", verified.provenShardTime(now()))
+                    .toString().encodeToByteArray()
+                val payment = history.stagePaymentAndWipeSeed(prover, offer, seed, request)
+                try {
+                    verified.requireFresh(now())
+                    payment
+                } catch (failure: Throwable) {
+                    payment.close()
+                    throw failure
+                }
+            }
+        } finally { seed.fill(0) }
 
         override fun close() = synchronized(lock) {
             try { history.close() } finally { observation = null; lease.close() }
