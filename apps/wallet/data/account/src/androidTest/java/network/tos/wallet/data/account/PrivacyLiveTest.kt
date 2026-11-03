@@ -21,7 +21,11 @@ import java.util.UUID
 /** Opt-in App reader/native replay integration against a fresh isolated empty pool. */
 @RunWith(AndroidJUnit4::class)
 class PrivacyLiveTest {
-    @Test fun authenticatedPoolObservationAndCompleteHistory() {
+    @Test fun authenticatedPoolObservationAndCompleteHistory() = exerciseAuthenticatedPool(summary = false)
+
+    @Test fun authenticatedEmptyPoolSummaryRechecksFreshnessAndCancellation() = exerciseAuthenticatedPool(summary = true)
+
+    private fun exerciseAuthenticatedPool(summary: Boolean) {
         val encoded = InstrumentationRegistry.getArguments().getString("privacyLiveConfig").orEmpty()
         assumeTrue("Provide privacyLiveConfig for isolated live-pool validation", encoded.isNotEmpty())
         val bytes = Base64.decode(encoded, Base64.NO_WRAP)
@@ -66,6 +70,39 @@ class PrivacyLiveTest {
                 val info = JSONObject(it.info(now()).toString(Charsets.UTF_8))
                 assertEquals("0", info.getString("total_outputs"))
                 assertEquals("0", info.getString("native_liability"))
+                if (summary) {
+                    // Public deterministic test seed; this empty-pool case does not prove
+                    // nonempty private note discovery, ownership or product backup recovery.
+                    val seed = ByteArray(32) { 0x42 }
+                    val complete = JSONObject(it.summaryAndWipeSeed(seed, ::now).toString(Charsets.UTF_8))
+                    assertArrayEquals(ByteArray(32), seed)
+                    assertEquals("0", complete.getString("total_outputs"))
+                    assertEquals("0", complete.getString("unspent_balance"))
+                    assertEquals("0", complete.getString("unique_unspent_notes"))
+                    assertEquals("0", complete.getString("scan_next_index"))
+                    assertFalse(complete.has("batch_unspent_balance"))
+
+                    var clockReads = 0
+                    val stale = ByteArray(32) { 0x42 }
+                    val expired = assertThrows(IllegalStateException::class.java) {
+                        it.summaryAndWipeSeed(stale, now = { clockReads++; now() + if (clockReads == 2) 3600 else 0 })
+                    }
+                    assertEquals("Proof freshness refused", expired.message)
+                    assertEquals(2, clockReads); assertArrayEquals(ByteArray(32), stale)
+                    for (stopBefore in listOf(true, false)) {
+                        var checks = 0
+                        val cancelled = ByteArray(32) { 0x42 }
+                        val error = assertThrows(IllegalStateException::class.java) {
+                            it.summaryAndWipeSeed(cancelled, ::now, stopped = { checks++; stopBefore || checks == 2 })
+                        }
+                        assertEquals("Privacy summary cancelled", error.message)
+                        assertEquals(if (stopBefore) 1 else 2, checks)
+                        assertArrayEquals(ByteArray(32), cancelled)
+                    }
+                    val retry = ByteArray(32) { 0x42 }
+                    assertEquals("0", JSONObject(it.summaryAndWipeSeed(retry, ::now).toString(Charsets.UTF_8)).getString("unspent_balance"))
+                    assertArrayEquals(ByteArray(32), retry)
+                }
                 // The positive operation above proves this refusal is not an unavailable RPC.
                 try {
                     reader.observePool(id, identity, profile, address, code, ByteArray(32), manifestHash, vkHash)
@@ -76,6 +113,11 @@ class PrivacyLiveTest {
             }
             try { completed.info(now()); fail("Closed replay remained usable") }
             catch (_: IllegalStateException) { }
+            if (summary) {
+                val seed = ByteArray(32) { 0x42 }
+                assertThrows(IllegalStateException::class.java) { completed.summaryAndWipeSeed(seed, ::now) }
+                assertArrayEquals(ByteArray(32), seed)
+            }
         } finally {
             client.dispatcher.executorService.shutdown()
             client.connectionPool.evictAll()

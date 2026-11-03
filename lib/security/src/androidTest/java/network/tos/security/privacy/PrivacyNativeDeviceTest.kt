@@ -15,6 +15,68 @@ class PrivacyNativeDeviceTest {
         return assets.open(name).bufferedReader().use { JSONObject(it.readText()) }
     }
 
+    @Test fun completeSummaryRequiresReadyAndNeverReturnsBatchOrSecrets() {
+        val f = fixture("privacy-session.json")
+        val replay = PrivacyNative.replay(f.getJSONObject("request").toString().toByteArray(Charsets.UTF_8))
+        replay.use {
+            val early = ByteArray(32) { 0x42 }
+            val error = assertThrows(IllegalStateException::class.java) { replay.summaryAndWipeSeed(early) }
+            assertEquals("Privacy complete summary failed", error.message)
+            assertArrayEquals(ByteArray(32), early)
+            val transactions = f.getJSONArray("transactions")
+            for (i in 0 until transactions.length()) replay.push(android.util.Base64.decode(transactions.getString(i), android.util.Base64.NO_WRAP))
+            replay.finish()
+            val seed = ByteArray(32) { 0x42 }
+            val summary = JSONObject(replay.summaryAndWipeSeed(seed).toString(Charsets.UTF_8))
+            assertArrayEquals(ByteArray(32), seed)
+            assertEquals(setOf("version", "total_outputs", "owned_outputs", "unique_unspent_notes",
+                "duplicate_outputs", "reused_indices_count", "diagnostics_count", "unspent_balance", "scan_next_index"),
+                summary.keys().asSequence().toSet())
+            assertEquals("13", summary.getString("total_outputs"))
+            assertTrue(summary.getString("unspent_balance").matches(Regex("0|[1-9][0-9]*")))
+            val mainSeed = ByteArray(32) { 0x42 }
+            val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                try { replay.summaryAndWipeSeed(mainSeed) } catch (e: Throwable) { failure.set(e) }
+            }
+            assertEquals("Privacy summary must run on a worker thread", failure.get()?.message)
+            assertArrayEquals(ByteArray(32), mainSeed)
+            replay.close()
+            val closed = ByteArray(32) { 0x42 }
+            assertThrows(IllegalStateException::class.java) { replay.summaryAndWipeSeed(closed) }
+            assertArrayEquals(ByteArray(32), closed)
+        }
+    }
+
+    @Test fun completedSummaryRechecksProofAndCancellationAfterNativeWork() {
+        val f = fixture("privacy-session.json")
+        val transactions = f.getJSONArray("transactions")
+        var cursor = transactions.length() - 1
+        PrivacyHistoryWalk.replay(f.getJSONObject("request").toString().toByteArray(Charsets.UTF_8),
+            PrivacyHistoryWalk.Query { _, _, _ -> android.util.Base64.decode(transactions.getString(cursor--), android.util.Base64.NO_WRAP) },
+            recheck = {}).use { completed ->
+            var checks = 0
+            val seed = ByteArray(32) { 0x42 }
+            val refused = assertThrows(IllegalArgumentException::class.java) {
+                completed.summaryAndWipeSeed(seed, recheck = { checks++; require(checks != 2) { "Summary final proof expired" } })
+            }
+            assertEquals("Summary final proof expired", refused.message); assertEquals(2, checks)
+            assertArrayEquals(ByteArray(32), seed)
+            var cancelled = false
+            val cancelledSeed = ByteArray(32) { 0x42 }
+            val error = assertThrows(IllegalStateException::class.java) {
+                completed.summaryAndWipeSeed(cancelledSeed, recheck = { cancelled = true }, stopped = { cancelled })
+            }
+            assertEquals("Privacy summary cancelled", error.message)
+            assertArrayEquals(ByteArray(32), cancelledSeed)
+            var current = 0
+            val restored = ByteArray(32) { 0x42 }
+            val summary = JSONObject(completed.summaryAndWipeSeed(restored, recheck = { current++ }).toString(Charsets.UTF_8))
+            assertEquals("13", summary.getString("total_outputs")); assertEquals(2, current)
+            assertArrayEquals(ByteArray(32), restored)
+        }
+    }
+
     @Test fun historyWalkVerifiesThenReplaysAndOwnsItsArchive() {
         val f = fixture("privacy-session.json")
         val request = f.getJSONObject("request").toString().toByteArray(Charsets.UTF_8)

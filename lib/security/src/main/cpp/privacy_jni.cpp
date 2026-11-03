@@ -148,6 +148,14 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_scanReplay(JNIEnv *env, jo
   if (env->ExceptionCheck()) return nullptr;
   return copy_response(env, tos_shielded_replay_scan(replay_handle(handle), key.bytes.data(), 32, static_cast<size_t>(offset), static_cast<size_t>(count)));
 }
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_summaryReplay(JNIEnv *env, jobject, jlong handle, jbyteArray seed) {
+  if (seed == nullptr || env->GetArrayLength(seed) != 32 || replay_handle(handle) == nullptr) return nullptr;
+  Seed key;
+  env->GetByteArrayRegion(seed, 0, 32, reinterpret_cast<jbyte *>(key.bytes.data()));
+  if (env->ExceptionCheck()) return nullptr;
+  return copy_response(env, tos_shielded_replay_summary(replay_handle(handle), key.bytes.data(), key.bytes.size()));
+}
 extern "C" JNIEXPORT void JNICALL
 Java_network_tos_security_privacy_PrivacyNativeBridge_freeReplay(JNIEnv *, jobject, jlong handle) {
   tos_shielded_replay_free(replay_handle(handle));

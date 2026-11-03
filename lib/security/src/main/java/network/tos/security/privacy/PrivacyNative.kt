@@ -13,6 +13,7 @@ internal object PrivacyNativeBridge {
     external fun finishReplay(handle: Long): Int
     external fun replayInfo(handle: Long): ByteArray?
     external fun scanReplay(handle: Long, seed: ByteArray, offset: Int, count: Int): ByteArray?
+    external fun summaryReplay(handle: Long, seed: ByteArray): ByteArray?
     external fun freeReplay(handle: Long)
 }
 
@@ -98,6 +99,22 @@ object PrivacyNative {
             val bytes = PrivacyNativeBridge.replayInfo(handle) ?: error("Privacy replay is not complete")
             check(bytes.size in 1..MAX_RESPONSE_BYTES); bytes
         }
+        /** Synchronous worker-only complete Ready-ledger summary, never a batch total.
+         * The result does not prove freshness or account for durable off-chain reservations.
+         * Ownership of seed transfers to this call, including failure/closed/cancelled paths.
+         */
+        fun summaryAndWipeSeed(seed: ByteArray): ByteArray = synchronized(lock) {
+            PrivacySummaryRead.readAndWipeSeed(seed, checkCurrent = {
+                check(handle != 0L) { "Privacy replay is closed" }
+                check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+                    "Privacy summary must run on a worker thread"
+                }
+                if (Thread.currentThread().isInterrupted) throw InterruptedException("Privacy summary cancelled")
+            }) {
+                PrivacyNativeBridge.summaryReplay(handle, seed) ?: error("Privacy complete summary failed")
+            }
+        }
+
         fun scanAndWipeSeed(seed: ByteArray, offset: Int, count: Int): ByteArray {
             try {
                 require(seed.size == 32 && offset >= 0 && count in 1..512)

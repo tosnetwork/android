@@ -38,6 +38,20 @@ internal object PrivacyHistorySynchronizer {
                 }
             } finally { seed.fill(0) }
         }
+        /** Run on a worker (e.g. runInterruptible(Dispatchers.IO)). A fresh time is
+         * obtained before and after native work; a saved timestamp is insufficient.
+         * This is an observed full-ledger summary, not spend/restore authorization.
+         */
+        fun summaryAndWipeSeed(seed: ByteArray, now: () -> Long,
+                              stopped: () -> Boolean = { Thread.currentThread().isInterrupted }): ByteArray {
+            try {
+                return synchronized(lock) {
+                    history.summaryAndWipeSeed(seed, recheck = {
+                        checkNotNull(observation).requireFresh(now())
+                    }, stopped = stopped)
+                }
+            } finally { seed.fill(0) }
+        }
         override fun close() = synchronized(lock) {
             try { history.close() } finally { observation = null; lease.close() }
         }

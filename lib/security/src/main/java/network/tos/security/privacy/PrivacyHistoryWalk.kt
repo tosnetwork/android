@@ -17,6 +17,17 @@ object PrivacyHistoryWalk {
         }
         fun info(): ByteArray = replay.info()
         fun scanAndWipeSeed(seed: ByteArray, offset: Int, count: Int): ByteArray = replay.scanAndWipeSeed(seed, offset, count)
+        /** Synchronous worker call. Rechecks cancellation and the caller's proof on BOTH sides
+         * of complete native summarization; no old batch-scan fallback or partial sum exists.
+         */
+        fun summaryAndWipeSeed(seed: ByteArray, recheck: () -> Unit,
+                              stopped: () -> Boolean = { Thread.currentThread().isInterrupted }): ByteArray = synchronized(lock) {
+            PrivacySummaryRead.readAndWipeSeed(seed, checkCurrent = {
+                checkNotNull(archive) { "Privacy history archive is closed" }
+                check(!stopped()) { "Privacy summary cancelled" }
+                recheck()
+            }) { replay.summaryAndWipeSeed(seed) }
+        }
         override fun close() = synchronized(lock) { replay.close(); archive = null }
     }
     /** Run on a worker. Query enforces reception/transport timeout and cancellation limits. */
