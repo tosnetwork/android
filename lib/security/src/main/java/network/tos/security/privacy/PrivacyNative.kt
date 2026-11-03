@@ -98,9 +98,13 @@ object PrivacyNative {
         }
     }
 
+    data class RelayOfferDetails(val identity: String, val fee: String, val validUntil: String)
+
     class RelayOffer internal constructor(internal var handle: Long) : AutoCloseable {
-        fun details(): ByteArray = synchronized(lock) {
-            checkNotNull(PrivacyNativeBridge.relayOfferInfo(handle))
+        fun details(): RelayOfferDetails = synchronized(lock) {
+            val bytes = checkNotNull(PrivacyNativeBridge.relayOfferInfo(handle))
+            val offer = org.json.JSONObject(bytes.decodeToString())
+            RelayOfferDetails(offer.getString("identity"), offer.getString("fee"), offer.getString("valid_until"))
         }
         override fun close() = synchronized(lock) {
             PrivacyNativeBridge.freeRelayOffer(handle)
