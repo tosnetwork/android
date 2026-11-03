@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** Separate privacy wallet and receipt screen. */
 class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConfiguration? = null) : WalletContextScreen(R.layout.fragment_pq_wallets, wallet) {
-    data class PaymentConfiguration(val phase1: java.io.File, val ceremony: java.io.File, val approvedRelay: ByteArray)
+    data class PaymentConfiguration(val phase1: java.io.File, val ceremony: java.io.File, val approvedRelay: ByteArray, val approvedRecoveryRelay: ByteArray)
 
     override val fragmentName = "PrivacyWalletScreen"
     override val viewModel: BaseWalletVM.EmptyViewViewModel by viewModel()
@@ -80,6 +80,7 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         }
         payment?.let { configuration ->
             button("Send privately through Tor", "privacy.send") { startPayment(configuration) }
+            button("Retry pending payment through Tor", "privacy.retry") { retryPayment(configuration) }
         }
         button("Check pending private payment", "privacy.pending") { refresh(forPending = true) }
         button("Check private recipient", "privacy.recipient.check") { validateRecipient() }
@@ -145,6 +146,36 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
                 if (!stopped()) status.text = "Unable to complete private payment through Tor. Check pending payment before trying again."
+            }
+        }
+    }
+
+    private fun retryPayment(configuration: PaymentConfiguration) {
+        if (job?.isActive == true || !foreground.get()) return
+        val tag = sequence.incrementAndGet()
+        val stopped = { !foreground.get() || sequence.get() != tag }
+        job = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                if (!passcodes.hasPinCode() || stopped()) return@launch
+                authenticating = true
+                val allowed = try { passcodes.confirmation(requireContext(), "Retry pending private payment") }
+                    finally { authenticating = false }
+                if (!allowed || stopped()) return@launch
+                status.text = "Recovering the original private payment…"
+                val payment = accounts.recoverPrivacyPayment(wallet, configuration.approvedRecoveryRelay, stopped)
+                if (payment == null) {
+                    if (!stopped()) status.text = "No unresolved payment. Refresh to verify your balance."
+                    return@launch
+                }
+                payment.use {
+                    if (stopped()) return@launch
+                    status.text = "Checking the original request through Tor…"
+                    accounts.submitOrRetryPrivacyPayment(it, stopped)
+                }
+                if (!stopped()) status.text = "Relay responded. Check pending payment to verify chain confirmation."
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (!stopped()) status.text = "Unable to resolve the pending payment through Tor."
             }
         }
     }
