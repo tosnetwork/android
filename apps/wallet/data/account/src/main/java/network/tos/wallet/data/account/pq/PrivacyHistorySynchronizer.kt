@@ -93,6 +93,25 @@ internal object PrivacyHistorySynchronizer {
                 }
             } finally { seed.fill(0) }
         }
+        fun loadPaymentProver(phase1: java.io.File, ceremony: java.io.File, now: () -> Long) =
+            synchronized(lock) {
+                checkNotNull(observation).requireFresh(now())
+                history.loadPaymentProver(phase1, ceremony)
+            }
+
+        fun requestRelayOffer(request: ByteArray, now: () -> Long) = synchronized(lock) {
+            val verified = checkNotNull(observation)
+            verified.requireFresh(now())
+            val offer = history.requestRelayOffer(request)
+            try {
+                verified.requireFresh(now())
+                offer
+            } catch (failure: Throwable) {
+                offer.close()
+                throw failure
+            }
+        }
+
         override fun close() = synchronized(lock) {
             try { history.close() } finally { observation = null; lease.close() }
         }

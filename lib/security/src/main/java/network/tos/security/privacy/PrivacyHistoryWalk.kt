@@ -44,6 +44,24 @@ object PrivacyHistoryWalk {
                 replay.receiveAndWipeSeed(seed, root, binding, requireCurrent)
             } finally { seed.fill(0) }
         }
+        fun loadPaymentProver(phase1: java.io.File, ceremony: java.io.File) = synchronized(lock) {
+            checkNotNull(archive)
+            replay.loadPaymentProver(phase1, ceremony)
+        }
+        fun requestRelayOffer(request: ByteArray) = synchronized(lock) {
+            checkNotNull(archive)
+            replay.requestRelayOffer(request)
+        }
+        fun stagePaymentAndWipeSeed(
+            prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer,
+            seed: ByteArray, request: ByteArray
+        ) = try {
+            synchronized(lock) {
+                checkNotNull(archive)
+                replay.stagePaymentAndWipeSeed(prover, offer, seed, request)
+            }
+        } finally { seed.fill(0) }
+
         override fun close() = synchronized(lock) { replay.close(); archive = null }
     }
     /** Run on a worker. Query enforces reception/transport timeout and cancellation limits. */
