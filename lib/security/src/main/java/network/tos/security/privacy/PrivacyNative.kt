@@ -18,6 +18,8 @@ internal object PrivacyNativeBridge {
     external fun validateRecipient(handle: Long, descriptor: ByteArray): Boolean
     external fun pendingStatus(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
     external fun receiveReplay(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
+    external fun loadPaymentProver(handle: Long, phase1: ByteArray, ceremony: ByteArray): Long
+    external fun freePaymentProver(handle: Long)
     external fun freeReplay(handle: Long)
 }
 
@@ -80,6 +82,15 @@ object PrivacyNative {
         }
     }
 
+    class PaymentProver internal constructor(private var handle: Long) : AutoCloseable {
+        override fun close() = synchronized(lock) {
+            if (handle != 0L) {
+                PrivacyNativeBridge.freePaymentProver(handle)
+                handle = 0L
+            }
+        }
+    }
+
     /** Own with use/close, including cancellation. Creation request must be proof-bound. */
     class Replay internal constructor(private var handle: Long) : AutoCloseable {
         init { require(handle != 0L) }
@@ -104,6 +115,20 @@ object PrivacyNative {
                 0 -> false
                 1 -> true
                 else -> error("Privacy intent observation failed")
+            }
+        }
+
+        fun loadPaymentProver(phase1: java.io.File, ceremony: java.io.File): PaymentProver {
+            check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper())
+            require(phase1.isAbsolute && ceremony.isAbsolute)
+            return synchronized(lock) {
+                check(handle != 0L) { "Privacy replay is closed" }
+                val prover = PrivacyNativeBridge.loadPaymentProver(
+                    handle, phase1.path.encodeToByteArray(), ceremony.path.encodeToByteArray()
+                )
+                check(prover != 0L) { "Privacy payment prover unavailable" }
+                try { PaymentProver(prover) }
+                catch (failure: Throwable) { PrivacyNativeBridge.freePaymentProver(prover); throw failure }
             }
         }
 

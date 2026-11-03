@@ -217,3 +217,29 @@ extern "C" JNIEXPORT void JNICALL
 Java_network_tos_security_privacy_PrivacyNativeBridge_freeReplay(JNIEnv *, jobject, jlong handle) {
   tos_shielded_replay_free(replay_handle(handle));
 }
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_loadPaymentProver(
+    JNIEnv *env, jobject, jlong handle, jbyteArray phase1, jbyteArray ceremony) {
+  if (!handle || !phase1 || !ceremony || !tos_shielded_payment_supported()) return 0;
+  const auto phase1_size = env->GetArrayLength(phase1);
+  const auto ceremony_size = env->GetArrayLength(ceremony);
+  constexpr jsize kPathLimit = 4096;
+  if (phase1_size < 1 || phase1_size > kPathLimit ||
+      ceremony_size < 1 || ceremony_size > kPathLimit) return 0;
+  std::array<jbyte, kPathLimit> phase1_path, ceremony_path;
+  env->GetByteArrayRegion(phase1, 0, phase1_size, phase1_path.data());
+  if (env->ExceptionCheck()) return 0;
+  env->GetByteArrayRegion(ceremony, 0, ceremony_size, ceremony_path.data());
+  if (env->ExceptionCheck()) return 0;
+  auto *prover = tos_shielded_payment_prover_load(
+      replay_handle(handle), reinterpret_cast<const uint8_t *>(phase1_path.data()), phase1_size,
+      reinterpret_cast<const uint8_t *>(ceremony_path.data()), ceremony_size);
+  return reinterpret_cast<jlong>(prover);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_freePaymentProver(
+    JNIEnv *, jobject, jlong handle) {
+  tos_shielded_payment_prover_free(reinterpret_cast<TosShieldedPaymentProver *>(handle));
+}
