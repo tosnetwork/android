@@ -145,7 +145,7 @@ class PrivacyLiveTest {
                 assertEquals("0", info.getString("native_liability"))
                 if (prover) {
                     val root = java.io.File(context.filesDir, "tos-privacy-prover")
-                    it.loadPaymentProver(java.io.File(root, "phase1-zcash-2m15.bin"),
+                    it.loadPaymentProver(java.io.File(root, "phase1"),
                         java.io.File(root, "ceremony"), ::now).use { }
                 }
                 if (summary) {
