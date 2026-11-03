@@ -714,6 +714,13 @@ class AccountRepository(
             }
         }
 
+    suspend fun requestPrivacyRelayOffer(
+        wallet: WalletEntity, approvedRelay: ByteArray, stopped: () -> Boolean,
+    ): PrivacyNative.RelayOffer =
+        withPrivacyStore(wallet, stopped, discard = { it.close() }) { reader, record, selection, _ ->
+            reader.requestRelayOffer(record, selection, approvedRelay, stopped)
+        }
+
     suspend fun stagePrivacyPayment(
         wallet: WalletEntity, recipient: ByteArray, amount: String, fee: String, quoteIdentity: String,
         prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer, stopped: () -> Boolean,
