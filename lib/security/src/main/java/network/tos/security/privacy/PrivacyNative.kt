@@ -14,6 +14,7 @@ internal object PrivacyNativeBridge {
     external fun replayInfo(handle: Long): ByteArray?
     external fun scanReplay(handle: Long, seed: ByteArray, offset: Int, count: Int): ByteArray?
     external fun summaryReplay(handle: Long, seed: ByteArray): ByteArray?
+    external fun receiveReplay(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
     external fun freeReplay(handle: Long)
 }
 
@@ -112,6 +113,29 @@ object PrivacyNative {
                 if (Thread.currentThread().isInterrupted) throw InterruptedException("Privacy summary cancelled")
             }) {
                 PrivacyNativeBridge.summaryReplay(handle, seed) ?: error("Privacy complete summary failed")
+            }
+        }
+
+        /** Reserve and issue on a worker after authenticating this replay and its binding.
+         * A cancellation after the native call may consume the reserved index.
+         */
+        fun receiveAndWipeSeed(
+            seed: ByteArray,
+            root: ByteArray,
+            binding: ByteArray,
+            requireCurrent: () -> Unit,
+        ): ByteArray = synchronized(lock) {
+            PrivacySummaryRead.readAndWipeSeed(seed, checkCurrent = {
+                check(handle != 0L) { "Privacy replay is closed" }
+                check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+                    "Privacy receipt issuance must run on a worker thread"
+                }
+                if (Thread.currentThread().isInterrupted) throw InterruptedException("Privacy receipt cancelled")
+                requireCurrent()
+            }) {
+                require(root.size in 1..4096 && binding.size == 228)
+                PrivacyNativeBridge.receiveReplay(handle, seed, root, binding)
+                    ?: error("Privacy receipt issuance failed")
             }
         }
 

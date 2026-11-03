@@ -27,7 +27,14 @@ class PrivacyLiveTest {
 
     @Test fun originalProtectedMasterFeedsTheUserObservationReader() = exerciseAuthenticatedPool(summary = true, originalMaster = true)
 
-    private fun exerciseAuthenticatedPool(summary: Boolean, originalMaster: Boolean = false) {
+    @Test fun consecutiveReceiptsReserveDistinctIndices() =
+        exerciseAuthenticatedPool(summary = false, originalMaster = true, receive = true)
+
+    private fun exerciseAuthenticatedPool(
+        summary: Boolean,
+        originalMaster: Boolean = false,
+        receive: Boolean = false,
+    ) {
         val encoded = InstrumentationRegistry.getArguments().getString("privacyLiveConfig").orEmpty()
         assumeTrue("Provide privacyLiveConfig for isolated live-pool validation", encoded.isNotEmpty())
         val bytes = Base64.decode(encoded, Base64.NO_WRAP)
@@ -87,6 +94,25 @@ class PrivacyLiveTest {
                 val selection = network.tos.wallet.data.account.privacy.PrivacyPoolSelection(profile,
                     "0:" + config.getString("pool_account"), Base64.decode(config.getString("code_boc"), Base64.NO_WRAP),
                     config.getString("profile_hash"), config.getString("poseidon_manifest_hash"), config.getString("groth16_vk_hash"))
+                if (receive) {
+                    val root = File(context.noBackupFilesDir, "privacy-receive-${UUID.randomUUID()}")
+                    android.system.Os.mkdir(root.absolutePath, 448) // 0700
+                    try {
+                        val balanceReader = PrivacyBalanceReader(reader, QuantumHistoryHttpTransport(endpoint, client), ::now)
+                        val rootBytes = root.absolutePath.toByteArray(Charsets.UTF_8)
+                        repeat(2) { expected ->
+                            val descriptor = balanceReader.receive(record, selection, rootBytes, { false }) { body ->
+                                requireNotNull(custody).withOriginalPrivacyMaster(id, identity, body)
+                            }
+                            val wire = java.nio.ByteBuffer.wrap(descriptor)
+                            assertEquals(2573, descriptor.size)
+                            assertEquals(0x53484431, wire.int)
+                            assertEquals(expected.toLong(), wire.getLong(37))
+                        }
+                    } finally {
+                        assertTrue(root.deleteRecursively())
+                    }
+                }
                 val observed = PrivacyBalanceReader(reader, QuantumHistoryHttpTransport(endpoint, client), ::now)
                     .read(QuantumCreationRecord.load(context, id), selection, { false }) { body ->
                         requireNotNull(custody).withOriginalPrivacyMaster(id, identity, body)

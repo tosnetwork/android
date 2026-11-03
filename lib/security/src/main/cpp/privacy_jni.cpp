@@ -156,6 +156,29 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_summaryReplay(JNIEnv *env,
   if (env->ExceptionCheck()) return nullptr;
   return copy_response(env, tos_shielded_replay_summary(replay_handle(handle), key.bytes.data(), key.bytes.size()));
 }
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_receiveReplay(
+    JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding) {
+  if (replay_handle(handle) == nullptr || seed == nullptr || root == nullptr ||
+      binding == nullptr || env->GetArrayLength(seed) != 32 ||
+      env->GetArrayLength(binding) != 228) return nullptr;
+  const jsize root_length = env->GetArrayLength(root);
+  if (root_length <= 0 || root_length > 4096) return nullptr;
+
+  Seed key;
+  std::array<uint8_t, 4096> path{};
+  std::array<uint8_t, 228> pins{};
+  env->GetByteArrayRegion(seed, 0, 32, reinterpret_cast<jbyte *>(key.bytes.data()));
+  if (env->ExceptionCheck()) return nullptr;
+  env->GetByteArrayRegion(root, 0, root_length, reinterpret_cast<jbyte *>(path.data()));
+  if (env->ExceptionCheck()) return nullptr;
+  env->GetByteArrayRegion(binding, 0, 228, reinterpret_cast<jbyte *>(pins.data()));
+  if (env->ExceptionCheck()) return nullptr;
+  return copy_response(env, tos_shielded_replay_receive(
+      replay_handle(handle), key.bytes.data(), key.bytes.size(), path.data(),
+      static_cast<size_t>(root_length), pins.data(), pins.size()), 2573);
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_network_tos_security_privacy_PrivacyNativeBridge_freeReplay(JNIEnv *, jobject, jlong handle) {
   tos_shielded_replay_free(replay_handle(handle));

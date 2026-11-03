@@ -28,6 +28,13 @@ object PrivacyHistoryWalk {
                 recheck()
             }) { replay.summaryAndWipeSeed(seed) }
         }
+        fun receiveAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
+                               requireCurrent: () -> Unit): ByteArray = synchronized(lock) {
+            try {
+                checkNotNull(archive) { "Privacy history archive is closed" }
+                replay.receiveAndWipeSeed(seed, root, binding, requireCurrent)
+            } finally { seed.fill(0) }
+        }
         override fun close() = synchronized(lock) { replay.close(); archive = null }
     }
     /** Run on a worker. Query enforces reception/transport timeout and cancellation limits. */

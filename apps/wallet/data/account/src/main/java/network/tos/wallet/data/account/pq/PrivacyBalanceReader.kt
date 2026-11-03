@@ -11,7 +11,31 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
     fun read(record: QuantumCreationRecord, selection: PrivacyPoolSelection,
-             stopped: () -> Boolean, master: ((ByteArray) -> PrivacyBalanceSummary) -> PrivacyBalanceSummary): PrivacyBalanceState.Observed {
+             stopped: () -> Boolean, master: ((ByteArray) -> PrivacyBalanceSummary) -> PrivacyBalanceSummary): PrivacyBalanceState.Observed =
+        withReplay(record, selection, stopped, forReceive = false) { observation, completed, running ->
+            val summary = master { seed ->
+                val bytes = completed.summaryAndWipeSeed(seed, now, stopped = { running(); false })
+                try { PrivacyBalanceSummary.parse(bytes) } finally { bytes.fill(0) }
+            }
+            check(summary.diagnosticsCount == "0") { "Privacy note scan reported diagnostics" }
+            running()
+            PrivacyBalanceState.Observed(summary, selection.pool, record.profile.globalId,
+                observation.provenShardTime(now()), now())
+        }
+
+    fun receive(record: QuantumCreationRecord, selection: PrivacyPoolSelection, root: ByteArray,
+                stopped: () -> Boolean, master: ((ByteArray) -> ByteArray) -> ByteArray): ByteArray =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            master { seed -> completed.receiveAndWipeSeed(seed, root, now) { running(); false } }
+        }
+
+    private fun <T> withReplay(
+        record: QuantumCreationRecord,
+        selection: PrivacyPoolSelection,
+        stopped: () -> Boolean,
+        forReceive: Boolean,
+        action: (QuantumAccountReader.PoolObservation, PrivacyHistorySynchronizer.Completed, () -> Unit) -> T,
+    ): T {
         selection.requireProfile(record.profile)
         val started = nanoTime()
         fun running() {
@@ -25,16 +49,11 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             val observation = accounts.observePool(record.id, record.identity, record.profile, selection.address(),
                 selection.expectedCode(), selection.profileBytes(), selection.manifestBytes(), selection.verifyingKeyBytes())
             running()
-            PrivacyHistorySynchronizer.synchronize(observation, query, { running(); false }, now, lease).use { completed ->
+            PrivacyHistorySynchronizer.synchronize(
+                observation, query, { running(); false }, now, lease, forReceive,
+            ).use { completed ->
                 running()
-                val summary = master { seed ->
-                    val bytes = completed.summaryAndWipeSeed(seed, now, stopped = { running(); false })
-                    try { PrivacyBalanceSummary.parse(bytes) } finally { bytes.fill(0) }
-                }
-                check(summary.diagnosticsCount == "0") { "Privacy note scan reported diagnostics" }
-                running(); observation.requireFresh(now())
-                return PrivacyBalanceState.Observed(summary, selection.pool, record.profile.globalId,
-                    observation.provenShardTime(now()), now())
+                return action(observation, completed, ::running)
             }
         }
     }

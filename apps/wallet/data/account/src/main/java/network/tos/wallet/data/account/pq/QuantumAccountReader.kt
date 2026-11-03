@@ -101,11 +101,17 @@ class QuantumAccountReader(
         private val proof: QuantumVerifiedRead,
         poolDataBOC: ByteArray,
         accountRoot: ByteArray,
+        receiveBinding: ByteArray,
     ) {
+        private val receiptPins = receiveBinding.copyOf()
+        fun receiveBinding(now: Long): ByteArray {
+            requireFresh(now)
+            return receiptPins.copyOf()
+        }
         private val poolData = poolDataBOC.copyOf()
         private val rootHash = accountRoot.copyOf()
         /** All initial expectations originate in this verified same-checkpoint capability. */
-        fun replayRequest(now: Long): ByteArray {
+        fun replayRequest(now: Long, forReceive: Boolean = false): ByteArray {
             requireFresh(now)
             val raw = rawAddressFor(address)
             require(raw.startsWith("0:") && rootHash.size == 32)
@@ -121,6 +127,7 @@ class QuantumAccountReader(
                 .put("account_root", hex(rootHash)).put("shard_time", proof.provenAccountTime(raw).toString())
                 .put("pool_state_boc", base64(poolData)).put("pool_data_hash", hex(root(poolData).hash().toByteArray()))
                 .put("gas_boc", base64(gas)).put("gas_hash", hex(root(gas).hash().toByteArray()))
+                .apply { if (forReceive) put("receive_binding", hex(receiptPins)) }
                 .toString().toByteArray(Charsets.UTF_8)
         }
         private val encoded = stateJSON.copyOf()
@@ -170,8 +177,15 @@ class QuantumAccountReader(
             java.security.MessageDigest.getInstance("SHA-256").digest(key).contentEquals(keyPin)) {
             "Privacy pool deployment pins do not match"
         }
+        val binding = java.nio.ByteBuffer.allocate(228).putInt(profile.globalId)
+        for (value in listOf(rawAddressFor(address).substring(2), profile.rootHash, profile.fileHash)) {
+            require(value.length == 64)
+            binding.put(value.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+        }
+        binding.put(expectedCode.hash().toByteArray()).put(profilePin).put(manifestPin).put(keyPin)
+        check(!binding.hasRemaining())
         return PoolObservation(id, profile, network, address, decoded, proof,
-            org.ton.boc.BagOfCells(data).toByteArray(), BagOfCells(bytes).roots.single().hash().toByteArray()).also { it.requireFresh(now()) }
+            org.ton.boc.BagOfCells(data).toByteArray(), BagOfCells(bytes).roots.single().hash().toByteArray(), binding.array()).also { it.requireFresh(now()) }
     }
 
     /** Token discovery rows are hints; only this proof path returns verified units. */

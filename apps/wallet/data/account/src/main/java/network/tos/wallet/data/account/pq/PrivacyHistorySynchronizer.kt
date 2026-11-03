@@ -53,13 +53,27 @@ internal object PrivacyHistorySynchronizer {
                 }
             } finally { seed.fill(0) }
         }
+        fun receiveAndWipeSeed(seed: ByteArray, root: ByteArray, now: () -> Long,
+                               stopped: () -> Boolean): ByteArray {
+            try {
+                return synchronized(lock) {
+                    val verified = checkNotNull(observation)
+                    val binding = verified.receiveBinding(now())
+                    history.receiveAndWipeSeed(seed, root, binding) {
+                        if (stopped()) throw kotlinx.coroutines.CancellationException("Privacy receipt cancelled")
+                        verified.requireFresh(now())
+                    }
+                }
+            } finally { seed.fill(0) }
+        }
         override fun close() = synchronized(lock) {
             try { history.close() } finally { observation = null; lease.close() }
         }
     }
     /** Capacity remains held until the completed native ledger/archive is closed. */
     fun synchronize(observation: QuantumAccountReader.PoolObservation, query: QuantumHistoryReader.Query,
-                    stopped: () -> Boolean, now: () -> Long, lease: Lease = Lease(observation.id)): Completed {
+                    stopped: () -> Boolean, now: () -> Long, lease: Lease = Lease(observation.id),
+                    forReceive: Boolean = false): Completed {
         lease.requireHeld(observation.id)
         try {
             val raw = PrivacyHistoryWalk.Query { address, lt, hash ->
@@ -69,7 +83,7 @@ internal object PrivacyHistorySynchronizer {
                 require(android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP) == encoded)
                 bytes
             }
-            val history = PrivacyHistoryWalk.replay(observation.replayRequest(now()), raw, stopped,
+            val history = PrivacyHistoryWalk.replay(observation.replayRequest(now(), forReceive), raw, stopped,
                 recheck = { observation.requireFresh(now()) })
             try { return Completed(observation, history, lease) }
             catch (failure: Throwable) { history.close(); throw failure }

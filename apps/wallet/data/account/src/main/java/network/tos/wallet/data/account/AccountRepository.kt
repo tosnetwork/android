@@ -666,6 +666,48 @@ class AccountRepository(
         } catch (_: Exception) { PrivacyBalanceState.Failed(PrivacyBalanceState.Failure.VERIFICATION_OR_TRANSPORT) }
     }
 
+    /** The caller authenticates the wallet owner before requesting a descriptor. */
+    suspend fun issuePrivacyReceipt(wallet: WalletEntity, stopped: () -> Boolean): ByteArray =
+        withContext(Dispatchers.IO) {
+            val stored = checkNotNull(database.getAccount(wallet.id))
+            check(stored.identity == wallet.identity && stored.isQuantum && !keyguardManager.isDeviceLocked)
+            val id = UUID.fromString(wallet.id)
+            val record = QuantumCreationRecord.load(context, id)
+            check(record.identity == stored.quantumIdentity && quantumCustody.hasOriginalPrivacyMaster(id))
+            val selection = checkNotNull(PrivacyPoolRegistry(context).selected(record.profile))
+            val endpoint = quantumPaymentEndpoint()
+            val descriptor = runInterruptible {
+                val parent = context.noBackupFilesDir
+                val root = java.io.File(parent, "tos-privacy")
+                try {
+                    android.system.Os.mkdir(root.absolutePath, 448) // 0700
+                } catch (error: android.system.ErrnoException) {
+                    if (error.errno != android.system.OsConstants.EEXIST) throw error
+                }
+                val fd = android.system.Os.open(parent.absolutePath,
+                    android.system.OsConstants.O_RDONLY, 0)
+                try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
+                PrivacyBalanceReader(
+                    QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+                    QuantumHistoryHttpTransport(endpoint, quantumHttpClient),
+                ).receive(record, selection, root.absolutePath.toByteArray(Charsets.UTF_8), stopped) { body ->
+                    quantumCustody.withOriginalPrivacyMaster(id, record.identity, body)
+                }
+            }
+            try {
+                currentCoroutineContext().ensureActive()
+                check(!stopped() && !keyguardManager.isDeviceLocked)
+                check(database.getAccount(wallet.id)?.identity == stored.identity)
+                check(quantumCustody.hasOriginalPrivacyMaster(id))
+                currentCoroutineContext().ensureActive()
+                check(!stopped() && !keyguardManager.isDeviceLocked)
+                descriptor
+            } catch (failure: Throwable) {
+                descriptor.fill(0)
+                throw failure
+            }
+        }
+
     /** One frozen endpoint and one authenticated owner checkpoint for the entire asset refresh. */
     suspend fun readQuantumAssets(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumTokenAssets =
         runInterruptible(Dispatchers.IO) {

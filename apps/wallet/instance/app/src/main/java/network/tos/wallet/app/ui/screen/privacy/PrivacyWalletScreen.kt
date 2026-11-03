@@ -28,7 +28,7 @@ import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
-/** A separate read-only privacy mode. Leaving never deletes recovery data or pending operations. */
+/** Separate privacy wallet and receipt screen. */
 class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.fragment_pq_wallets, wallet) {
     override val fragmentName = "PrivacyWalletScreen"
     override val viewModel: BaseWalletVM.EmptyViewViewModel by viewModel()
@@ -38,6 +38,8 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
     private lateinit var amount: TextView
     private lateinit var status: TextView
     private lateinit var refresh: Button
+    private lateinit var receive: Button
+    private lateinit var receipt: TextView
     private val foreground = AtomicBoolean(false)
     private val sequence = AtomicLong()
     private var job: Job? = null
@@ -58,11 +60,13 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
         status = label("Refresh to obtain a verified observation.", "privacy.status")
         refresh = button("Refresh privacy observation", "privacy.refresh") { refresh() }
         label("This reads through your configured TOS node. It does not use a Tor relayer or make all wallet traffic anonymous.", "privacy.route")
-        for ((text, id) in listOf("Private receive" to "receive", "Private transfer" to "send",
+        receive = button("Private receive", "privacy.receive") { refresh(forReceipt = true) }
+        receipt = label("", "privacy.receipt").apply { setTextIsSelectable(true); visibility = View.GONE }
+        for ((text, id) in listOf("Private transfer" to "send",
             "Deposit: ordinary wallet → privacy pool" to "deposit", "Withdraw: privacy pool → ordinary address" to "withdraw")) {
             button(text, "privacy.$id") {}.isEnabled = false
         }
-        label("Privacy receiving, transfers, deposits and withdrawals are not available yet. Leaving this page does not erase chain history or recovery records.", "privacy.actions.unavailable")
+        label("Private transfers, deposits and withdrawals are still in development.", "privacy.actions.unavailable")
         button("Return to ordinary wallet", "privacy.close") { finish() }
     }
 
@@ -74,10 +78,13 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
         this.text = text; contentDescription = id; isAllCaps = false
         setOnClickListener { action() }; this@PrivacyWalletScreen.layout.addView(this)
     }
-    private fun refresh() {
+    private fun refresh(forReceipt: Boolean = false) {
         if (job?.isActive == true || !foreground.get()) return
         val tag = sequence.incrementAndGet()
-        show(PrivacyBalanceState.Loading); refresh.isEnabled = false
+        clearReceipt()
+        show(PrivacyBalanceState.Loading)
+        refresh.isEnabled = false
+        receive.isEnabled = false
         job = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val unavailable = accounts.privacyReadAvailability(wallet)
@@ -92,21 +99,37 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
                     return@launch
                 }
                 authenticating = true
-                val accepted = try { passcodes.confirmation(requireContext(), "Read privacy wallet") }
+                val accepted = try { passcodes.confirmation(requireContext(), if (forReceipt) "Create private receipt" else "Read privacy wallet") }
                     finally { authenticating = false }
                 currentCoroutineContext().ensureActive()
                 if (!accepted || !foreground.get()) {
                     if (isAdded && sequence.get() == tag) { amount.text = "—"; status.text = "Authentication cancelled. No balance was published." }
                     return@launch
                 }
-                val result = accounts.readPrivacyBalance(wallet) { !foreground.get() || sequence.get() != tag }
-                currentCoroutineContext().ensureActive()
-                if (isAdded && foreground.get() && sequence.get() == tag) show(result)
+                val stopped = { !foreground.get() || sequence.get() != tag }
+                if (forReceipt) {
+                    val descriptor = accounts.issuePrivacyReceipt(wallet, stopped)
+                    try {
+                        currentCoroutineContext().ensureActive()
+                        if (isAdded && !stopped()) {
+                            receipt.text = android.util.Base64.encodeToString(descriptor, android.util.Base64.NO_WRAP)
+                            receipt.visibility = View.VISIBLE
+                            status.text = "Private receiving descriptor. Share it with the sender."
+                        }
+                    } finally { descriptor.fill(0) }
+                } else {
+                    val result = accounts.readPrivacyBalance(wallet, stopped)
+                    currentCoroutineContext().ensureActive()
+                    if (isAdded && !stopped()) show(result)
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
                 if (isAdded && foreground.get() && sequence.get() == tag) show(PrivacyBalanceState.Failed(PrivacyBalanceState.Failure.VERIFICATION_OR_TRANSPORT))
             } finally {
-                if (isAdded && sequence.get() == tag) refresh.isEnabled = true
+                if (isAdded && sequence.get() == tag) {
+                    refresh.isEnabled = true
+                    receive.isEnabled = true
+                }
             }
         }
     }
@@ -130,9 +153,16 @@ class PrivacyWalletScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.f
             }
         }
     }
+    private fun clearReceipt() {
+        if (::receipt.isInitialized) {
+            receipt.text = ""
+            receipt.visibility = View.GONE
+        }
+    }
     private fun leaveForeground() {
+        clearReceipt()
         foreground.set(false); sequence.incrementAndGet(); job?.cancel(); job = null
-        if (::amount.isInitialized) { show(PrivacyBalanceState.Unverified); refresh.isEnabled = true }
+        if (::amount.isInitialized) { show(PrivacyBalanceState.Unverified); refresh.isEnabled = true; receive.isEnabled = true }
     }
     override fun onResume() { super.onResume(); foreground.set(true) }
     override fun onPause() {
