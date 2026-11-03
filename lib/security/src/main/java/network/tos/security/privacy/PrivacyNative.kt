@@ -114,7 +114,8 @@ object PrivacyNative {
         return synchronized(lock) {
             val handle = PrivacyNativeBridge.createReplay(request)
             check(handle != 0L) { "Privacy replay creation failed" }
-            Replay(handle)
+            try { Replay(handle) }
+            catch (failure: Throwable) { PrivacyNativeBridge.freeReplay(handle); throw failure }
         }
     }
 
