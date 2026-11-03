@@ -1,5 +1,8 @@
 package network.tos.wallet.data.account.pq
 
+import network.tos.security.privacy.PrivacyNative
+import network.tos.blockchain.ton.contract.TosQuantumAccountState
+
 import android.content.Context
 import network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity
 import network.tos.security.pq.QuantumProofSession
@@ -86,6 +89,61 @@ class QuantumAccountReader(
         val account = QuantumSelfPayAccount.bind(identity, proof, now(), MAXIMUM_AGE)
         network.requireLive(now(), MAXIMUM_AGE)
         return Observation(id, identity, profile, network, proof, account.snapshot(now())).also { it.requireFresh(now()) }
+    }
+
+    /** Verified account state, not a private balance or a completed history replay. */
+    internal class PoolObservation(
+        val id: UUID,
+        val profile: QuantumNetworkProfile,
+        val network: QuantumVerifiedRead,
+        val address: org.ton.block.AddrStd,
+        stateJSON: ByteArray,
+        private val proof: QuantumVerifiedRead,
+    ) {
+        private val encoded = stateJSON.copyOf()
+        val stateJSON: ByteArray get() = encoded.copyOf()
+        fun requireFresh(now: Long) {
+            network.requireLive(now, MAXIMUM_AGE)
+            network.requireSameCheckpoint(proof)
+            proof.requireLive(now, MAXIMUM_AGE)
+            require(now - proof.provenAccountTime(rawAddressFor(address)) in -60..MAXIMUM_AGE)
+        }
+    }
+
+    internal fun observePool(id: UUID, identity: TosQuantumSelfPayIdentity, profile: QuantumNetworkProfile,
+                             address: org.ton.block.AddrStd,
+                             expectedCode: org.ton.cell.Cell, profileHash: ByteArray,
+                             manifestHash: ByteArray, verifyingKeyHash: ByteArray): PoolObservation {
+        require(listOf(profileHash, manifestHash, verifyingKeyHash).all { it.size == 32 })
+        val profilePin = profileHash.copyOf()
+        val manifestPin = manifestHash.copyOf()
+        val keyPin = verifyingKeyHash.copyOf()
+        require(identity.wallet.initialAuthority.globalId == profile.globalId)
+        // Tor relaying needs private notes, not a funded/deployed ordinary wallet.
+        val session = QuantumProofSession(context, id, profile.anchor())
+        val request = JSONObject().put("mode", "live").put("max_age_seconds", MAXIMUM_AGE)
+            .put("config_params", org.json.JSONArray().put(19).put(21)).toString().toByteArray(Charsets.UTF_8)
+        val network = session.readBound(request, now(), transport)
+        val configRoot = BagOfCells(network.provenConfigParam(19)).roots.single()
+        require(configRoot.type == CellType.ORDINARY && configRoot.levelMask.level == 0)
+        val config = configRoot.beginParse()
+        require(config.loadInt(32).toInt() == profile.globalId)
+        require(config.remainingBits == 0 && config.refsPosition == config.refs.size)
+        val proof = session.readBound(network.requestAtCheckpoint(rawAddressFor(address), maximumAge = MAXIMUM_AGE), now(), transport)
+        network.requireSameCheckpoint(proof)
+        proof.requireLive(now(), MAXIMUM_AGE)
+        val bytes = proof.accountState(rawAddressFor(address), QuantumPaymentQuote.hex(expectedCode.hash().toByteArray()))
+        val data = TosQuantumAccountState.data(bytes, address, expectedCode)
+        val decoded = PrivacyNative.decodePoolState(org.ton.boc.BagOfCells(data).toByteArray(), data.hash().toByteArray())
+        val json = org.json.JSONObject(String(decoded, Charsets.UTF_8))
+        val key = android.util.Base64.decode(json.getString("verifying_key"), android.util.Base64.NO_WRAP)
+        require(key.size == 1248 && json.getString("profile_hash") == QuantumPaymentQuote.hex(profilePin) &&
+            json.getString("poseidon_manifest_hash") == QuantumPaymentQuote.hex(manifestPin) &&
+            json.getString("groth16_vk_hash") == QuantumPaymentQuote.hex(keyPin) &&
+            java.security.MessageDigest.getInstance("SHA-256").digest(key).contentEquals(keyPin)) {
+            "Privacy pool deployment pins do not match"
+        }
+        return PoolObservation(id, profile, network, address, decoded, proof).also { it.requireFresh(now()) }
     }
 
     /** Token discovery rows are hints; only this proof path returns verified units. */

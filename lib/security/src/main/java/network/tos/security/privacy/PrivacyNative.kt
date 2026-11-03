@@ -1,9 +1,12 @@
 package network.tos.security.privacy
 
+import org.json.JSONObject
+
 internal object PrivacyNativeBridge {
     init { System.loadLibrary("tos_mobile_shielded") }
     external fun descriptor(seed: ByteArray, domain: ByteArray, index: Long): ByteArray?
     external fun scan(seed: ByteArray, request: ByteArray): ByteArray?
+    external fun poolState(boc: ByteArray): ByteArray?
 }
 
 /** Synchronous wallet crypto only. Call off the UI thread with authenticated pool data.
@@ -25,6 +28,22 @@ object PrivacyNative {
                     ?: error("Privacy descriptor generation failed")
             }
         } finally { seed.fill(0) }
+    }
+
+    /** Layout decoding; expectedDataHash must originate in an authenticated account proof.
+     * Address/code/network/profile checks remain caller responsibilities.
+     */
+    fun decodePoolState(boc: ByteArray, expectedDataHash: ByteArray): ByteArray {
+        require(boc.isNotEmpty() && boc.size <= MAX_REQUEST_BYTES && expectedDataHash.size == 32)
+        return synchronized(lock) {
+            val decoded = PrivacyNativeBridge.poolState(boc) ?: error("Privacy pool state decode failed")
+            check(decoded.size in 1..MAX_RESPONSE_BYTES)
+            val expected = expectedDataHash.joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(JSONObject(String(decoded, Charsets.UTF_8)).getString("data_hash") == expected) {
+                "Pool state does not match the account proof"
+            }
+            decoded
+        }
     }
 
     /** The response contains private note material; encrypt retained state and never log it. */

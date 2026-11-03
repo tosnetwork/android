@@ -43,6 +43,24 @@ class PrivacyNativeDeviceTest {
         assertArrayEquals(ByteArray(32), seed)
     }
 
+    @Test fun poolStateBindingAndFullWireSizeAreChecked() {
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        val boc = assets.open("privacy-pool-state.boc").use { it.readBytes() }
+        val expected = "50ba96d38f3e0e474737a1946973f7ba528775a246bbe9b8d02a97a0425d6b4f"
+            .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val decoded = JSONObject(String(PrivacyNative.decodePoolState(boc, expected), Charsets.UTF_8))
+        assertEquals("20000000", decoded.getString("withdrawal_fee"))
+        assertEquals("4294967295", decoded.getString("last_anchor_epoch"))
+        assertThrows(IllegalStateException::class.java) { PrivacyNative.decodePoolState(boc, ByteArray(32)) }
+        val width = boc[4].toInt() and 7
+        val start = 6 + 3 * width
+        val end = start + (boc[5].toInt() and 255)
+        val total = boc.copyOfRange(start, end).fold(0L) { n, b -> (n shl 8) or (b.toLong() and 255) }
+        val header = boc.copyOfRange(0, start).apply { this[5] = 8 }
+        val changed = header + java.nio.ByteBuffer.allocate(8).putLong(total + (1L shl 32)).array() + boc.copyOfRange(end, boc.size)
+        assertThrows(IllegalStateException::class.java) { PrivacyNative.decodePoolState(changed, expected) }
+    }
+
     @Test fun nativeFailureAndPreflightFailureBothWipeSeed() {
         val seed = ByteArray(32) { 0x42 }
         assertThrows(IllegalStateException::class.java) { PrivacyNative.scanAndWipeSeed(seed, "{}".toByteArray()) }

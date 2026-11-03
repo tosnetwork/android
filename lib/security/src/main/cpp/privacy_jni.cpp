@@ -69,3 +69,19 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_scan(
     return nullptr;
   }
 }
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_poolState(
+    JNIEnv *env, jobject, jbyteArray request) {
+  if (request == nullptr) return nullptr;
+  const jsize size = env->GetArrayLength(request);
+  if (size <= 0 || size > kRequestLimit) return nullptr;
+  try {
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    env->GetByteArrayRegion(request, 0, size, reinterpret_cast<jbyte *>(bytes.data()));
+    if (env->ExceptionCheck()) return nullptr;
+    return copy_response(env, tos_shielded_pool_state(bytes.data(), bytes.size()));
+  } catch (const std::bad_alloc &) {
+    return nullptr;
+  }
+}
