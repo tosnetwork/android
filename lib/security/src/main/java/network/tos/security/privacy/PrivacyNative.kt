@@ -18,6 +18,13 @@ internal object PrivacyNativeBridge {
     external fun validateRecipient(handle: Long, descriptor: ByteArray): Boolean
     external fun pendingStatus(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
     external fun receiveReplay(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
+    external fun requestRelayOffer(replay: Long, request: ByteArray): Long
+    external fun relayOfferInfo(offer: Long): ByteArray?
+    external fun freeRelayOffer(offer: Long)
+    external fun stagePayment(replay: Long, prover: Long, offer: Long, seed: ByteArray, request: ByteArray): Long
+    external fun recoverPayment(replay: Long, seed: ByteArray, request: ByteArray): Long
+    external fun submitPayment(payment: Long): ByteArray?
+    external fun freePayment(payment: Long)
     external fun loadPaymentProver(handle: Long, phase1: ByteArray, ceremony: ByteArray): Long
     external fun freePaymentProver(handle: Long)
     external fun freeReplay(handle: Long)
@@ -82,12 +89,33 @@ object PrivacyNative {
         }
     }
 
-    class PaymentProver internal constructor(private var handle: Long) : AutoCloseable {
+    class PaymentProver internal constructor(internal var handle: Long) : AutoCloseable {
         override fun close() = synchronized(lock) {
             if (handle != 0L) {
                 PrivacyNativeBridge.freePaymentProver(handle)
                 handle = 0L
             }
+        }
+    }
+
+    class RelayOffer internal constructor(internal var handle: Long) : AutoCloseable {
+        fun details(): ByteArray = synchronized(lock) {
+            checkNotNull(PrivacyNativeBridge.relayOfferInfo(handle))
+        }
+        override fun close() = synchronized(lock) {
+            PrivacyNativeBridge.freeRelayOffer(handle)
+            handle = 0L
+        }
+    }
+
+    class PaymentSubmission internal constructor(private var handle: Long) : AutoCloseable {
+        fun submitOrRetry(): ByteArray = synchronized(lock) {
+            check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper())
+            checkNotNull(PrivacyNativeBridge.submitPayment(handle))
+        }
+        override fun close() = synchronized(lock) {
+            PrivacyNativeBridge.freePayment(handle)
+            handle = 0L
         }
     }
 
@@ -131,6 +159,36 @@ object PrivacyNative {
                 catch (failure: Throwable) { PrivacyNativeBridge.freePaymentProver(prover); throw failure }
             }
         }
+
+        fun requestRelayOffer(request: ByteArray): RelayOffer = synchronized(lock) {
+            check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper())
+            val offer = PrivacyNativeBridge.requestRelayOffer(handle, request)
+            check(offer != 0L)
+            RelayOffer(offer)
+        }
+
+        fun stagePaymentAndWipeSeed(
+            prover: PaymentProver, offer: RelayOffer, seed: ByteArray, request: ByteArray
+        ): PaymentSubmission = try {
+            check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper())
+            synchronized(lock) {
+                check(handle != 0L && prover.handle != 0L && offer.handle != 0L)
+                val quote = offer.handle
+                offer.handle = 0L
+                val payment = PrivacyNativeBridge.stagePayment(handle, prover.handle, quote, seed, request)
+                check(payment != 0L)
+                PaymentSubmission(payment)
+            }
+        } finally { seed.fill(0) }
+
+        fun recoverPaymentAndWipeSeed(seed: ByteArray, request: ByteArray): PaymentSubmission? = try {
+            check(android.os.Looper.myLooper() != android.os.Looper.getMainLooper())
+            synchronized(lock) {
+                val payment = PrivacyNativeBridge.recoverPayment(handle, seed, request)
+                check(payment != -1L)
+                if (payment == 0L) null else PaymentSubmission(payment)
+            }
+        } finally { seed.fill(0) }
 
         fun validateRecipient(descriptor: ByteArray): Boolean = synchronized(lock) {
             check(handle != 0L) { "Privacy replay is closed" }

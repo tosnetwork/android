@@ -243,3 +243,76 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_freePaymentProver(
     JNIEnv *, jobject, jlong handle) {
   tos_shielded_payment_prover_free(reinterpret_cast<TosShieldedPaymentProver *>(handle));
 }
+
+namespace {
+bool read_payment_request(JNIEnv *env, jbyteArray input, std::vector<uint8_t> &bytes) {
+  if (!input) return false;
+  const auto size = env->GetArrayLength(input);
+  if (size < 1 || size > kRequestLimit) return false;
+  try { bytes.resize(size); } catch (const std::bad_alloc &) { return false; }
+  env->GetByteArrayRegion(input, 0, size, reinterpret_cast<jbyte *>(bytes.data()));
+  return !env->ExceptionCheck();
+}
+
+bool read_payment_seed(JNIEnv *env, jbyteArray input, Seed &seed) {
+  if (!input || env->GetArrayLength(input) != 32) return false;
+  env->GetByteArrayRegion(input, 0, 32, reinterpret_cast<jbyte *>(seed.bytes.data()));
+  return !env->ExceptionCheck();
+}
+}  // namespace
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_requestRelayOffer(
+    JNIEnv *env, jobject, jlong replay, jbyteArray request) {
+  std::vector<uint8_t> bytes;
+  if (!read_payment_request(env, request, bytes)) return 0;
+  return reinterpret_cast<jlong>(
+      tos_shielded_relay_offer_request(replay_handle(replay), bytes.data(), bytes.size()));
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_relayOfferInfo(JNIEnv *env, jobject, jlong offer) {
+  return copy_response(env, tos_shielded_relay_offer_info(reinterpret_cast<TosShieldedRelayOffer *>(offer)));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_freeRelayOffer(JNIEnv *, jobject, jlong offer) {
+  tos_shielded_relay_offer_free(reinterpret_cast<TosShieldedRelayOffer *>(offer));
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_stagePayment(
+    JNIEnv *env, jobject, jlong replay, jlong prover, jlong offer, jbyteArray key, jbyteArray request) {
+  Seed seed;
+  std::vector<uint8_t> bytes;
+  auto *quote = reinterpret_cast<TosShieldedRelayOffer *>(offer);
+  if (!read_payment_seed(env, key, seed) || !read_payment_request(env, request, bytes)) {
+    tos_shielded_relay_offer_free(quote);
+    return 0;
+  }
+  return reinterpret_cast<jlong>(tos_shielded_payment_stage(
+      replay_handle(replay), reinterpret_cast<TosShieldedPaymentProver *>(prover), quote,
+      seed.bytes.data(), seed.bytes.size(), bytes.data(), bytes.size()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_recoverPayment(
+    JNIEnv *env, jobject, jlong replay, jbyteArray key, jbyteArray request) {
+  Seed seed;
+  std::vector<uint8_t> bytes;
+  if (!read_payment_seed(env, key, seed) || !read_payment_request(env, request, bytes)) return -1;
+  TosShieldedPaymentSubmission *payment = nullptr;
+  if (tos_shielded_payment_recover(replay_handle(replay), seed.bytes.data(), seed.bytes.size(),
+                                  bytes.data(), bytes.size(), &payment) != 0) return -1;
+  return reinterpret_cast<jlong>(payment);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_submitPayment(JNIEnv *env, jobject, jlong payment) {
+  return copy_response(env, tos_shielded_payment_submit(reinterpret_cast<TosShieldedPaymentSubmission *>(payment)));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_freePayment(JNIEnv *, jobject, jlong payment) {
+  tos_shielded_payment_free(reinterpret_cast<TosShieldedPaymentSubmission *>(payment));
+}
