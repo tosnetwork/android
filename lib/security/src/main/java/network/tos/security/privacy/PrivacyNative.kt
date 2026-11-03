@@ -8,6 +8,12 @@ internal object PrivacyNativeBridge {
     external fun scan(seed: ByteArray, request: ByteArray): ByteArray?
     external fun poolState(boc: ByteArray): ByteArray?
     external fun historyTransaction(request: ByteArray): ByteArray?
+    external fun createReplay(request: ByteArray): Long
+    external fun pushReplay(handle: Long, boc: ByteArray): Int
+    external fun finishReplay(handle: Long): Int
+    external fun replayInfo(handle: Long): ByteArray?
+    external fun scanReplay(handle: Long, seed: ByteArray, offset: Int, count: Int): ByteArray?
+    external fun freeReplay(handle: Long)
 }
 
 /** Synchronous wallet crypto only. Call off the UI thread with authenticated pool data.
@@ -66,6 +72,49 @@ object PrivacyNative {
             val decoded = PrivacyNativeBridge.historyTransaction(request) ?: error("Privacy history binding failed")
             check(decoded.size in 1..MAX_RESPONSE_BYTES)
             decoded
+        }
+    }
+
+    /** Own with use/close, including cancellation. Creation request must be proof-bound. */
+    class Replay internal constructor(private var handle: Long) : AutoCloseable {
+        init { require(handle != 0L) }
+        override fun close() = synchronized(lock) { discard() }
+        private fun discard() {
+            if (handle != 0L) { PrivacyNativeBridge.freeReplay(handle); handle = 0L }
+        }
+        fun push(boc: ByteArray) = synchronized(lock) {
+            check(handle != 0L)
+            if (boc.isEmpty() || boc.size > MAX_REQUEST_BYTES) { discard(); error("Invalid privacy history input") }
+            try { check(PrivacyNativeBridge.pushReplay(handle, boc) == 0) { "Privacy history replay failed" } }
+            catch (failure: Throwable) { discard(); throw failure }
+        }
+        fun finish() = synchronized(lock) {
+            check(handle != 0L)
+            try { check(PrivacyNativeBridge.finishReplay(handle) == 0) { "Privacy history is incomplete" } }
+            catch (failure: Throwable) { discard(); throw failure }
+        }
+        fun info(): ByteArray = synchronized(lock) {
+            check(handle != 0L)
+            val bytes = PrivacyNativeBridge.replayInfo(handle) ?: error("Privacy replay is not complete")
+            check(bytes.size in 1..MAX_RESPONSE_BYTES); bytes
+        }
+        fun scanAndWipeSeed(seed: ByteArray, offset: Int, count: Int): ByteArray {
+            try {
+                require(seed.size == 32 && offset >= 0 && count in 1..512)
+                return synchronized(lock) {
+                    check(handle != 0L)
+                    val bytes = PrivacyNativeBridge.scanReplay(handle, seed, offset, count) ?: error("Privacy ledger scan failed")
+                    check(bytes.size in 1..MAX_RESPONSE_BYTES); bytes
+                }
+            } finally { seed.fill(0) }
+        }
+    }
+    fun replay(request: ByteArray): Replay {
+        require(request.isNotEmpty() && request.size <= MAX_REQUEST_BYTES)
+        return synchronized(lock) {
+            val handle = PrivacyNativeBridge.createReplay(request)
+            check(handle != 0L) { "Privacy replay creation failed" }
+            Replay(handle)
         }
     }
 

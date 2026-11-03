@@ -101,3 +101,54 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_historyTransaction(
     return nullptr;
   }
 }
+
+namespace {
+TosShieldedReplay *replay_handle(jlong handle) {
+  return reinterpret_cast<TosShieldedReplay *>(static_cast<uintptr_t>(handle));
+}
+}
+extern "C" JNIEXPORT jlong JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_createReplay(JNIEnv *env, jobject, jbyteArray request) {
+  if (request == nullptr) return 0;
+  const jsize size = env->GetArrayLength(request);
+  if (size <= 0 || size > kRequestLimit) return 0;
+  try {
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    env->GetByteArrayRegion(request, 0, size, reinterpret_cast<jbyte *>(bytes.data()));
+    if (env->ExceptionCheck()) return 0;
+    return static_cast<jlong>(reinterpret_cast<uintptr_t>(tos_shielded_replay_create(bytes.data(), bytes.size())));
+  } catch (const std::bad_alloc &) { return 0; }
+}
+extern "C" JNIEXPORT jint JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_pushReplay(JNIEnv *env, jobject, jlong handle, jbyteArray request) {
+  auto *session = replay_handle(handle);
+  if (request == nullptr) return tos_shielded_replay_push(session, nullptr, 0);
+  const jsize size = env->GetArrayLength(request);
+  if (size <= 0 || size > kRequestLimit) return tos_shielded_replay_push(session, nullptr, 0);
+  try {
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    env->GetByteArrayRegion(request, 0, size, reinterpret_cast<jbyte *>(bytes.data()));
+    if (env->ExceptionCheck()) return tos_shielded_replay_push(session, nullptr, 0);
+    return tos_shielded_replay_push(session, bytes.data(), bytes.size());
+  } catch (const std::bad_alloc &) { return tos_shielded_replay_push(session, nullptr, 0); }
+}
+extern "C" JNIEXPORT jint JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_finishReplay(JNIEnv *, jobject, jlong handle) {
+  return tos_shielded_replay_finish(replay_handle(handle));
+}
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_replayInfo(JNIEnv *env, jobject, jlong handle) {
+  return copy_response(env, tos_shielded_replay_info(replay_handle(handle)));
+}
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_scanReplay(JNIEnv *env, jobject, jlong handle, jbyteArray seed, jint offset, jint count) {
+  if (seed == nullptr || env->GetArrayLength(seed) != 32 || offset < 0 || count <= 0 || count > 512) return nullptr;
+  Seed key;
+  env->GetByteArrayRegion(seed, 0, 32, reinterpret_cast<jbyte *>(key.bytes.data()));
+  if (env->ExceptionCheck()) return nullptr;
+  return copy_response(env, tos_shielded_replay_scan(replay_handle(handle), key.bytes.data(), 32, static_cast<size_t>(offset), static_cast<size_t>(count)));
+}
+extern "C" JNIEXPORT void JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_freeReplay(JNIEnv *, jobject, jlong handle) {
+  tos_shielded_replay_free(replay_handle(handle));
+}

@@ -15,6 +15,36 @@ class PrivacyNativeDeviceTest {
         return assets.open(name).bufferedReader().use { JSONObject(it.readText()) }
     }
 
+    @Test fun replaySessionRequiresFinishAndClosesFailedOwners() {
+        val fixture = fixture("privacy-session.json")
+        val request = fixture.getJSONObject("request").toString().toByteArray(Charsets.UTF_8)
+        PrivacyNative.replay(request).use { replay ->
+            assertThrows(IllegalStateException::class.java) { replay.info() }
+            val early = ByteArray(32) { 0x42 }
+            assertThrows(IllegalStateException::class.java) { replay.scanAndWipeSeed(early, 0, 1) }
+            assertArrayEquals(ByteArray(32), early)
+            val transactions = fixture.getJSONArray("transactions")
+            for (i in 0 until transactions.length()) replay.push(android.util.Base64.decode(transactions.getString(i), android.util.Base64.NO_WRAP))
+            replay.finish()
+            val info = JSONObject(String(replay.info(), Charsets.UTF_8))
+            assertEquals(fixture.getJSONObject("info").getString("total_outputs"), info.getString("total_outputs"))
+            val seed = ByteArray(32) { 0x42 }
+            val page = JSONObject(String(replay.scanAndWipeSeed(seed, 0, 1), Charsets.UTF_8))
+            assertEquals("1", page.getString("output_count"))
+            assertArrayEquals(ByteArray(32), seed)
+            replay.close(); replay.close()
+            assertThrows(IllegalStateException::class.java) { replay.info() }
+        }
+        PrivacyNative.replay(request).use { premature ->
+            assertThrows(IllegalStateException::class.java) { premature.finish() }
+            assertThrows(IllegalStateException::class.java) { premature.info() }
+        }
+        PrivacyNative.replay(request).use { invalid ->
+            assertThrows(IllegalStateException::class.java) { invalid.push(byteArrayOf()) }
+            assertThrows(IllegalStateException::class.java) { invalid.info() }
+        }
+    }
+
     @Test fun historyTransactionChecksEveryBinding() {
         val request = fixture("privacy-history.json").getJSONObject("request")
         fun hash(name: String) = request.getString(name).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
