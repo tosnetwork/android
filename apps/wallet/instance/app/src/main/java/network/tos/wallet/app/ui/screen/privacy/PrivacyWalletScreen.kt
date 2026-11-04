@@ -14,6 +14,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import network.tos.wallet.app.extensions.copyToClipboard
 import network.tos.wallet.app.BuildConfig
 import network.tos.wallet.app.R
 import network.tos.wallet.app.ui.base.BaseWalletVM
@@ -45,6 +46,7 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
     private lateinit var refresh: Button
     private lateinit var receive: Button
     private lateinit var recipient: android.widget.EditText
+    private lateinit var copyReceipt: Button
     private lateinit var receipt: TextView
     private val foreground = AtomicBoolean(false)
     private val sequence = AtomicLong()
@@ -67,6 +69,13 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         refresh = button("Refresh privacy observation", "privacy.refresh") { refresh() }
         label("This reads through your configured TOS node. It does not use a Tor relayer or make all wallet traffic anonymous.", "privacy.route")
         receive = button("Private receive", "privacy.receive") { refresh(forReceipt = true) }
+        copyReceipt = button("Copy private receiving descriptor", "privacy.receipt.copy") {
+            val descriptor = receipt.text.toString()
+            if (descriptor.isNotEmpty()) {
+                requireContext().copyToClipboard(descriptor, sensitive = true)
+                status.text = "Private receiving descriptor copied."
+            }
+        }.apply { visibility = View.GONE }
         receipt = label("", "privacy.receipt").apply { setTextIsSelectable(true); visibility = View.GONE }
         recipient = android.widget.EditText(requireContext()).apply {
             hint = "Private recipient descriptor"
@@ -284,6 +293,7 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
                         if (isAdded && !stopped()) {
                             receipt.text = android.util.Base64.encodeToString(descriptor, android.util.Base64.NO_WRAP)
                             receipt.visibility = View.VISIBLE
+                            copyReceipt.visibility = View.VISIBLE
                             status.text = "Private receiving descriptor. Share it with the sender."
                         }
                     } finally { descriptor.fill(0) }
@@ -327,6 +337,7 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         if (::receipt.isInitialized) {
             receipt.text = ""
             receipt.visibility = View.GONE
+            copyReceipt.visibility = View.GONE
         }
     }
     private fun leaveForeground() {

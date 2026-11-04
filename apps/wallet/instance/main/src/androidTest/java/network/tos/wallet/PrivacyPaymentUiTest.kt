@@ -31,6 +31,42 @@ class PrivacyPaymentUiTest {
         exerciseCancellation(finalReview = true, torUnavailable = true)
     }
 
+    @Test fun copyPrivateReceivingDescriptor() {
+        assumeTrue("Requires the isolated privacy pool",
+            InstrumentationRegistry.getArguments().getString("copyIsolatedReceipt") == "true")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName == "network.tos.wallet.uk")
+        val accounts = GlobalContext.get().get<AccountRepository>()
+        val wallet = runBlocking { accounts.getWallets().single() }
+        ActivityScenario.launch(RootActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.add(PrivacyWalletScreen.newInstance(wallet, activity))
+                activity.supportFragmentManager.executePendingTransactions()
+            }
+            onView(withContentDescription("privacy.receive")).perform(click())
+            val pin = context.cacheDir.resolve("disposable-ui-test-pin").readText()
+            check(pin.matches(Regex("[0-9]{4}")))
+            pin.forEach { digit -> onView(withText(digit.toString())).perform(click()) }
+            val copy = onView(withContentDescription("privacy.receipt.copy"))
+            val deadline = android.os.SystemClock.elapsedRealtime() + 60_000
+            while (true) {
+                if (runCatching { copy.check(matches(isDisplayed())) }.isSuccess) break
+                check(android.os.SystemClock.elapsedRealtime() < deadline) { "No private receiving descriptor appeared" }
+                android.os.SystemClock.sleep(250)
+            }
+            copy.perform(click())
+            onView(withContentDescription("privacy.receipt")).check { view, missing ->
+                if (missing != null) throw missing
+                val displayed = (view as android.widget.TextView).text.toString()
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val copied = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+                check(displayed.length == 3432 && copied == displayed) {
+                    "Clipboard must contain the complete displayed private receiving descriptor"
+                }
+            }
+        }
+    }
+
     private fun exerciseCancellation(
         finalReview: Boolean,
         submit: Boolean = false,
