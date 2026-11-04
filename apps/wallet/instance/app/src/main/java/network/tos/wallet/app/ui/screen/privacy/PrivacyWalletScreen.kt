@@ -91,7 +91,7 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         }
         label(
             if (payment == null) "Private transfers, deposits and withdrawals are still in development."
-            else "Tor payments are enabled for this test wallet. Deposits and withdrawals are still in development.",
+            else "Private transfers use the configured Tor relayer. Deposits and withdrawals are still in development.",
             "privacy.actions.unavailable",
         )
         button("Return to ordinary wallet", "privacy.close") { finish() }
