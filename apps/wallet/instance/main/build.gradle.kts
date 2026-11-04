@@ -25,7 +25,7 @@ abstract class StagePrivacyReleaseAssets : DefaultTask() {
     fun stage() {
         fileSystem.sync {
             from(materialDirectory) {
-                include("relay.json", "phase1/**", "ceremony/**")
+                include("relay.json", "pool.json", "phase1/**", "ceremony/**")
                 into("PrivacyPayment")
             }
             into(outputDirectory)
@@ -38,9 +38,9 @@ providers.gradleProperty("tosPrivacyReleaseDir").orNull?.let { path ->
         "tosPrivacyReleaseDir requires tosPrivacyProving=true"
     }
     val material = rootProject.file(path)
-    require(material.resolve("relay.json").isFile &&
+    require(material.resolve("relay.json").isFile && material.resolve("pool.json").isFile &&
         material.resolve("phase1").isDirectory && material.resolve("ceremony").isDirectory) {
-        "Privacy payment material requires relay.json, phase1 and ceremony"
+        "Privacy payment material requires relay.json, pool.json, phase1 and ceremony"
     }
     androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
         val stage = tasks.register<StagePrivacyReleaseAssets>(

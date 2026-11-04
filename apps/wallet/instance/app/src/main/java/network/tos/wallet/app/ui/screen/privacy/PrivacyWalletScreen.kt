@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** Separate privacy wallet and receipt screen. */
 class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConfiguration? = null) : WalletContextScreen(R.layout.fragment_pq_wallets, wallet) {
-    data class PaymentConfiguration(val phase1: java.io.File, val ceremony: java.io.File, val approvedRelay: ByteArray, val approvedRecoveryRelay: ByteArray, val bundled: Boolean = false)
+    data class PaymentConfiguration(val phase1: java.io.File, val ceremony: java.io.File, val approvedRelay: ByteArray, val approvedRecoveryRelay: ByteArray, val pool: network.tos.wallet.data.account.privacy.PrivacyPoolSelection? = null)
 
     override val fragmentName = "PrivacyWalletScreen"
     override val viewModel: BaseWalletVM.EmptyViewViewModel by viewModel()
@@ -134,8 +134,9 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
                     finally { authenticating = false }
                 if (!allowed || stopped()) return@launch
                 status.text = "Verifying recipient and loading the payment prover…"
+                configuration.pool?.let { accounts.configureTrustedPrivacyPool(wallet, it) }
                 check(accounts.validatePrivacyRecipient(wallet, input, stopped))
-                if (configuration.bundled) {
+                if (configuration.pool != null) {
                     val context = requireContext().applicationContext
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         installBundledMaterial(context, configuration.phase1.parentFile!!)
@@ -240,6 +241,9 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         receive.isEnabled = false
         job = viewLifecycleOwner.lifecycleScope.launch {
             try {
+                if (accounts.privacyReadAvailability(wallet) == PrivacyBalanceState.NotConfigured) {
+                    payment?.pool?.let { accounts.configureTrustedPrivacyPool(wallet, it) }
+                }
                 val unavailable = accounts.privacyReadAvailability(wallet)
                 currentCoroutineContext().ensureActive()
                 if (!foreground.get() || sequence.get() != tag) return@launch
@@ -352,7 +356,7 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
             val directory = java.io.File(context.noBackupFilesDir, "PrivacyPayment-$version")
             val phase1 = directory.resolve("phase1")
             val ceremony = directory.resolve("ceremony")
-            val offer = context.assets.open("PrivacyPayment/relay.json").use { stream ->
+            fun readConfig(name: String) = context.assets.open("PrivacyPayment/$name").use { stream ->
                 val limit = 256 * 1024
                 val buffer = java.io.ByteArrayOutputStream()
                 val chunk = ByteArray(8192)
@@ -364,8 +368,19 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
                 }
                 buffer.toByteArray()
             }
+            val fields = org.json.JSONObject(readConfig("pool.json").decodeToString())
+            val profile = network.tos.wallet.data.account.pq.QuantumNetworkProfile(
+                fields.getString("global_id").toInt(), fields.getString("root_hash"), fields.getString("file_hash")
+            )
+            val pool = network.tos.wallet.data.account.privacy.PrivacyPoolSelection(
+                profile, "0:${fields.getString("pool_account")}",
+                android.util.Base64.decode(fields.getString("code_boc"), android.util.Base64.NO_WRAP),
+                fields.getString("profile_hash"), fields.getString("poseidon_manifest_hash"),
+                fields.getString("groth16_vk_hash")
+            )
+            val offer = readConfig("relay.json")
             val recovery = org.json.JSONObject(offer.decodeToString()).apply { remove("lifetime") }
-            PaymentConfiguration(phase1, ceremony, offer, recovery.toString().encodeToByteArray(), bundled = true)
+            PaymentConfiguration(phase1, ceremony, offer, recovery.toString().encodeToByteArray(), pool = pool)
         }.getOrNull()
 
         @Synchronized
