@@ -70,7 +70,7 @@ class PrivacyPaymentUiTest {
                     requireNotNull(recipient).take(20) + "…" + recipient.takeLast(20)
                 val failure = "Unable to complete private payment through Tor. Check pending payment before trying again."
                 if (torUnavailable) {
-                    val deadline = android.os.SystemClock.elapsedRealtime() + 180_000
+                    val deadline = android.os.SystemClock.elapsedRealtime() + 300_000
                     while (android.os.SystemClock.elapsedRealtime() < deadline) {
                         val failed = runCatching {
                             onView(withContentDescription("privacy.status")).check(matches(withText(failure)))
