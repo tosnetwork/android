@@ -22,7 +22,7 @@ class PrivacyPaymentPoolTest {
         assumeTrue("Provide the isolated live pool configuration", encoded.isNotEmpty())
         check(instrumentation.targetContext.packageName == "network.tos.wallet.uk")
         val config = JSONObject(Base64.decode(encoded, Base64.NO_WRAP).decodeToString())
-        check(config.getString("rpc") == "http://10.0.2.2:19655/jsonRPC")
+        check(config.getString("rpc") in setOf("http://10.0.2.2:19655/jsonRPC", "http://10.0.2.2:20655/jsonRPC"))
         val profile = QuantumNetworkProfile(3, config.getString("root_hash"), config.getString("file_hash"))
         val pool = PrivacyPoolSelection(
             profile, "0:${config.getString("pool_account")}",

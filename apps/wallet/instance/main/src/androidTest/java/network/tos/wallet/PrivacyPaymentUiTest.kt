@@ -25,6 +25,12 @@ class PrivacyPaymentUiTest {
 
     @Test fun submitQuotedPaymentOnPrivacyPaymentScreen() = exerciseCancellation(finalReview = true, submit = true)
 
+    @Test fun recoverUncertainPaymentAfterBackground() {
+        assumeTrue("Requires a one-shot submit-response fault on the isolated relay",
+            InstrumentationRegistry.getArguments().getString("backgroundAfterLostResponse") == "true")
+        exerciseCancellation(finalReview = true, submit = true, backgroundAfterLostResponse = true)
+    }
+
     @Test fun unavailableTorStopsBeforePaymentReview() {
         assumeTrue("Disconnect the isolated Tor proxy before running this test",
             InstrumentationRegistry.getArguments().getString("paymentTestTorUnavailable") == "true")
@@ -71,6 +77,7 @@ class PrivacyPaymentUiTest {
         finalReview: Boolean,
         submit: Boolean = false,
         torUnavailable: Boolean = false,
+        backgroundAfterLostResponse: Boolean = false,
     ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val recipient = InstrumentationRegistry.getArguments().getString("paymentTestRecipient")
@@ -78,7 +85,7 @@ class PrivacyPaymentUiTest {
         check(instrumentation.targetContext.packageName == "network.tos.wallet.uk")
         val accounts = GlobalContext.get().get<AccountRepository>()
         val wallet = runBlocking { accounts.getWallets().single() }
-        if (submit) {
+        val startingBalance = if (submit) {
             check(InstrumentationRegistry.getArguments().getString("submitIsolatedPayment") == "true")
             val before = runBlocking { accounts.readPrivacyBalance(wallet) }
             check(before is network.tos.wallet.data.account.privacy.PrivacyBalanceState.Observed)
@@ -87,7 +94,8 @@ class PrivacyPaymentUiTest {
                 "Isolated sender needs at least 100000001 nanoTOS, observed $balance"
             }
             android.util.Log.i("PrivacyPaymentUiTest", "Isolated sender starting balance: $balance nanoTOS")
-        }
+            balance
+        } else null
         ActivityScenario.launch(RootActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.add(PrivacyWalletScreen.newInstance(wallet, activity))
@@ -136,15 +144,42 @@ class PrivacyPaymentUiTest {
             onView(withText(if (submit) "Continue" else "Cancel")).perform(click())
             if (submit) {
                 val deadline = android.os.SystemClock.elapsedRealtime() + 180_000
+                val expectedStatus = if (backgroundAfterLostResponse)
+                    "Unable to complete private payment through Tor. Check pending payment before trying again."
+                else "Relay responded. Check pending payment to verify chain confirmation."
                 var responded = false
                 while (!responded && android.os.SystemClock.elapsedRealtime() < deadline) {
                     responded = runCatching {
                         onView(withContentDescription("privacy.status")).check(matches(
-                            withText("Relay responded. Check pending payment to verify chain confirmation.")))
+                            withText(expectedStatus)))
                     }.isSuccess
                     if (!responded) android.os.SystemClock.sleep(1000)
                 }
                 check(responded) { "The approved payment did not reach the relay response state" }
+                if (backgroundAfterLostResponse) {
+                    val pid = android.os.Process.myPid()
+                    scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+                    scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+                    check(android.os.Process.myPid() == pid)
+                    onView(withContentDescription("privacy.retry")).perform(click())
+                    val pin = instrumentation.targetContext.cacheDir.resolve("disposable-ui-test-pin").readText()
+                    check(pin.matches(Regex("[0-9]{4}")))
+                    pin.forEach { digit -> onView(withText(digit.toString())).perform(click()) }
+                    val recoveryDeadline = android.os.SystemClock.elapsedRealtime() + 90_000
+                    while (true) {
+                        if (runCatching {
+                                onView(withContentDescription("privacy.status")).check(matches(
+                                    withText("No unresolved payment. Refresh to verify your balance.")))
+                            }.isSuccess) break
+                        check(android.os.SystemClock.elapsedRealtime() < recoveryDeadline) {
+                            "The original private payment was not recovered after backgrounding"
+                        }
+                        android.os.SystemClock.sleep(250)
+                    }
+                    val after = runBlocking { accounts.readPrivacyBalance(wallet) }
+                    check(after is network.tos.wallet.data.account.privacy.PrivacyBalanceState.Observed)
+                    check(after.summary.unspentBalance.toBigInteger() == requireNotNull(startingBalance) - 100_000_001.toBigInteger())
+                }
             }
             if (!finalReview) {
                 onView(withContentDescription("privacy.status"))
