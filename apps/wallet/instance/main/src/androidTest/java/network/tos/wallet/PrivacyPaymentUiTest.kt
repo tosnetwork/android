@@ -25,7 +25,17 @@ class PrivacyPaymentUiTest {
 
     @Test fun submitQuotedPaymentOnPrivacyPaymentScreen() = exerciseCancellation(finalReview = true, submit = true)
 
-    private fun exerciseCancellation(finalReview: Boolean, submit: Boolean = false) {
+    @Test fun unavailableTorStopsBeforePaymentReview() {
+        assumeTrue("Disconnect the isolated Tor proxy before running this test",
+            InstrumentationRegistry.getArguments().getString("paymentTestTorUnavailable") == "true")
+        exerciseCancellation(finalReview = true, torUnavailable = true)
+    }
+
+    private fun exerciseCancellation(
+        finalReview: Boolean,
+        submit: Boolean = false,
+        torUnavailable: Boolean = false,
+    ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val recipient = InstrumentationRegistry.getArguments().getString("paymentTestRecipient")
         assumeTrue("Provide an isolated recipient descriptor", !recipient.isNullOrEmpty())
@@ -36,7 +46,11 @@ class PrivacyPaymentUiTest {
             check(InstrumentationRegistry.getArguments().getString("submitIsolatedPayment") == "true")
             val before = runBlocking { accounts.readPrivacyBalance(wallet) }
             check(before is network.tos.wallet.data.account.privacy.PrivacyBalanceState.Observed)
-            check(before.summary.unspentBalance == "1099999998")
+            val balance = before.summary.unspentBalance.toBigInteger()
+            check(balance >= 100_000_001.toBigInteger()) {
+                "Isolated sender needs at least 100000001 nanoTOS, observed $balance"
+            }
+            android.util.Log.i("PrivacyPaymentUiTest", "Isolated sender starting balance: $balance nanoTOS")
         }
         ActivityScenario.launch(RootActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
@@ -54,11 +68,32 @@ class PrivacyPaymentUiTest {
                 pin.forEach { digit -> onView(withText(digit.toString())).perform(click()) }
                 val review = "Amount 100000000 nanoTOS\nRelay fee 1 nanoTOS\nRoute Tor\nRecipient " +
                     requireNotNull(recipient).take(20) + "…" + recipient.takeLast(20)
+                val failure = "Unable to complete private payment through Tor. Check pending payment before trying again."
+                if (torUnavailable) {
+                    val deadline = android.os.SystemClock.elapsedRealtime() + 180_000
+                    while (android.os.SystemClock.elapsedRealtime() < deadline) {
+                        val failed = runCatching {
+                            onView(withContentDescription("privacy.status")).check(matches(withText(failure)))
+                        }.isSuccess
+                        if (failed) {
+                            onView(withText(review)).check(androidx.test.espresso.assertion.ViewAssertions.doesNotExist())
+                            return
+                        }
+                        android.os.SystemClock.sleep(1000)
+                    }
+                    error("Unavailable Tor did not produce the expected payment error")
+                }
                 val deadline = android.os.SystemClock.elapsedRealtime() + 600_000
                 var displayed = false
                 while (!displayed && android.os.SystemClock.elapsedRealtime() < deadline) {
                     displayed = runCatching { onView(withText(review)).check(matches(isDisplayed())) }.isSuccess
-                    if (!displayed) android.os.SystemClock.sleep(1000)
+                    if (!displayed) {
+                        val failed = runCatching {
+                            onView(withContentDescription("privacy.status")).check(matches(withText(failure)))
+                        }.isSuccess
+                        check(!failed) { failure }
+                        android.os.SystemClock.sleep(1000)
+                    }
                 }
                 check(displayed) { "The verified amount, fee, route and recipient must appear in the final dialog" }
             }
