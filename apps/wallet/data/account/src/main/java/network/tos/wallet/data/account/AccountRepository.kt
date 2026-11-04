@@ -830,6 +830,23 @@ class AccountRepository(
         }
     }
 
+    /** Verified historical inclusion and current full state only; never installs material or retries. */
+    suspend fun readFundedQuantumSuccessorMigrationOutcome(wallet: WalletEntity):
+        network.tos.wallet.data.account.pq.QuantumMigrationOutcomeReader.Result = withContext(Dispatchers.IO) {
+        val actual = checkNotNull(database.getAccount(wallet.id))
+        require(actual.type == Wallet.Type.Default && actual.identity == wallet.identity)
+        val identity = requireNotNull(actual.quantumIdentity)
+        val record = checkNotNull(QuantumRecoveryRecord.findIdentity(context, identity))
+        require(record.id.toString() == actual.id && record.identity == identity)
+        val endpoint = quantumPaymentEndpoint()
+        val history = QuantumHistoryReader(QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+            QuantumHistoryHttpTransport(endpoint, quantumHttpClient))
+        val result = network.tos.wallet.data.account.pq.QuantumMigrationOutcomeReader(context, history).read(record.id, identity)
+        val retained = checkNotNull(database.getAccount(wallet.id))
+        require(retained.type == Wallet.Type.Default && retained.identity == actual.identity && retained.quantumIdentity == identity)
+        result
+    }
+
     private suspend fun fundedQuantumSuccessorMigration(wallet: WalletEntity,
         reviewed: network.tos.wallet.data.account.pq.QuantumPreparedSuccessorMigration?, sign: Boolean = false,
         readSigned: Boolean = false):

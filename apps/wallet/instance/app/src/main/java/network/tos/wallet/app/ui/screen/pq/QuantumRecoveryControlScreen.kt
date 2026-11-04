@@ -150,6 +150,22 @@ class QuantumRecoveryControlScreen(wallet: WalletEntity) : WalletContextScreen(R
                     "\nThis is a local estimate. Nothing has been sent. Replacement keys are not installed; payments remain restricted."
             }
         }
+        button("Verify key replacement result", "quantum.recovery.migration.verify") {
+            run {
+                migrationPlan = null; migrationQuote = null
+                val result = accounts.readFundedQuantumSuccessorMigrationOutcome(wallet)
+                status.text = when (result.status) {
+                    QuantumMigrationOutcomeReader.Status.NotFoundInRecentHistory ->
+                        "No matching transaction in recent verified history. This does not prove it was never sent. Do not send it again."
+                    QuantumMigrationOutcomeReader.Status.IncludedWithoutSuccessfulMigration ->
+                        "The transaction is included without verified successful key replacement. Do not sign or send it again."
+                    QuantumMigrationOutcomeReader.Status.Executed -> if (result.currentStateMatchesExpected == true)
+                        "Key replacement executed and the current authority and counters match the expected replacement."
+                        else "The transaction executed, but the current authority or counters differ. Recovery cannot be completed."
+                } + "\nTransaction: ${result.transactionHash ?: "unverified"}" +
+                    "\nLocal replacement keys are not installed; payments remain restricted."
+            }
+        }
         button("Prepare possession challenge", "quantum.recovery.probe.prepare") { prepareProbe() }
         button("Sign possession message", "quantum.recovery.probe.sign") { signProbe() }
         button("Reload possession message", "quantum.recovery.probe.reload") {

@@ -11,6 +11,31 @@ internal class QuantumMigrationSigningSnapshot private constructor(private val b
 
     data class Saved(val requestHash: String, val deadline: Long, val backupDigest: ByteArray)
 
+    /** Historical signed intent only. Neither this object nor a matching epoch proves execution. */
+    class Submission internal constructor(val operation: java.util.UUID, val walletId: java.util.UUID,
+        val identity: network.tos.blockchain.ton.contract.TosQuantumSelfPayIdentity,
+        val profile: QuantumNetworkProfile, val messageHash: String,
+        val expectedState: network.tos.blockchain.ton.contract.QuantumSelfPayState)
+
+    fun submitted(entry: QuantumProbeFundingJournal.Reservation, prior: QuantumRecoveryControlJournal.Entry,
+        probe: QuantumRecoveryProbeJournal.Entry, record: QuantumMigrationSigningRecord): Submission {
+        check(record.phase in setOf(QuantumMigrationSigningRecord.Phase.SUBMITTING, QuantumMigrationSigningRecord.Phase.UNKNOWN))
+        inspectSaved(entry, prior, probe, record)
+        val funded = entry.submission(prior, probe)
+        val stored = QuantumStoredSelfPayRequest.parse(binding.request)
+        val request = network.tos.blockchain.ton.contract.TosQuantumSelfPayRequest(prior.identity.address,
+            funded.expectedState, QuantumAuthRole.RESCUE, stored.deadline,
+            network.tos.blockchain.ton.contract.QuantumSelfPayAction.Migrate(probe.successor), stored.deadline - 1)
+        val signature = record.signature()
+        val message = try { prior.identity.wallet.external(request.submission(signature), false) }
+            finally { signature.fill(0) }
+        val state = funded.expectedState
+        val expected = network.tos.blockchain.ton.contract.QuantumSelfPayState(probe.successor, state.walletId,
+            0, state.retired, state.epoch + 1u, 0u, 0u)
+        return Submission(record.operation, entry.walletId, prior.identity, funded.profile,
+            QuantumPaymentQuote.hex(message.hash().toByteArray()), expected)
+    }
+
     /** Historical consistency/signature only. No fresh chain state, signer or dispatch capability. */
     fun inspectSaved(entry: QuantumProbeFundingJournal.Reservation, prior: QuantumRecoveryControlJournal.Entry,
         probe: QuantumRecoveryProbeJournal.Entry, record: QuantumMigrationSigningRecord,
