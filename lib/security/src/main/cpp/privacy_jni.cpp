@@ -178,8 +178,9 @@ Java_network_tos_security_privacy_PrivacyNativeBridge_validateRecipient(
   return result && tos_shielded_response_status(result.get()) == 0;
 }
 
+template <typename Operation>
 static jbyteArray wallet_replay_operation(JNIEnv *env, jlong handle, jbyteArray seed, jbyteArray root,
-                                          jbyteArray binding, decltype(&tos_shielded_replay_receive) operation,
+                                          jbyteArray binding, Operation operation,
                                           size_t result_size) {
   if (replay_handle(handle) == nullptr || seed == nullptr || root == nullptr ||
       binding == nullptr || env->GetArrayLength(seed) != 32 ||
@@ -205,6 +206,37 @@ extern "C" JNIEXPORT jbyteArray JNICALL
 Java_network_tos_security_privacy_PrivacyNativeBridge_receiveReplay(
     JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding) {
   return wallet_replay_operation(env, handle, seed, root, binding, tos_shielded_replay_receive, 2573);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_depositValue(
+    JNIEnv *env, jobject, jlong handle, jlong amount) {
+  return copy_response(env, tos_shielded_replay_deposit_value(
+      replay_handle(handle), static_cast<uint64_t>(amount)));
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_selfDeposit(
+    JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding,
+    jlong amount, jlong query_id) {
+  return wallet_replay_operation(env, handle, seed, root, binding,
+      [amount, query_id](const TosShieldedReplay *replay, const uint8_t *key, size_t key_length,
+                        const uint8_t *path, size_t path_length, const uint8_t *pins, size_t pins_length) {
+        return tos_shielded_replay_self_deposit(replay, key, key_length, path, path_length,
+            pins, pins_length, static_cast<uint64_t>(amount), static_cast<uint64_t>(query_id));
+      }, 0);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_network_tos_security_privacy_PrivacyNativeBridge_backupFile(
+    JNIEnv *env, jobject, jlong handle, jbyteArray seed, jbyteArray root, jbyteArray binding,
+    jint fd, jboolean restore) {
+  return wallet_replay_operation(env, handle, seed, root, binding,
+      [fd, restore](const TosShieldedReplay *replay, const uint8_t *key, size_t key_length,
+                    const uint8_t *path, size_t path_length, const uint8_t *pins, size_t pins_length) {
+        return tos_shielded_replay_backup_file(replay, key, key_length, path, path_length,
+            pins, pins_length, fd, restore ? 1 : 0);
+      }, 1);
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL

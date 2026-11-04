@@ -33,6 +33,12 @@ class PrivacyPaymentPoolTest {
         val accounts = GlobalContext.get().get<AccountRepository>()
         val wallet = accounts.getWallets().single()
         accounts.configureTrustedPrivacyPool(wallet, pool)
+        if (InstrumentationRegistry.getArguments().getString("exportIsolatedFundingAddress") == "true") {
+            val address = checkNotNull(wallet.quantumIdentity).address
+            check(address.workchainId == 0)
+            val raw = "0:" + address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+            instrumentation.targetContext.cacheDir.resolve("isolated-deposit-funding-address").writeText(raw)
+        }
         InstrumentationRegistry.getArguments().getString("expectedPrivacyBalance")?.let { expected ->
             val observation = accounts.readPrivacyBalance(wallet)
             check(observation is PrivacyBalanceState.Observed)

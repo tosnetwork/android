@@ -31,6 +31,21 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             master { seed -> completed.receiveAndWipeSeed(seed, root, now) { running(); false } }
         }
 
+    fun depositValue(record: QuantumCreationRecord, selection: PrivacyPoolSelection,
+                     amount: ULong, stopped: () -> Boolean): ULong =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            completed.depositValue(amount, now, running)
+        }
+
+    fun prepareSelfDeposit(record: QuantumCreationRecord, selection: PrivacyPoolSelection, root: ByteArray,
+                           amount: ULong, attachedValue: ULong, queryId: ULong, stopped: () -> Boolean,
+                           master: ((ByteArray) -> ByteArray) -> ByteArray): ByteArray =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            master { seed ->
+                completed.selfDepositAndWipeSeed(seed, root, amount, attachedValue, queryId, now, running)
+            }
+        }
+
     fun pendingStatus(record: QuantumCreationRecord, selection: PrivacyPoolSelection, root: ByteArray,
                       stopped: () -> Boolean,
                       master: ((ByteArray) -> PendingStatus) -> PendingStatus): PendingStatus =
@@ -44,6 +59,13 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             val valid = completed.validateRecipient(descriptor, now)
             running()
             valid
+        }
+
+    fun backupFile(record: QuantumCreationRecord, selection: PrivacyPoolSelection, root: ByteArray,
+                   fd: Int, restore: Boolean, stopped: () -> Boolean,
+                   master: ((ByteArray) -> Unit) -> Unit) =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            master { seed -> completed.backupFileAndWipeSeed(seed, root, fd, restore, now, running) }
         }
 
     fun loadPaymentProver(

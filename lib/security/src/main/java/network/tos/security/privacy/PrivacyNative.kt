@@ -16,7 +16,12 @@ internal object PrivacyNativeBridge {
     external fun summaryReplay(handle: Long, seed: ByteArray): ByteArray?
     external fun replayIntentAccepted(handle: Long, digest: ByteArray): ByteArray?
     external fun validateRecipient(handle: Long, descriptor: ByteArray): Boolean
+    external fun depositValue(handle: Long, amount: Long): ByteArray?
+    external fun selfDeposit(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray,
+                             amount: Long, queryId: Long): ByteArray?
     external fun pendingStatus(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
+    external fun backupFile(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray,
+                            fd: Int, restore: Boolean): ByteArray?
     external fun receiveReplay(handle: Long, seed: ByteArray, root: ByteArray, binding: ByteArray): ByteArray?
     external fun requestRelayOffer(replay: Long, request: ByteArray): Long
     external fun relayOfferInfo(offer: Long): ByteArray?
@@ -227,7 +232,31 @@ object PrivacyNative {
                                requireCurrent: () -> Unit): ByteArray =
             walletReplayAndWipeSeed(seed, root, binding, requireCurrent, PrivacyNativeBridge::receiveReplay)
 
+        fun depositValue(amount: ULong, requireCurrent: () -> Unit): ULong = synchronized(lock) {
+            check(handle != 0L && android.os.Looper.myLooper() != android.os.Looper.getMainLooper())
+            requireCurrent()
+            val value = PrivacyNativeBridge.depositValue(handle, amount.toLong())
+                ?.decodeToString()?.toULongOrNull() ?: error("Privacy deposit quote failed")
+            requireCurrent()
+            check(value >= amount)
+            value
+        }
+
+        fun selfDepositAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
+                                   amount: ULong, queryId: ULong, requireCurrent: () -> Unit): ByteArray =
+            walletReplayAndWipeSeed(seed, root, binding, requireCurrent) { replay, key, path, pins ->
+                PrivacyNativeBridge.selfDeposit(replay, key, path, pins, amount.toLong(), queryId.toLong())
+            }
+
         enum class PendingStatus { NO_RECORD, UNOBSERVED, ACCEPTED }
+
+        fun backupFileAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray, fd: Int,
+                                  restore: Boolean, requireCurrent: () -> Unit) {
+            val result = walletReplayAndWipeSeed(seed, root, binding, requireCurrent) { replay, key, path, pins ->
+                PrivacyNativeBridge.backupFile(replay, key, path, pins, fd, restore)
+            }
+            check(result.singleOrNull()?.toInt() == 1)
+        }
 
         fun pendingStatusAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
                                      requireCurrent: () -> Unit): PendingStatus {

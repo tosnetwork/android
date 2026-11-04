@@ -1,19 +1,25 @@
 package network.tos.blockchain.ton.contract
 
 import java.math.BigInteger
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.json.*
 import network.tos.blockchain.ton.extensions.storeAddress
 import org.ton.block.AddrStd
+import org.ton.boc.BagOfCells
 import org.ton.cell.Cell
 import org.ton.cell.buildCell
 
 /** Exact single native payment or typed Token request. Neither is a signing capability. */
+@OptIn(ExperimentalEncodingApi::class)
 class QuantumPaymentIntent private constructor(val recipient: AddrStd, val amount: BigInteger, val bounce: Boolean,
-                                               comment: String?, val tokenTransfer: QuantumTokenTransferIntent?) {
+                                               comment: String?, val tokenTransfer: QuantumTokenTransferIntent?,
+                                               private val privacyDeposit: String?,
+                                               val privacyDepositPrincipal: BigInteger?) {
     constructor(recipient: AddrStd, amount: BigInteger, bounce: Boolean, comment: String? = null) :
-        this(recipient, amount, bounce, comment, null)
+        this(recipient, amount, bounce, comment, null, null, null)
     constructor(tokenTransfer: QuantumTokenTransferIntent) :
-        this(tokenTransfer.wallet, tokenTransfer.attachedTos, true, null, tokenTransfer)
+        this(tokenTransfer.wallet, tokenTransfer.attachedTos, true, null, tokenTransfer, null, null)
     val comment = comment?.takeIf { it.isNotEmpty() }
     init {
         require(recipient.anycast.value == null && amount.signum() > 0 && amount.bitLength() <= 120)
@@ -21,6 +27,7 @@ class QuantumPaymentIntent private constructor(val recipient: AddrStd, val amoun
     }
     val body: Cell get() {
         tokenTransfer?.let { return it.body }
+        privacyDeposit?.let { return BagOfCells(Base64.decode(it)).roots.single() }
         val text = comment?.toByteArray(Charsets.UTF_8) ?: return buildCell { }
         return buildCell {
             storeUInt(0, 32); storeBytes(text.copyOfRange(0, minOf(123, text.size)))
@@ -45,7 +52,7 @@ class QuantumPaymentIntent private constructor(val recipient: AddrStd, val amoun
     }
     override fun equals(other: Any?): Boolean = other is QuantumPaymentIntent && recipient == other.recipient &&
         amount == other.amount && bounce == other.bounce &&
-        tokenTransfer == other.tokenTransfer &&
+        tokenTransfer == other.tokenTransfer && privacyDeposit == other.privacyDeposit &&
         comment?.toByteArray(Charsets.UTF_8).contentEquals(other.comment?.toByteArray(Charsets.UTF_8))
     override fun hashCode() = 31 * (31 * recipient.hashCode() + amount.hashCode()) + (tokenTransfer?.hashCode() ?: 0)
 
@@ -53,10 +60,26 @@ class QuantumPaymentIntent private constructor(val recipient: AddrStd, val amoun
         put("recipient", raw(recipient)); put("amount", amount.toString()); put("bounce", bounce)
         comment?.let { put("comment", it) }
         tokenTransfer?.let { put("token_transfer", Json.parseToJsonElement(it.encode())) }
+        privacyDeposit?.let { put("privacy_deposit_boc", it) }
     }.toString()
 
     companion object {
         private fun raw(address: AddrStd) = "${address.workchainId}:" + address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
+        fun privacyDeposit(pool: AddrStd, attachedValue: ULong, body: ByteArray): QuantumPaymentIntent {
+            require(pool.workchainId == 0 && body.size in 1..4096)
+            val root = BagOfCells(body).roots.single()
+            val slice = root.beginParse()
+            require(slice.loadUInt(32).toLong() == 0x53485001L)
+            slice.loadUInt(64)
+            val width = slice.loadUInt(4).toInt()
+            require(width in 1..8)
+            val principal = slice.loadUInt(width * 8)
+            val attached = attachedValue.toString().toBigInteger()
+            require(principal.signum() > 0 && principal < attached && slice.remainingBits == 256 &&
+                slice.refs.size == 1)
+            return QuantumPaymentIntent(pool, attached, true, null, null, Base64.encode(body), principal)
+        }
+
         fun decode(encoded: String): QuantumPaymentIntent {
             require(encoded.toByteArray(Charsets.UTF_8).size <= 32768)
             val value = Json.parseToJsonElement(encoded).jsonObject
@@ -67,7 +90,16 @@ class QuantumPaymentIntent private constructor(val recipient: AddrStd, val amoun
             val amount = decimal.toBigInteger()
             val bounce = value.getValue("bounce").jsonPrimitive.also { require(!it.isString) }.boolean
             val comment = value["comment"]?.takeIf { it != JsonNull }?.jsonPrimitive?.also { require(it.isString) }?.content
-            val token = value["token_transfer"] ?: return QuantumPaymentIntent(recipient, amount, bounce, comment)
+            val token = value["token_transfer"]
+            value["privacy_deposit_boc"]?.let {
+                require(bounce && comment == null && token == null)
+                val body = text("privacy_deposit_boc")
+                require(body.length <= 5464)
+                val bytes = Base64.decode(body)
+                require(Base64.encode(bytes) == body)
+                return privacyDeposit(recipient, decimal.toULong(), bytes)
+            }
+            if (token == null) return QuantumPaymentIntent(recipient, amount, bounce, comment)
             val result = QuantumPaymentIntent(QuantumTokenTransferIntent.decode(token.jsonObject.toString()))
             require(recipient == result.recipient && amount == result.amount && bounce && comment.isNullOrEmpty()) { "Token outer message differs from saved intent" }
             return result

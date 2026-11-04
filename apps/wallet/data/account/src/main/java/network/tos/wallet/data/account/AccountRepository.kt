@@ -1,5 +1,6 @@
 package network.tos.wallet.data.account
 
+import network.tos.blockchain.ton.contract.QuantumPaymentIntent
 import network.tos.security.privacy.PrivacyNative
 import network.tos.security.privacy.PrivacyNative.Replay.PendingStatus
 import network.tos.blockchain.TosV1Mnemonic
@@ -706,6 +707,20 @@ class AccountRepository(
             }
         }
 
+    suspend fun privacyDepositValue(wallet: WalletEntity, amount: ULong, stopped: () -> Boolean): ULong =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, _ ->
+            reader.depositValue(record, selection, amount, stopped)
+        }
+
+    suspend fun preparePrivacySelfDeposit(wallet: WalletEntity, amount: ULong, attachedValue: ULong,
+                                          queryId: ULong, stopped: () -> Boolean): QuantumPaymentIntent =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
+            val body = reader.prepareSelfDeposit(record, selection, root, amount, attachedValue, queryId, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+            QuantumPaymentIntent.privacyDeposit(selection.address(), attachedValue, body)
+        }
+
     /** The caller authenticates the wallet owner before observing a pending payment. */
     suspend fun privacyPendingStatus(wallet: WalletEntity, stopped: () -> Boolean): PendingStatus =
         withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
@@ -719,6 +734,15 @@ class AccountRepository(
     ): PrivacyNative.PaymentProver =
         withPrivacyStore(wallet, stopped, discard = { it.close() }) { reader, record, selection, _ ->
             reader.loadPaymentProver(record, selection, phase1, ceremony, stopped)
+        }
+
+    /** The caller authenticates the owner and holds the staged regular file open. */
+    suspend fun transferPrivacyBackup(wallet: WalletEntity, fd: Int, restore: Boolean,
+                                      stopped: () -> Boolean) =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
+            reader.backupFile(record, selection, root, fd, restore, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
         }
 
     suspend fun requestPrivacyRelayOffer(

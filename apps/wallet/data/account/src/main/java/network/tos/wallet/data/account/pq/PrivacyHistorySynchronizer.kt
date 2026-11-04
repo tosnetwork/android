@@ -95,6 +95,42 @@ internal object PrivacyHistorySynchronizer {
                 }
             } finally { seed.fill(0) }
         }
+        fun backupFileAndWipeSeed(seed: ByteArray, root: ByteArray, fd: Int, restore: Boolean,
+                                  now: () -> Long, running: () -> Unit) = synchronized(lock) {
+            try {
+                val verified = checkNotNull(observation)
+                val binding = verified.receiveBinding(now())
+                history.backupFileAndWipeSeed(seed, root, binding, fd, restore) {
+                    running()
+                    verified.requireFresh(now())
+                }
+            } finally { seed.fill(0) }
+        }
+        fun depositValue(amount: ULong, now: () -> Long, running: () -> Unit): ULong = synchronized(lock) {
+            val verified = checkNotNull(observation)
+            history.depositValue(amount) {
+                running()
+                verified.requireFresh(now())
+            }
+        }
+
+        fun selfDepositAndWipeSeed(seed: ByteArray, root: ByteArray, amount: ULong, attachedValue: ULong,
+                                   queryId: ULong, now: () -> Long, running: () -> Unit): ByteArray =
+            synchronized(lock) {
+                try {
+                    val verified = checkNotNull(observation)
+                    val binding = verified.receiveBinding(now())
+                    val requireCurrent = {
+                        running()
+                        verified.requireFresh(now())
+                    }
+                    check(history.depositValue(amount, requireCurrent) == attachedValue) {
+                        "Privacy deposit quote changed"
+                    }
+                    history.selfDepositAndWipeSeed(seed, root, binding, amount, queryId, requireCurrent)
+                } finally { seed.fill(0) }
+            }
+
         fun loadPaymentProver(phase1: java.io.File, ceremony: java.io.File, now: () -> Long) =
             synchronized(lock) {
                 checkNotNull(observation).requireFresh(now())

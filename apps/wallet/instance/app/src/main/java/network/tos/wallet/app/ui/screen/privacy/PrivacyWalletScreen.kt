@@ -1,19 +1,24 @@
 package network.tos.wallet.app.ui.screen.privacy
 
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import network.tos.wallet.app.extensions.copyToClipboard
 import network.tos.wallet.app.BuildConfig
 import network.tos.wallet.app.R
@@ -27,6 +32,7 @@ import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import java.math.BigDecimal
 import java.math.BigInteger
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
@@ -52,6 +58,12 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
     private val sequence = AtomicLong()
     private var job: Job? = null
     private var authenticating = false
+    private val exportBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) {
+        it?.let { uri -> transferBackup(uri, restore = false) }
+    }
+    private val importBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) {
+        it?.let { uri -> transferBackup(uri, restore = true) }
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -93,14 +105,19 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
             button("Retry pending payment through Tor", "privacy.retry") { retryPayment(configuration) }
         }
         button("Check pending private payment", "privacy.pending") { refresh(forPending = true) }
+        button("Export encrypted privacy backup", "privacy.backup.export") {
+            if (job?.isActive != true) exportBackup.launch("tos-privacy-backup.bin")
+        }
+        button("Restore encrypted privacy backup", "privacy.backup.restore") {
+            if (job?.isActive != true) importBackup.launch(arrayOf("application/octet-stream"))
+        }
         button("Check private recipient", "privacy.recipient.check") { validateRecipient() }
         if (payment == null) button("Private transfer", "privacy.send") {}.isEnabled = false
-        for ((text, id) in listOf("Deposit: ordinary wallet → privacy pool" to "deposit", "Withdraw: privacy pool → ordinary address" to "withdraw")) {
-            button(text, "privacy.$id") {}.isEnabled = false
-        }
+        button("Deposit: ordinary wallet → privacy pool", "privacy.deposit") { prepareDeposit() }
+        button("Withdraw: privacy pool → ordinary address", "privacy.withdraw") {}.isEnabled = false
         label(
-            if (payment == null) "Private transfers, deposits and withdrawals are still in development."
-            else "Private transfers use the configured Tor relayer. Deposits and withdrawals are still in development.",
+            if (payment == null) "Private transfers require a configured Tor relay. Withdrawals are still in development."
+            else "Private transfers use the configured Tor relayer. Withdrawals are still in development.",
             "privacy.actions.unavailable",
         )
         button("Return to ordinary wallet", "privacy.close") { finish() }
@@ -110,10 +127,107 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         this.text = text; contentDescription = id; textSize = 17f
         setTextColor(Color.rgb(238, 231, 249)); setPadding(0, 14, 0, 14); this@PrivacyWalletScreen.layout.addView(this)
     }
+
+    private fun transferBackup(uri: Uri, restore: Boolean) {
+        if (job?.isActive == true || !isAdded) return
+        val context = requireContext().applicationContext
+        val tag = sequence.incrementAndGet()
+        val stopped = { !foreground.get() || sequence.get() != tag }
+        job = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                authenticating = true
+                val approved = try {
+                    passcodes.confirmation(requireContext(), if (restore) "Restore privacy backup" else "Export privacy backup")
+                } finally { authenticating = false }
+                if (!approved || stopped()) return@launch
+                amount.text = "—"
+                status.text = if (restore) "Validating and restoring encrypted backup…" else "Preparing encrypted privacy backup…"
+                withContext(Dispatchers.IO) {
+                    val file = File.createTempFile("privacy-backup-", ".bin", context.cacheDir)
+                    try {
+                        if (restore) {
+                            checkNotNull(context.contentResolver.openInputStream(uri)).use { input ->
+                                file.outputStream().use { output ->
+                                    val buffer = ByteArray(32 * 1024)
+                                    var total = 0
+                                    while (true) {
+                                        currentCoroutineContext().ensureActive()
+                                        val count = input.read(buffer)
+                                        if (count < 0) break
+                                        total += count
+                                        check(total <= 50 * 1024 * 1024) { "Privacy backup is too large" }
+                                        output.write(buffer, 0, count)
+                                    }
+                                }
+                            }
+                        }
+                        val mode = if (restore) ParcelFileDescriptor.MODE_READ_ONLY else ParcelFileDescriptor.MODE_READ_WRITE
+                        ParcelFileDescriptor.open(file, mode).use { descriptor ->
+                            accounts.transferPrivacyBackup(wallet, descriptor.fd, restore, stopped)
+                        }
+                        currentCoroutineContext().ensureActive()
+                        if (!restore) {
+                            checkNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { output ->
+                                file.inputStream().use { input -> input.copyTo(output) }
+                            }
+                        }
+                    } finally { file.delete() }
+                }
+                if (!stopped()) {
+                    if (restore) show(accounts.readPrivacyBalance(wallet, stopped))
+                    else status.text = "Encrypted privacy backup saved."
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (!stopped()) status.text = if (restore)
+                    "Restore could not be verified. Check the saved wallet state before retrying. Restore requires the original recovery material and a fresh privacy wallet."
+                    else "Encrypted privacy backup could not be saved."
+            }
+        }
+    }
     private fun button(text: String, id: String, action: () -> Unit) = Button(requireContext()).apply {
         this.text = text; contentDescription = id; isAllCaps = false
         setOnClickListener { action() }; this@PrivacyWalletScreen.layout.addView(this)
     }
+    private fun prepareDeposit() {
+        if (job?.isActive == true || !foreground.get()) return
+        val amountInput = android.widget.EditText(requireContext()).apply {
+            hint = "Amount in nanoTOS"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            isSaveEnabled = false
+        }
+        val tag = sequence.incrementAndGet()
+        val stopped = { !foreground.get() || sequence.get() != tag }
+        job = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val text = confirmPayment("Deposit ordinary TOS", null, amountInput) ?: return@launch
+                val amount = text.toULongOrNull()
+                if (amount == null || amount == 0uL || amount.toString() != text) {
+                    status.text = "Enter a positive deposit amount in nanoTOS."
+                    return@launch
+                }
+                if (!passcodes.hasPinCode() || stopped()) return@launch
+                authenticating = true
+                val allowed = try { passcodes.confirmation(requireContext(), "Review private deposit") }
+                    finally { authenticating = false }
+                if (!allowed || stopped()) return@launch
+                status.text = "Verifying the privacy pool and deposit fee…"
+                payment?.pool?.let { accounts.configureTrustedPrivacyPool(wallet, it) }
+                val value = accounts.privacyDepositValue(wallet, amount, stopped)
+                val queryId = java.security.SecureRandom().nextLong().toULong()
+                val intent = accounts.preparePrivacySelfDeposit(wallet, amount, value, queryId, stopped)
+                currentCoroutineContext().ensureActive()
+                if (!stopped()) {
+                    status.text = "Review the deposit in the ordinary payment screen."
+                    navigation?.add(network.tos.wallet.app.ui.screen.pq.QuantumPaymentScreen.newDepositInstance(wallet, intent))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (!stopped()) status.text = "Unable to prepare the deposit. Check the amount and your configured TOS node."
+            }
+        }
+    }
+
     private fun startPayment(configuration: PaymentConfiguration) {
         if (job?.isActive == true || !foreground.get()) return
         val input = recipient.text.toString().trim()

@@ -37,6 +37,13 @@ object PrivacyHistoryWalk {
                 replay.pendingStatusAndWipeSeed(seed, root, binding, requireCurrent)
             } finally { seed.fill(0) }
         }
+        fun backupFileAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray, fd: Int,
+                                  restore: Boolean, requireCurrent: () -> Unit) = synchronized(lock) {
+            try {
+                checkNotNull(archive) { "Privacy history archive is closed" }
+                replay.backupFileAndWipeSeed(seed, root, binding, fd, restore, requireCurrent)
+            } finally { seed.fill(0) }
+        }
         fun receiveAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
                                requireCurrent: () -> Unit): ByteArray = synchronized(lock) {
             try {
@@ -44,6 +51,20 @@ object PrivacyHistoryWalk {
                 replay.receiveAndWipeSeed(seed, root, binding, requireCurrent)
             } finally { seed.fill(0) }
         }
+        fun depositValue(amount: ULong, requireCurrent: () -> Unit): ULong = synchronized(lock) {
+            checkNotNull(archive)
+            replay.depositValue(amount, requireCurrent)
+        }
+
+        fun selfDepositAndWipeSeed(seed: ByteArray, root: ByteArray, binding: ByteArray,
+                                   amount: ULong, queryId: ULong, requireCurrent: () -> Unit): ByteArray =
+            synchronized(lock) {
+                try {
+                    checkNotNull(archive)
+                    replay.selfDepositAndWipeSeed(seed, root, binding, amount, queryId, requireCurrent)
+                } finally { seed.fill(0) }
+            }
+
         fun loadPaymentProver(phase1: java.io.File, ceremony: java.io.File) = synchronized(lock) {
             checkNotNull(archive)
             replay.loadPaymentProver(phase1, ceremony)
