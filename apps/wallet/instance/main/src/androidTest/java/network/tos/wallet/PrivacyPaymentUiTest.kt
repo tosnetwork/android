@@ -274,10 +274,26 @@ class PrivacyPaymentUiTest {
                 activity.supportFragmentManager.executePendingTransactions()
             }
             onView(withContentDescription("privacy.backup.export")).perform(scrollTo(), click())
-            val save = device.wait(androidx.test.uiautomator.Until.findObject(
-                androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)save|保存"))
-            ), 15_000)
-            checkNotNull(save) { "System document save action did not appear" }.click()
+            val saveSelector = androidx.test.uiautomator.By.res("android", "button1")
+            val save = checkNotNull(device.wait(androidx.test.uiautomator.Until.findObject(saveSelector), 15_000))
+            if (!save.isEnabled) {
+                checkNotNull(device.findObject(androidx.test.uiautomator.By.desc("Show roots"))).click()
+                checkNotNull(device.wait(androidx.test.uiautomator.Until.findObject(
+                    androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("Downloads|ダウンロード"))
+                ), 10_000)).click()
+            }
+            if ("mInputShown=true" in device.executeShellCommand("dumpsys input_method")) {
+                device.pressBack()
+            }
+            device.waitForIdle(2_000)
+            android.os.SystemClock.sleep(500)
+            val destination = checkNotNull(device.wait(androidx.test.uiautomator.Until.findObject(
+                saveSelector.enabled(true)
+            ), 10_000)) { "No writable document destination" }
+            destination.click()
+            check(device.wait(androidx.test.uiautomator.Until.gone(
+                androidx.test.uiautomator.By.pkg("com.android.documentsui")
+            ), 10_000)) { "System save did not return to the wallet" }
             val pin = context.cacheDir.resolve("disposable-ui-test-pin").readText()
             check(pin.matches(Regex("[0-9]{4}")))
             pin.forEach { digit ->
