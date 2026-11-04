@@ -89,10 +89,22 @@ def build():
                     result.check_returncode()
             subprocess.run(configure + openssl_args, check=True, env=host_env)
     elif not (host / 'build.ninja').exists():
-        subprocess.run([
+        openssl = host / 'third-party' / 'openssl'
+        configure = [
             'cmake', '-S', str(source), '-B', str(host), '-G', 'Ninja',
             '-DCMAKE_BUILD_TYPE=Release', '-DTOS_USE_ROCKSDB=OFF',
             '-DTOS_USE_ABSEIL=OFF', '-DUSE_QUIC=OFF',
+        ]
+        crypto = openssl / 'lib/libcrypto.a'
+        if not crypto.is_file():
+            result = subprocess.run(configure + ['-UOPENSSL_*'])
+            if result.returncode and not crypto.is_file():
+                result.check_returncode()
+        subprocess.run(configure + [
+            f'-DOPENSSL_ROOT_DIR={openssl}',
+            f'-DOPENSSL_CRYPTO_LIBRARY={crypto}',
+            f'-DOPENSSL_SSL_LIBRARY={openssl / "lib/libssl.a"}',
+            f'-DOPENSSL_INCLUDE_DIR={openssl / "include"}',
         ], check=True)
     target = work / args.abi
     jobs = int(os.environ.get('TOS_PROOF_BUILD_JOBS', '4'))
