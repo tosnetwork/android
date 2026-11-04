@@ -371,9 +371,8 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         @Synchronized
         private fun installBundledMaterial(context: android.content.Context, destination: java.io.File) {
             if (destination.isDirectory) return
-            val staging = java.nio.file.Files.createTempDirectory(
-                context.noBackupFilesDir.toPath(), "privacy-payment-"
-            ).toFile()
+            val staging = context.noBackupFilesDir.resolve("privacy-payment-${java.util.UUID.randomUUID()}")
+            check(staging.mkdir())
             try {
                 fun copyAsset(path: String, target: java.io.File) {
                     val children = context.assets.list(path).orEmpty()
