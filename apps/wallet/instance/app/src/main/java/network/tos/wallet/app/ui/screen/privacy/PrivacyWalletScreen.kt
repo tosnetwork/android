@@ -233,15 +233,16 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
     private fun startPayment(configuration: PaymentConfiguration, withdrawal: Boolean = false) {
         if (job?.isActive == true || !foreground.get()) return
         val input = recipient.text.toString().trim()
-        val ordinaryAddress = if (withdrawal) runCatching { org.ton.block.AddrStd.parse(input) }.getOrNull()
-            ?.takeIf { it.workchainId == 0 } else null
+        val ordinaryAddress = if (withdrawal) runCatching {
+            PrivacyWithdrawalRecipient.parse(input, wallet.testnet)
+        }.getOrNull() else null
         val destination = if (withdrawal) ordinaryAddress?.let { address ->
             ("0:" + address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }).encodeToByteArray()
         } else runCatching { android.util.Base64.decode(input, android.util.Base64.NO_WRAP) }.getOrNull()
         val validDestination = if (withdrawal) ordinaryAddress != null else
             destination?.size == 2573 && android.util.Base64.encodeToString(destination, android.util.Base64.NO_WRAP) == input
         if (!validDestination || destination == null) {
-            status.text = if (withdrawal) "Enter a valid ordinary TOS address in workchain 0." else "Enter a valid private recipient descriptor."
+            status.text = if (withdrawal) "Enter an ordinary TOS address in workchain 0 for the selected network." else "Enter a valid private recipient descriptor."
             return
         }
         val amountInput = android.widget.EditText(requireContext()).apply {
