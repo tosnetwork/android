@@ -278,8 +278,9 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
                     status.text = "Requesting a relay quote through Tor…"
                     accounts.requestPrivacyRelayOffer(wallet, configuration.approvedRelay, stopped).use { offer ->
                         val details = offer.details()
+                        val direction = if (withdrawal) "Privacy pool → ordinary address\nNetwork ID ${checkNotNull(wallet.quantumIdentity).wallet.initialAuthority.globalId}\n" else ""
                         val confirmed = confirmPayment(if (withdrawal) "Confirm Tor withdrawal" else "Confirm private payment",
-                            "Amount ${amount} nanoTOS\nRelay fee ${details.fee} nanoTOS\nRoute Tor\nRecipient ${if (withdrawal) input else input.take(20) + "…" + input.takeLast(20)}" +
+                            direction + "Amount ${amount} nanoTOS\nRelay fee ${details.fee} nanoTOS\nRoute Tor\nRecipient ${if (withdrawal) input else input.take(20) + "…" + input.takeLast(20)}" +
                                 (poolFee?.let { "\nPool fee $it nanoTOS\nRecipient and withdrawal amount are public on chain. Tor hides your connection address from the relay; it does not make the payout untraceable." } ?: ""))
                         if (confirmed == null || stopped()) return@launch
                         status.text = "Preparing and submitting the private payment through Tor…"

@@ -32,6 +32,12 @@ class PrivacyPaymentUiTest {
     @Test fun submitQuotedWithdrawalThroughTor() =
         exerciseCancellation(finalReview = true, submit = true, withdrawal = true)
 
+    @Test fun withdrawalWithLostReplyRemainsRecoverable() {
+        assumeTrue("Requires a one-shot response drop on the isolated relay",
+            InstrumentationRegistry.getArguments().getString("withdrawalLostReply") == "true")
+        exerciseCancellation(finalReview = true, submit = true, withdrawal = true, lostReply = true)
+    }
+
     @Test fun unavailableTorStopsBeforeWithdrawalReview() {
         assumeTrue("Requires the closed Tor SOCKS fixture",
             InstrumentationRegistry.getArguments().getString("paymentTestTorUnavailable") == "true")
@@ -443,6 +449,7 @@ class PrivacyPaymentUiTest {
         torUnavailable: Boolean = false,
         backgroundAfterLostResponse: Boolean = false,
         withdrawal: Boolean = false,
+        lostReply: Boolean = false,
     ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val recipient = InstrumentationRegistry.getArguments().getString("paymentTestRecipient")
@@ -479,7 +486,8 @@ class PrivacyPaymentUiTest {
                 val pin = instrumentation.targetContext.cacheDir.resolve("disposable-ui-test-pin").readText()
                 check(pin.matches(Regex("[0-9]{4}")))
                 pin.forEach { digit -> onView(withText(digit.toString())).perform(click()) }
-                val review = "Amount $amount nanoTOS\nRelay fee 1 nanoTOS\nRoute Tor\nRecipient " +
+                val direction = if (withdrawal) "Privacy pool → ordinary address\nNetwork ID ${checkNotNull(wallet.quantumIdentity).wallet.initialAuthority.globalId}\n" else ""
+                val review = direction + "Amount $amount nanoTOS\nRelay fee 1 nanoTOS\nRoute Tor\nRecipient " +
                     (if (withdrawal) requireNotNull(recipient) else requireNotNull(recipient).take(20) + "…" + recipient.takeLast(20)) +
                     (poolFee?.let { "\nPool fee $it nanoTOS\nRecipient and withdrawal amount are public on chain. Tor hides your connection address from the relay; it does not make the payout untraceable." } ?: "")
                 val failure = "Unable to complete private payment through Tor. Check pending payment before trying again."
@@ -514,7 +522,7 @@ class PrivacyPaymentUiTest {
             onView(withText(if (submit) "Continue" else "Cancel")).perform(click())
             if (submit) {
                 val deadline = android.os.SystemClock.elapsedRealtime() + 180_000
-                val expectedStatus = if (backgroundAfterLostResponse)
+                val expectedStatus = if (backgroundAfterLostResponse || lostReply)
                     "Unable to complete private payment through Tor. Check pending payment before trying again."
                 else "Relay responded. Check pending payment to verify chain confirmation."
                 var responded = false
