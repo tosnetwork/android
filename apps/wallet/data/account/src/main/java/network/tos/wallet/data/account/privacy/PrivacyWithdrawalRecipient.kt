@@ -1,4 +1,4 @@
-package network.tos.wallet.app.ui.screen.privacy
+package network.tos.wallet.data.account.privacy
 
 import network.tos.blockchain.ton.TonAddressTags
 import org.ton.block.AddrStd

@@ -1,5 +1,7 @@
 package network.tos.wallet.app.ui.screen.privacy
 
+import network.tos.wallet.data.account.privacy.PrivacyWithdrawalRecipient
+
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle

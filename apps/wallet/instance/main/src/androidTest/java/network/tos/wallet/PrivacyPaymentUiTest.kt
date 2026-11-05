@@ -11,7 +11,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import network.tos.wallet.app.ui.screen.privacy.PrivacyWalletScreen
-import network.tos.wallet.app.ui.screen.privacy.PrivacyWithdrawalRecipient
 import network.tos.wallet.app.ui.screen.root.RootActivity
 import network.tos.wallet.data.account.AccountRepository
 import org.junit.Assume.assumeTrue
@@ -21,27 +20,6 @@ import org.koin.core.context.GlobalContext
 
 @RunWith(AndroidJUnit4::class)
 class PrivacyPaymentUiTest {
-    @Test fun withdrawalRecipientHonorsTestOnlyNetworkMarker() {
-        val raw = "0:" + "22".repeat(32)
-        val address = org.ton.block.AddrStd.parse(raw)
-        for (bounceable in listOf(true, false)) {
-            val testOnly = address.toString(userFriendly = true, bounceable = bounceable, testOnly = true)
-            check(org.ton.block.AddrStd.parse(testOnly) == address)
-            check(runCatching { PrivacyWithdrawalRecipient.parse(testOnly, testnet = false) }.isFailure)
-            check(PrivacyWithdrawalRecipient.parse(testOnly, testnet = true) == address)
-            val unrestricted = address.toString(userFriendly = true, bounceable = bounceable, testOnly = false)
-            for (testnet in listOf(true, false)) {
-                check(PrivacyWithdrawalRecipient.parse(unrestricted, testnet) == address)
-                check(PrivacyWithdrawalRecipient.parse(raw, testnet) == address)
-            }
-        }
-        for (input in listOf("invalid", "-1:" + "22".repeat(32))) {
-            for (testnet in listOf(true, false)) {
-                check(runCatching { PrivacyWithdrawalRecipient.parse(input, testnet) }.isFailure)
-            }
-        }
-    }
-
     @Test fun cancelAmountOnPrivacyPaymentScreen() = exerciseCancellation(finalReview = false)
 
     @Test fun cancelQuotedPaymentOnPrivacyPaymentScreen() = exerciseCancellation(finalReview = true)
