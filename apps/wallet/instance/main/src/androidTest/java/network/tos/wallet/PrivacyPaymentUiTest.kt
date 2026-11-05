@@ -26,6 +26,24 @@ class PrivacyPaymentUiTest {
 
     @Test fun submitQuotedPaymentOnPrivacyPaymentScreen() = exerciseCancellation(finalReview = true, submit = true)
 
+    @Test fun cancelQuotedWithdrawalOnPrivacyScreen() =
+        exerciseCancellation(finalReview = true, withdrawal = true)
+
+    @Test fun submitQuotedWithdrawalThroughTor() =
+        exerciseCancellation(finalReview = true, submit = true, withdrawal = true)
+
+    @Test fun withdrawalWithLostReplyRemainsRecoverable() {
+        assumeTrue("Requires a one-shot response drop on the isolated relay",
+            InstrumentationRegistry.getArguments().getString("withdrawalLostReply") == "true")
+        exerciseCancellation(finalReview = true, submit = true, withdrawal = true, lostReply = true)
+    }
+
+    @Test fun unavailableTorStopsBeforeWithdrawalReview() {
+        assumeTrue("Requires the closed Tor SOCKS fixture",
+            InstrumentationRegistry.getArguments().getString("paymentTestTorUnavailable") == "true")
+        exerciseCancellation(finalReview = true, torUnavailable = true, withdrawal = true)
+    }
+
     @Test fun recoverUncertainPaymentAfterBackground() {
         assumeTrue("Requires a one-shot submit-response fault on the isolated relay",
             InstrumentationRegistry.getArguments().getString("backgroundAfterLostResponse") == "true")
@@ -430,6 +448,8 @@ class PrivacyPaymentUiTest {
         submit: Boolean = false,
         torUnavailable: Boolean = false,
         backgroundAfterLostResponse: Boolean = false,
+        withdrawal: Boolean = false,
+        lostReply: Boolean = false,
     ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val recipient = InstrumentationRegistry.getArguments().getString("paymentTestRecipient")
@@ -437,12 +457,16 @@ class PrivacyPaymentUiTest {
         check(instrumentation.targetContext.packageName == "network.tos.wallet.uk")
         val accounts = GlobalContext.get().get<AccountRepository>()
         val wallet = runBlocking { accounts.getWallets().single() }
+        if (withdrawal) assumeTrue("Requires an ordinary withdrawal recipient", runCatching { org.ton.block.AddrStd.parse(requireNotNull(recipient)).workchainId == 0 }.getOrDefault(false))
+        val amount = if (withdrawal) "1000000000" else "100000000"
+        val poolFee = if (withdrawal) runBlocking { accounts.privacyWithdrawalFee(wallet) { false } } else null
+        val debit = amount.toBigInteger() + (poolFee ?: "0").toBigInteger() + java.math.BigInteger.ONE
         val startingBalance = if (submit) {
             check(InstrumentationRegistry.getArguments().getString("submitIsolatedPayment") == "true")
             val before = runBlocking { accounts.readPrivacyBalance(wallet) }
             check(before is network.tos.wallet.data.account.privacy.PrivacyBalanceState.Observed)
             val balance = before.summary.unspentBalance.toBigInteger()
-            check(balance >= 100_000_001.toBigInteger()) {
+            check(balance >= debit) {
                 "Isolated sender needs at least 100000001 nanoTOS, observed $balance"
             }
             android.util.Log.i("PrivacyPaymentUiTest", "Isolated sender starting balance: $balance nanoTOS")
@@ -454,16 +478,18 @@ class PrivacyPaymentUiTest {
                 activity.supportFragmentManager.executePendingTransactions()
             }
             onView(withContentDescription("privacy.recipient")).perform(replaceText(requireNotNull(recipient)))
-            onView(withContentDescription("privacy.send")).perform(click())
+            onView(withContentDescription(if (withdrawal) "privacy.withdraw" else "privacy.send")).perform(scrollTo(), click())
             onView(withText("Private payment amount")).check(matches(isDisplayed()))
             if (finalReview) {
-                onView(withHint("Amount in nanoTOS")).perform(replaceText("100000000"))
+                onView(withHint("Amount in nanoTOS")).perform(replaceText(amount))
                 onView(withText("Continue")).perform(click())
                 val pin = instrumentation.targetContext.cacheDir.resolve("disposable-ui-test-pin").readText()
                 check(pin.matches(Regex("[0-9]{4}")))
                 pin.forEach { digit -> onView(withText(digit.toString())).perform(click()) }
-                val review = "Amount 100000000 nanoTOS\nRelay fee 1 nanoTOS\nRoute Tor\nRecipient " +
-                    requireNotNull(recipient).take(20) + "…" + recipient.takeLast(20)
+                val direction = if (withdrawal) "Privacy pool → ordinary address\nNetwork ID ${checkNotNull(wallet.quantumIdentity).wallet.initialAuthority.globalId}\n" else ""
+                val review = direction + "Amount $amount nanoTOS\nRelay fee 1 nanoTOS\nRoute Tor\nRecipient " +
+                    (if (withdrawal) requireNotNull(recipient) else requireNotNull(recipient).take(20) + "…" + recipient.takeLast(20)) +
+                    (poolFee?.let { "\nPool fee $it nanoTOS\nRecipient and withdrawal amount are public on chain. Tor hides your connection address from the relay; it does not make the payout untraceable." } ?: "")
                 val failure = "Unable to complete private payment through Tor. Check pending payment before trying again."
                 if (torUnavailable) {
                     val deadline = android.os.SystemClock.elapsedRealtime() + 300_000
@@ -496,7 +522,7 @@ class PrivacyPaymentUiTest {
             onView(withText(if (submit) "Continue" else "Cancel")).perform(click())
             if (submit) {
                 val deadline = android.os.SystemClock.elapsedRealtime() + 180_000
-                val expectedStatus = if (backgroundAfterLostResponse)
+                val expectedStatus = if (backgroundAfterLostResponse || lostReply)
                     "Unable to complete private payment through Tor. Check pending payment before trying again."
                 else "Relay responded. Check pending payment to verify chain confirmation."
                 var responded = false
@@ -530,7 +556,17 @@ class PrivacyPaymentUiTest {
                     }
                     val after = runBlocking { accounts.readPrivacyBalance(wallet) }
                     check(after is network.tos.wallet.data.account.privacy.PrivacyBalanceState.Observed)
-                    check(after.summary.unspentBalance.toBigInteger() == requireNotNull(startingBalance) - 100_000_001.toBigInteger())
+                    check(after.summary.unspentBalance.toBigInteger() == requireNotNull(startingBalance) - debit)
+                }
+            }
+            if (submit && withdrawal) {
+                val deadline = android.os.SystemClock.elapsedRealtime() + 90_000
+                while (true) {
+                    val current = runBlocking { accounts.readPrivacyBalance(wallet) }
+                    if (current is network.tos.wallet.data.account.privacy.PrivacyBalanceState.Observed &&
+                        current.summary.unspentBalance.toBigInteger() == requireNotNull(startingBalance) - debit) break
+                    check(android.os.SystemClock.elapsedRealtime() < deadline) { "Withdrawal debit not confirmed by authenticated pool history" }
+                    android.os.SystemClock.sleep(1000)
                 }
             }
             if (!finalReview) {

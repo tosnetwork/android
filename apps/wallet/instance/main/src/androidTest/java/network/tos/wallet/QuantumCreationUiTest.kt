@@ -109,14 +109,14 @@ class QuantumCreationUiTest {
     private fun launch(pending: Boolean = false) {
         if (!pending) assertTrue(runBlocking { repository.getWallets().isEmpty() })
         context.startActivity(Intent(Intent.ACTION_MAIN).apply {
-            component = ComponentName("network.tos.wallet", "network.tos.wallet.app.ui.screen.root.RootActivity")
+            component = ComponentName(context.packageName, "network.tos.wallet.app.ui.screen.root.RootActivity")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         })
         assertTrue(device.wait(Until.hasObject(By.text("Create new wallet")), 15000))
     }
     private fun click(text: String) { checkNotNull(device.wait(Until.findObject(By.text(text)), 15000)) { "Missing $text" }.click() }
     private fun pin() {
-        val pad = By.res("network.tos.wallet", "num_pad")
+        val pad = By.res(context.packageName, "num_pad")
         assertTrue(device.wait(Until.hasObject(pad), 15000))
         "1234".forEachIndexed { index, digit ->
             var center: android.graphics.Point? = null
@@ -141,7 +141,7 @@ class QuantumCreationUiTest {
             device.waitForIdle(3000)
         }
     }
-    private fun resource(id: String) = checkNotNull(device.wait(Until.findObject(By.res("network.tos.wallet", id)), 15000))
+    private fun resource(id: String) = checkNotNull(device.wait(Until.findObject(By.res(context.packageName, id)), 15000))
 
     @androidx.annotation.RequiresApi(26)
     private fun capturePublicHistoryPage() {
@@ -219,10 +219,10 @@ class QuantumCreationUiTest {
         assertEquals("Displayed recovery word count", 24, words.size)
         click("I have written it down")
         assertTrue(device.wait(Until.hasObject(By.text("Confirm your recovery phrase")), 15000))
-        val inputs = device.findObjects(By.res("network.tos.wallet", "word_input_text"))
+        val inputs = device.findObjects(By.res(context.packageName, "word_input_text"))
         assertEquals(3, inputs.size)
         inputs.forEach { input ->
-            val index = input.parent.findObject(By.res("network.tos.wallet", "word_input_index"))
+            val index = input.parent.findObject(By.res(context.packageName, "word_input_index"))
                 .text.removeSuffix(":").toInt() - 1
             input.text = words[index]
         }
@@ -235,10 +235,10 @@ class QuantumCreationUiTest {
                 device.pressBack()
                 if (!device.wait(Until.hasObject(By.text("Confirm your recovery phrase")), 3000)) device.pressBack()
                 assertTrue("Back navigation must restore the backup challenge", device.wait(Until.hasObject(By.text("Confirm your recovery phrase")), 15000))
-                val repeated = device.findObjects(By.res("network.tos.wallet", "word_input_text"))
+                val repeated = device.findObjects(By.res(context.packageName, "word_input_text"))
                 assertEquals(3, repeated.size)
                 repeated.forEach { input ->
-                    val index = input.parent.findObject(By.res("network.tos.wallet", "word_input_index"))
+                    val index = input.parent.findObject(By.res(context.packageName, "word_input_index"))
                         .text.removeSuffix(":").toInt() - 1
                     input.text = words[index]
                 }
@@ -1651,7 +1651,7 @@ class QuantumCreationUiTest {
         assertTrue(device.wait(Until.hasObject(By.text("Customize your Wallet")), 30000))
         resource("input_field").text = "Quantum cold restored"
         resource("label_button").click()
-        if (device.wait(Until.hasObject(By.res("network.tos.wallet", "num_pad")), 5000)) pin()
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 5000)) pin()
         assertTrue(device.wait(Until.hasObject(By.text("TOS")), 90000))
         val wallet = runBlocking { repository.getWallets() }.single()
         assertTrue(wallet.isQuantum)
@@ -1791,10 +1791,10 @@ class QuantumCreationUiTest {
         assertEquals(digest, hash(checkNotNull(before.signedBOC)))
         assertNotNull(before.feeApproval)
         context.startActivity(Intent(Intent.ACTION_MAIN).apply {
-            component = ComponentName("network.tos.wallet", "network.tos.wallet.app.ui.screen.root.RootActivity")
+            component = ComponentName(context.packageName, "network.tos.wallet.app.ui.screen.root.RootActivity")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         })
-        if (device.wait(Until.hasObject(By.res("network.tos.wallet", "num_pad")), 5000)) pin()
+        if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 5000)) pin()
         assertTrue(device.wait(Until.hasObject(By.text("TOS")), 30000))
         resource("send").click()
         fun scrollTo(description: String) {
@@ -1834,10 +1834,10 @@ class QuantumCreationUiTest {
         if (restored) {
             assertEquals(1, runBlocking { repository.getWallets() }.size)
             context.startActivity(Intent(Intent.ACTION_MAIN).apply {
-                component = ComponentName("network.tos.wallet", "network.tos.wallet.app.ui.screen.root.RootActivity")
+                component = ComponentName(context.packageName, "network.tos.wallet.app.ui.screen.root.RootActivity")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             })
-            if (device.wait(Until.hasObject(By.res("network.tos.wallet", "num_pad")), 5000)) pin()
+            if (device.wait(Until.hasObject(By.res(context.packageName, "num_pad")), 5000)) pin()
         } else {
             launch(); click("Create new wallet")
             assertTrue(device.wait(Until.hasObject(By.text("Create passcode")), 15000)); pin()
@@ -1973,7 +1973,7 @@ class QuantumCreationUiTest {
         }
         var endPress = 0
         fun confirmEndAuthorization() {
-            val title = device.wait(Until.findObject(By.res("network.tos.wallet", "alertTitle")
+            val title = device.wait(Until.findObject(By.res(context.packageName, "alertTitle")
                 .text("Verify expiry and end this authorization?")), 15000)
             device.dumpWindowHierarchy(File(context.cacheDir, "quantum-end-post-press-${endPress++}.xml"))
             assertNotNull("Actual product end confirmation did not appear", title)
@@ -2002,7 +2002,7 @@ class QuantumCreationUiTest {
         assertNull(runBlocking { repository.pendingQuantumPayment(wallet) })
         press("quantum.payment.sign")
         pin()
-        assertTrue(device.wait(Until.gone(By.res("network.tos.wallet", "num_pad")), 10000))
+        assertTrue(device.wait(Until.gone(By.res(context.packageName, "num_pad")), 10000))
         top()
         assertTrue(device.wait(Until.hasObject(By.textContains("Estimated total debit:")), 45000))
         val signed = checkNotNull(runBlocking { repository.pendingQuantumPayment(wallet) })
@@ -2138,7 +2138,7 @@ class QuantumCreationUiTest {
         assertFalse(field("quantum.payment.details").text.contains("first payment also deploys"))
         assertNull(runBlocking { repository.pendingQuantumPayment(wallet) })
         press("quantum.payment.sign"); pin()
-        assertTrue(device.wait(Until.gone(By.res("network.tos.wallet", "num_pad")), 10000)); top()
+        assertTrue(device.wait(Until.gone(By.res(context.packageName, "num_pad")), 10000)); top()
         assertTrue(device.wait(Until.hasObject(By.textContains("Estimated total debit:")), 45000))
         assertTrue(field("quantum.payment.details").text.contains("Fee quote expires:"))
         assertTrue(field("quantum.payment.details").text.contains("Original authorization deadline:"))
@@ -2237,7 +2237,7 @@ class QuantumCreationUiTest {
         assertEquals(expected, runBlocking { assets.getTokens(wallet, currency, true) }.single().balance.toBigInteger())
         assets.setCachedTotalBalance(wallet, currency, true, network.tos.icu.Coins.ofNano("999999999000000000"))
         assertNull(assets.getCachedTotalBalance(wallet, currency, true))
-        assertTrue(device.wait(Until.hasObject(By.res("network.tos.wallet", "wallet_balance")), 30000))
+        assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "wallet_balance")), 30000))
         fun refresh() {
             val bounds = resource("refresh").visibleBounds
             val start = maxOf(bounds.top + 120, resource("header").visibleBounds.bottom + 120)
@@ -2256,7 +2256,7 @@ class QuantumCreationUiTest {
                 refresh()
                 val unavailable = device.wait(Until.hasObject(By.text("Balance unavailable")), 30000)
                 assertTrue("Missing proof failure UI; methods=${poison.methods}; package=${device.currentPackageName}", unavailable)
-                assertFalse(device.hasObject(By.res("network.tos.wallet", "wallet_balance")))
+                assertFalse(device.hasObject(By.res(context.packageName, "wallet_balance")))
                 assertTrue(poison.methods.contains("getProofQuery"))
                 assertFalse(poison.methods.contains("getAddressInformation"))
                 assertNull(runBlocking { assets.requestTotalBalance(wallet, network.tos.wallet.data.core.currency.WalletCurrency.USD, true) })
@@ -2272,7 +2272,7 @@ class QuantumCreationUiTest {
         // The current selection must not replace the saved wallet's anchor.
         QuantumNetworkProfile(2, "ab".repeat(32), "cd".repeat(32)).save(context)
         refresh()
-        assertTrue(device.wait(Until.hasObject(By.res("network.tos.wallet", "wallet_balance")), 30000))
+        assertTrue(device.wait(Until.hasObject(By.res(context.packageName, "wallet_balance")), 30000))
         assertFalse(device.hasObject(By.text("Balance unavailable")))
         assertEquals(expected, runBlocking { repository.readQuantumAccount(wallet) }.balance)
     }

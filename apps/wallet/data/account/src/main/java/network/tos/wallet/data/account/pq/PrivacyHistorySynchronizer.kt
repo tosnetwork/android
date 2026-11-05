@@ -160,17 +160,19 @@ internal object PrivacyHistorySynchronizer {
             prover: PrivacyNative.PaymentProver,
             offer: PrivacyNative.RelayOffer,
             now: () -> Long,
+            withdrawalFee: String? = null,
         ): PrivacyNative.PaymentSubmission = try {
             synchronized(lock) {
                 val verified = checkNotNull(observation)
                 require(root.isAbsolute)
                 val request = JSONObject()
                     .put("root", root.path)
-                    .put("recipient", android.util.Base64.encodeToString(recipient, android.util.Base64.NO_WRAP))
+                    .put("recipient", if (withdrawalFee == null) android.util.Base64.encodeToString(recipient, android.util.Base64.NO_WRAP) else recipient.decodeToString(throwOnInvalidSequence = true))
                     .put("amount", amount)
                     .put("fee", fee)
                     .put("quote_identity", quoteIdentity)
                     .put("proven_time", verified.provenShardTime(now()))
+                    .apply { if (withdrawalFee != null) put("withdrawal_fee", withdrawalFee) }
                     .toString().encodeToByteArray()
                 val payment = history.stagePaymentAndWipeSeed(prover, offer, seed, request)
                 try {

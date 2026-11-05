@@ -53,7 +53,7 @@ test_quantum_funding_custody_device:
 
 .PHONY: test_quantum_funding_wrapper_device
 test_quantum_funding_wrapper_device:
-	$(GRADLE) :apps:wallet:data:account:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=network.tos.wallet.data.account.QuantumProbeFundingCustodyTest
+	$(GRADLE) :apps:wallet:data:account:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=network.tos.wallet.data.account.QuantumProbeFundingCustodyTest,network.tos.wallet.data.account.PrivacyWithdrawalRecipientDeviceTest
 
 test_quantum_model:
 	$(GRADLE) :apps:wallet:data:account:connectedDebugAndroidTest

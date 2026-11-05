@@ -752,12 +752,18 @@ class AccountRepository(
             reader.requestRelayOffer(record, selection, approvedRelay, stopped)
         }
 
+    suspend fun privacyWithdrawalFee(wallet: WalletEntity, stopped: () -> Boolean): String =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, _ ->
+            reader.withdrawalFee(record, selection, stopped)
+        }
+
     suspend fun stagePrivacyPayment(
         wallet: WalletEntity, recipient: ByteArray, amount: String, fee: String, quoteIdentity: String,
-        prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer, stopped: () -> Boolean,
+        prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer,
+        withdrawalFee: String? = null, stopped: () -> Boolean,
     ): PrivacyNative.PaymentSubmission =
         withPrivacyStore(wallet, stopped, discard = { it.close() }) { reader, record, selection, root ->
-            reader.stagePayment(record, selection, root, recipient, amount, fee, quoteIdentity, prover, offer, stopped) { body ->
+            reader.stagePayment(record, selection, root, recipient, amount, fee, quoteIdentity, prover, offer, stopped, withdrawalFee) { body ->
                 quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
             }
         }
