@@ -98,11 +98,19 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
             }
         }
 
+    fun withdrawalFee(record: QuantumCreationRecord, selection: PrivacyPoolSelection,
+                      stopped: () -> Boolean): String =
+        withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
+            running()
+            org.json.JSONObject(completed.info(now()).decodeToString()).getString("withdrawal_fee")
+        }
+
     fun stagePayment(
         record: QuantumCreationRecord, selection: PrivacyPoolSelection, root: ByteArray,
         recipient: ByteArray, amount: String, fee: String, quoteIdentity: String,
         prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer,
         stopped: () -> Boolean,
+        withdrawalFee: String? = null,
         master: ((ByteArray) -> PrivacyNative.PaymentSubmission) -> PrivacyNative.PaymentSubmission,
     ): PrivacyNative.PaymentSubmission =
         withReplay(record, selection, stopped, forReceive = true) { _, completed, running ->
@@ -111,7 +119,7 @@ internal class PrivacyBalanceReader(private val accounts: QuantumAccountReader, 
                     running()
                     completed.stageConfirmedPaymentAndWipeSeed(
                         seed, java.io.File(root.decodeToString()), recipient, amount, fee,
-                        quoteIdentity, prover, offer, now,
+                        quoteIdentity, prover, offer, now, withdrawalFee,
                     )
                 } finally { seed.fill(0) }
             }

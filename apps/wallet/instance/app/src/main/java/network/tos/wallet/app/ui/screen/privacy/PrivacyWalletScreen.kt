@@ -90,7 +90,7 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         }.apply { visibility = View.GONE }
         receipt = label("", "privacy.receipt").apply { setTextIsSelectable(true); visibility = View.GONE }
         recipient = android.widget.EditText(requireContext()).apply {
-            hint = "Private recipient descriptor"
+            hint = "Private descriptor or ordinary TOS address"
             contentDescription = "privacy.recipient"
             isSaveEnabled = false
             setTextColor(Color.WHITE)
@@ -114,10 +114,12 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         button("Check private recipient", "privacy.recipient.check") { validateRecipient() }
         if (payment == null) button("Private transfer", "privacy.send") {}.isEnabled = false
         button("Deposit: ordinary wallet → privacy pool", "privacy.deposit") { prepareDeposit() }
-        button("Withdraw: privacy pool → ordinary address", "privacy.withdraw") {}.isEnabled = false
+        button("Withdraw through Tor: privacy pool → ordinary address", "privacy.withdraw") {
+            payment?.let { startPayment(it, withdrawal = true) }
+        }.isEnabled = payment != null
         label(
-            if (payment == null) "Private transfers require a configured Tor relay. Withdrawals are still in development."
-            else "Private transfers use the configured Tor relayer. Withdrawals are still in development.",
+            if (payment == null) "Private transfers and withdrawals require a configured Tor relay."
+            else "Private transfers and withdrawals use the configured Tor relayer. Withdrawal recipients and amounts are public on chain.",
             "privacy.actions.unavailable",
         )
         button("Return to ordinary wallet", "privacy.close") { finish() }
@@ -228,12 +230,18 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
         }
     }
 
-    private fun startPayment(configuration: PaymentConfiguration) {
+    private fun startPayment(configuration: PaymentConfiguration, withdrawal: Boolean = false) {
         if (job?.isActive == true || !foreground.get()) return
         val input = recipient.text.toString().trim()
-        val destination = runCatching { android.util.Base64.decode(input, android.util.Base64.NO_WRAP) }.getOrNull()
-        if (destination?.size != 2573 || android.util.Base64.encodeToString(destination, android.util.Base64.NO_WRAP) != input) {
-            status.text = "Enter a valid private recipient descriptor."
+        val ordinaryAddress = if (withdrawal) runCatching { org.ton.block.AddrStd.parse(input) }.getOrNull()
+            ?.takeIf { it.workchainId == 0 } else null
+        val destination = if (withdrawal) ordinaryAddress?.let { address ->
+            ("0:" + address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }).encodeToByteArray()
+        } else runCatching { android.util.Base64.decode(input, android.util.Base64.NO_WRAP) }.getOrNull()
+        val validDestination = if (withdrawal) ordinaryAddress != null else
+            destination?.size == 2573 && android.util.Base64.encodeToString(destination, android.util.Base64.NO_WRAP) == input
+        if (!validDestination || destination == null) {
+            status.text = if (withdrawal) "Enter a valid ordinary TOS address in workchain 0." else "Enter a valid private recipient descriptor."
             return
         }
         val amountInput = android.widget.EditText(requireContext()).apply {
@@ -258,7 +266,8 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
                 if (!allowed || stopped()) return@launch
                 status.text = "Verifying recipient and loading the payment prover…"
                 configuration.pool?.let { accounts.configureTrustedPrivacyPool(wallet, it) }
-                check(accounts.validatePrivacyRecipient(wallet, input, stopped))
+                if (!withdrawal) check(accounts.validatePrivacyRecipient(wallet, input, stopped))
+                val poolFee = if (withdrawal) accounts.privacyWithdrawalFee(wallet, stopped) else null
                 if (configuration.pool != null) {
                     val context = requireContext().applicationContext
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -269,11 +278,12 @@ class PrivacyWalletScreen(wallet: WalletEntity, private val payment: PaymentConf
                     status.text = "Requesting a relay quote through Tor…"
                     accounts.requestPrivacyRelayOffer(wallet, configuration.approvedRelay, stopped).use { offer ->
                         val details = offer.details()
-                        val confirmed = confirmPayment("Confirm private payment",
-                            "Amount ${amount} nanoTOS\nRelay fee ${details.fee} nanoTOS\nRoute Tor\nRecipient ${input.take(20)}…${input.takeLast(20)}")
+                        val confirmed = confirmPayment(if (withdrawal) "Confirm Tor withdrawal" else "Confirm private payment",
+                            "Amount ${amount} nanoTOS\nRelay fee ${details.fee} nanoTOS\nRoute Tor\nRecipient ${if (withdrawal) input else input.take(20) + "…" + input.takeLast(20)}" +
+                                (poolFee?.let { "\nPool fee $it nanoTOS\nRecipient and withdrawal amount are public on chain. Tor hides your connection address from the relay; it does not make the payout untraceable." } ?: ""))
                         if (confirmed == null || stopped()) return@launch
                         status.text = "Preparing and submitting the private payment through Tor…"
-                        accounts.stagePrivacyPayment(wallet, destination, value, details.fee, details.identity, prover, offer, stopped)
+                        accounts.stagePrivacyPayment(wallet, destination, value, details.fee, details.identity, prover, offer, withdrawalFee = poolFee, stopped = stopped)
                             .use { accounts.submitOrRetryPrivacyPayment(it, stopped) }
                         if (!stopped()) status.text = "Relay responded. Check pending payment to verify chain confirmation."
                     }
