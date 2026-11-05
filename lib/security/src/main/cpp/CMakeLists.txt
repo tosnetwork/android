@@ -36,3 +36,18 @@ set_target_properties(tos_fee_state PROPERTIES IMPORTED_LOCATION
   "${TOS_FEE_STATE_TARGET_DIR}/${FEE_STATE_TARGET}/release/liblms_fee_state.a")
 target_link_libraries(tos_mobile_pq PRIVATE tospq tos_mobile_lms tos_fee_state ${CMAKE_DL_LIBS} log android)
 set_target_properties(tos_mobile_pq PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
+
+# Keep the shielded Rust runtime in its own DSO, isolated from the fee-state DSO.
+if(NOT TOS_PRIVACY_OUTPUT_DIR)
+  message(FATAL_ERROR "The privacy source build must supply TOS_PRIVACY_OUTPUT_DIR")
+endif()
+add_library(tos_shielded_core STATIC IMPORTED)
+set_target_properties(tos_shielded_core PROPERTIES IMPORTED_LOCATION
+  "${TOS_PRIVACY_OUTPUT_DIR}/${ANDROID_ABI}/libshielded_pool_mobile.a")
+add_library(tos_mobile_shielded SHARED privacy_jni.cpp)
+target_compile_features(tos_mobile_shielded PRIVATE cxx_std_17)
+target_compile_options(tos_mobile_shielded PRIVATE -Wall -Wextra -Werror -fvisibility=hidden)
+target_include_directories(tos_mobile_shielded PRIVATE "${TOS_PRIVACY_OUTPUT_DIR}/${ANDROID_ABI}")
+target_link_libraries(tos_mobile_shielded PRIVATE tos_shielded_core ${CMAKE_DL_LIBS} log android)
+set_target_properties(tos_mobile_shielded PROPERTIES LINK_FLAGS
+  "-Wl,--exclude-libs,ALL -Wl,--gc-sections -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")

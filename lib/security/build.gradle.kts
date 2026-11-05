@@ -10,6 +10,7 @@ plugins {
 val feeStateTargets = listOf("aarch64-linux-android", "armv7-linux-androideabi", "i686-linux-android", "x86_64-linux-android")
 val feeStateManifest = layout.projectDirectory.file("src/main/rust/fee-state-bundle/Cargo.toml")
 val feeStateOutput = layout.buildDirectory.dir("rust-fee-state")
+val privacyOutput = layout.buildDirectory.dir("privacy-native")
 
 val proofAbis = providers.gradleProperty("tosProofAbis").orElse("arm64-v8a,armeabi-v7a,x86,x86_64").get().split(",").toSet()
 require(proofAbis.isNotEmpty() && proofAbis.all { it in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") })
@@ -32,7 +33,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
         externalNativeBuild {
-            cmake { arguments += "-DTOS_FEE_STATE_TARGET_DIR=${feeStateOutput.get().asFile.absolutePath}" }
+            cmake {
+                arguments += "-DTOS_FEE_STATE_TARGET_DIR=${feeStateOutput.get().asFile.absolutePath}"
+                arguments += "-DTOS_PRIVACY_OUTPUT_DIR=${privacyOutput.get().asFile.absolutePath}"
+            }
         }
 
         ndk {
@@ -72,6 +76,28 @@ val proofBuilds = proofAbis.map { abi ->
     }
 }
 tasks.named("preBuild") { dependsOn(proofBuilds) }
+
+val privacyProving = providers.gradleProperty("tosPrivacyProving").map(String::toBooleanStrict).orElse(false)
+val privacyBuilds = proofAbis.map { abi ->
+    tasks.register<Exec>("buildPrivacyCore${abi.replace("-", "").replace("_", "")}") {
+        workingDir(rootProject.projectDir)
+        inputs.file(rootProject.file("scripts/build_privacy_native.py"))
+        inputs.file(rootProject.file("scripts/privacy-native-revision.txt"))
+        inputs.property("privacyProving", privacyProving)
+        outputs.file(privacyOutput.map { it.file("$abi/libshielded_pool_mobile.a") })
+        outputs.file(privacyOutput.map { it.file("$abi/tos_shielded_mobile.h") })
+        outputs.file(privacyOutput.map { it.file("$abi/PROVENANCE.json") })
+        outputs.upToDateWhen { false }
+        commandLine("python3", rootProject.file("scripts/build_privacy_native.py").absolutePath,
+            "--platform", "android", "--ndk", File(android.sdkDirectory, "ndk/${Build.ndkVersion}").absolutePath,
+            "--output", privacyOutput.get().dir(abi).asFile.absolutePath, "--abi", abi)
+        if (privacyProving.get()) args("--proving")
+    }
+}
+tasks.named("preBuild") { dependsOn(privacyBuilds) }
+tasks.configureEach {
+    if (name.startsWith("configureCMake") || name.startsWith("buildCMake")) dependsOn(privacyBuilds)
+}
 
 // Aggregate tasks such as `assemble` also select release variants. A graph
 // dependency runs even when the release task itself is up-to-date or cached.

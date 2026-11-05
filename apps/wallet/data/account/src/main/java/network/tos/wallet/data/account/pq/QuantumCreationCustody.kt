@@ -125,6 +125,30 @@ internal class QuantumCreationCustody internal constructor(
         words.toTypedArray()
     }
 
+    /** Narrow read-only privacy use of ORIGINAL mnemonic master. Never exports a role seed.
+     * Bind to retained birth provenance, even when current on-chain keys have rotated.
+     * The caller authenticates access; all byte material is cleared after the scoped operation.
+     */
+    internal fun <T> withOriginalPrivacyMaster(id: UUID, birth: TosQuantumSelfPayIdentity,
+                                              body: (ByteArray) -> T): T {
+        val words = mnemonic(id) ?: throw network.tos.wallet.data.account.privacy.PrivacyMasterUnavailable()
+        var master = ByteArray(0); var primary = ByteArray(0); var rescue = ByteArray(0)
+        try {
+            master = network.tos.blockchain.TosQuantumMnemonic.masterAndWipePassword(words.toList(), CharArray(0))
+            val original = birth.wallet.initialAuthority
+            primary = network.tos.security.pq.QuantumKdf.deriveAndWipe(network.tos.security.pq.QuantumKdf.Material.PRIMARY,
+                master.copyOf(), original.namespace, original.globalId, 0, 0)
+            rescue = network.tos.security.pq.QuantumKdf.deriveAndWipe(network.tos.security.pq.QuantumKdf.Material.RESCUE,
+                master.copyOf(), original.namespace, original.globalId, 0, 0)
+            check(QuantumCrypto.publicKey(QuantumRole.PRIMARY, primary).contentEquals(original.primaryKey) &&
+                QuantumCrypto.publicKey(QuantumRole.RESCUE, rescue).contentEquals(original.rescueKey)) {
+                "Original privacy master differs from birth provenance"
+            }
+            return body(master)
+        } finally { master.fill(0); primary.fill(0); rescue.fill(0); words.fill("") }
+    }
+    internal fun hasOriginalPrivacyMaster(id: UUID): Boolean = synchronized(lock) { preferences.contains(mnemonicKey(id)) }
+
     fun store(id: UUID, role: QuantumRole, context: QuantumSeedVault.Context, seed: ByteArray): ByteArray = synchronized(lock) {
         // Key lookup may fail before the vault takes ownership of the buffer.
         try { roles.importAndWipe(id.toString(), role, context, wrappingKey(true), seed) }

@@ -215,8 +215,18 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
             }
         }
     }
+    private val depositIntent by lazy {
+        arguments?.getString("privacy_deposit")?.let { QuantumPaymentIntent.decode(it) }?.also {
+            checkNotNull(it.privacyDepositPrincipal)
+        }
+    }
+
     private fun prepare() {
         if (!journalLoaded || pending != null || ended) return
+        depositIntent?.let { intent ->
+            run("Verifying the wallet and privacy deposit…") { prepareIntent(intent) }
+            return
+        }
         val address = try {
             val addressText = recipient.text.toString().trim()
             val address = AddrStd.parse(addressText)
@@ -254,21 +264,25 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
                     else "Enter a positive TOS amount with at most nine decimal places and a comment up to 4096 UTF-8 bytes."
                 return@run
             }
-            val result = try {
-                accounts.prepareQuantumPayment(wallet, intent)
-            } catch (_: QuantumInsufficientBalanceException) {
-                currentCoroutineContext().ensureActive()
-                status.text = if (intent.tokenTransfer != null) "Insufficient TOS for this attachment before sender fees. Fund TOS or review a smaller attachment."
-                    else "Insufficient balance for this amount before network fees. Enter a smaller amount and review again."
-                return@run
-            }
-            currentCoroutineContext().ensureActive()
-            prepared = result
-            details.text = summary(intent) + "\nOriginal authorization deadline: ${time(result.expiresAt)}" +
-                if (prepared!!.requiresDeployment) "\nThe first payment also deploys this wallet using its balance." else ""
-            status.text = if (intent.tokenTransfer != null) "Review the Token master, recipient, amount, raw units and attached TOS. Token execution uses the attachment; unused TOS may return separately. Signing and estimation do not broadcast."
-                else "Review the exact recipient, amount, bounce setting and comment. Signing and estimation do not broadcast."
+            prepareIntent(intent)
         }
+    }
+
+    private suspend fun prepareIntent(intent: QuantumPaymentIntent) {
+        val result = try {
+            accounts.prepareQuantumPayment(wallet, intent)
+        } catch (_: QuantumInsufficientBalanceException) {
+            currentCoroutineContext().ensureActive()
+            status.text = if (intent.tokenTransfer != null) "Insufficient TOS for this attachment before sender fees. Fund TOS or review a smaller attachment."
+                else "Insufficient balance for this amount before network fees. Enter a smaller amount and review again."
+            return
+        }
+        currentCoroutineContext().ensureActive()
+        prepared = result
+        details.text = summary(intent) + "\nOriginal authorization deadline: ${time(result.expiresAt)}" +
+            if (prepared!!.requiresDeployment) "\nThe first payment also deploys this wallet using its balance." else ""
+        status.text = if (intent.tokenTransfer != null) "Review the Token master, recipient, amount, raw units and attached TOS. Token execution uses the attachment; unused TOS may return separately. Signing and estimation do not broadcast."
+            else "Review the exact recipient, amount, bounce setting and comment. Signing and estimation do not broadcast."
     }
     private fun authorize() {
         val payment = prepared ?: return
@@ -420,8 +434,8 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
         attachment.visibility = if (tokenMode) View.VISIBLE else View.GONE
         comment.visibility = if (tokenMode) View.GONE else View.VISIBLE
         bounce.visibility = if (tokenMode) View.GONE else View.VISIBLE
-        for (field in listOf(recipient, amount, attachment, comment)) field.isEnabled = editing
-        bounce.isEnabled = editing && !tokenMode
+        for (field in listOf(recipient, amount, attachment, comment)) field.isEnabled = editing && depositIntent == null
+        bounce.isEnabled = editing && !tokenMode && depositIntent == null
         review.isEnabled = editing
         sign.isEnabled = idle && wallet.isQuantumSelfPayAvailable && prepared != null && pending == null
         submit.isEnabled = idle && wallet.isQuantumSelfPayAvailable && quote != null
@@ -436,18 +450,32 @@ class QuantumPaymentScreen(wallet: WalletEntity) : WalletContextScreen(R.layout.
     }
     private fun format(value: BigInteger) = checkNotNull(QuantumHistoryTransaction.formatNano(value.toString()))
     private fun tosInput(value: BigInteger) = format(value).removeSuffix(" TOS")
-    private fun sentText(intent: QuantumPaymentIntent) = if (intent.tokenTransfer != null)
-        "The wallet sent the exact Token transfer request. Recipient credit has not been verified."
-        else "The wallet sent the exact transfer. Recipient credit is a separate observation."
+    private fun sentText(intent: QuantumPaymentIntent) = when {
+        intent.privacyDepositPrincipal != null ->
+            "The wallet sent the exact deposit request. Refresh the privacy balance to check pool credit."
+        intent.tokenTransfer != null ->
+            "The wallet sent the exact Token transfer request. Recipient credit has not been verified."
+        else -> "The wallet sent the exact transfer. Recipient credit is a separate observation."
+    }
     private fun recipientAddress(intent: QuantumPaymentIntent) = (intent.tokenTransfer?.recipient ?: intent.recipient).toString(
         userFriendly = true, bounceable = intent.bounce, testOnly = wallet.testnet,
     )
     private fun summary(intent: QuantumPaymentIntent): String {
+        intent.privacyDepositPrincipal?.let { principal ->
+            return "Network global ID: ${wallet.networkGlobalId}\nPrivacy pool: ${recipientAddress(intent)}\nDeposit principal: ${format(principal)}" +
+                "\nPool fee: ${format(intent.amount - principal)}\nAttached value: ${format(intent.amount)}\nRoute: configured TOS node"
+        }
         val token = intent.tokenTransfer ?: return "Recipient: ${recipientAddress(intent)}\nAmount: ${format(intent.amount)}\nBounce: ${if (intent.bounce) "yes" else "no"}\nComment: ${intent.comment ?: "(none)"}"
         fun raw(address: org.ton.block.AddrStd) = "${address.workchainId}:" + address.address.toByteArray().joinToString("") { "%02x".format(it.toInt() and 255) }
         return "Token master: ${raw(token.master)}\nRecipient: ${recipientAddress(intent)}\nToken amount: ${network.tos.blockchain.ton.contract.TokenAmount.format(token.units, token.decimals)}\nRaw Token units: ${token.units}\nSender Token wallet: ${raw(token.wallet)}\nAttached TOS: ${format(token.attachedTos)}\nForwarded TOS: ${format(token.forwardTos)}\nQuery ID: ${token.queryId}"
     }
     companion object {
+        fun newDepositInstance(wallet: WalletEntity, intent: QuantumPaymentIntent) =
+            newInstance(wallet, intent.recipient.toString(), intent.amount).apply {
+                checkNotNull(intent.privacyDepositPrincipal)
+                putStringArg("privacy_deposit", intent.encode())
+            }
+
         fun newTokenInstance(wallet: WalletEntity, master: String, decimals: Int) = newInstance(wallet).apply {
             require(master.matches(Regex("0:[0-9a-f]{64}")))
             require(decimals in 0..255)

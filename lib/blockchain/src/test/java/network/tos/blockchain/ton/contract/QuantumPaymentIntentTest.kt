@@ -3,10 +3,34 @@ package network.tos.blockchain.ton.contract
 import org.junit.Assert.*
 import org.junit.Test
 import org.ton.block.AddrStd
+import org.ton.boc.BagOfCells
+import org.ton.cell.buildCell
 import java.math.BigInteger
 
 class QuantumPaymentIntentTest {
     private val recipient = AddrStd.parse("0:" + "12".repeat(32))
+    @Test fun depositBodySurvivesOutboxEncodingAndBindsActions() {
+        fun deposit(queryId: Int) = buildCell {
+            storeUInt(0x53485001, 32)
+            storeUInt(queryId, 64)
+            storeUInt(1, 4)
+            storeUInt(100, 8)
+            storeBytes(ByteArray(32))
+            storeRef(buildCell { })
+        }
+        val body = deposit(7)
+        val intent = QuantumPaymentIntent.privacyDeposit(recipient, 125uL, BagOfCells(listOf(body)).toByteArray())
+        val restored = QuantumPaymentIntent.decode(intent.encode())
+        assertEquals(intent, restored)
+        assertEquals(body.hash(), restored.body.hash())
+        assertEquals(intent.actions().hash(), restored.actions().hash())
+        val other = QuantumPaymentIntent.privacyDeposit(recipient, 125uL, BagOfCells(listOf(deposit(8))).toByteArray())
+        assertNotEquals(intent.actions().hash(), other.actions().hash())
+        assertThrows(IllegalArgumentException::class.java) {
+            QuantumPaymentIntent.privacyDeposit(recipient, 100uL, BagOfCells(listOf(body)).toByteArray())
+        }
+    }
+
     @Test fun amountsStayExactAndRejectAmbiguousForms() {
         assertEquals(BigInteger.ONE, QuantumPaymentIntent.parseTos("0.000000001"))
         assertEquals(BigInteger("9007199254740993000000001"), QuantumPaymentIntent.parseTos("9007199254740993.000000001"))

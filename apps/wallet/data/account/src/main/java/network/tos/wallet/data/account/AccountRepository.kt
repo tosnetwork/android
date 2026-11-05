@@ -1,5 +1,8 @@
 package network.tos.wallet.data.account
 
+import network.tos.blockchain.ton.contract.QuantumPaymentIntent
+import network.tos.security.privacy.PrivacyNative
+import network.tos.security.privacy.PrivacyNative.Replay.PendingStatus
 import network.tos.blockchain.TosV1Mnemonic
 import network.tos.blockchain.TosQuantumMnemonic
 import network.tos.wallet.data.account.entities.WalletIdentity
@@ -14,6 +17,12 @@ import network.tos.wallet.data.account.pq.QuantumHistoryHttpTransport
 import network.tos.wallet.data.account.pq.QuantumSelfPayAccount
 import network.tos.security.pq.QuantumProofSession
 import kotlinx.coroutines.runInterruptible
+import network.tos.wallet.data.account.privacy.PrivacyBalanceState
+import network.tos.wallet.data.account.privacy.PrivacyMasterUnavailable
+import network.tos.wallet.data.account.privacy.PrivacyPoolRegistry
+import network.tos.wallet.data.account.privacy.PrivacyPoolSelection
+import network.tos.wallet.data.account.pq.PrivacyBalanceReader
+import network.tos.wallet.data.account.pq.PrivacyHistorySynchronizer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import network.tos.wallet.data.account.pq.QuantumCreationRecord
@@ -584,6 +593,240 @@ class AccountRepository(
         QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
             .read(UUID.fromString(wallet.id), identity)
     }
+
+    /** Explicit deployment trust input only. No RPC discovery path calls this API.
+     * Proof authenticates that the configured deployment matches those pins; it does NOT
+     * authenticate who supplied the pins. Caller must authenticate configuration changes.
+     */
+    suspend fun configureTrustedPrivacyPool(wallet: WalletEntity, selection: PrivacyPoolSelection) = withContext(Dispatchers.IO) {
+        val stored = checkNotNull(database.getAccount(wallet.id))
+        require(stored.identity == wallet.identity && stored.isQuantum) { "An enrolled TOS proof profile is required" }
+        val record = QuantumCreationRecord.load(context, UUID.fromString(wallet.id))
+        require(record.identity == stored.quantumIdentity); selection.requireProfile(record.profile)
+        val endpoint = quantumPaymentEndpoint()
+        runInterruptible {
+            PrivacyHistorySynchronizer.Lease(record.id).use {
+                val observed = QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient))
+                    .observePool(record.id, record.identity, record.profile, selection.address(), selection.expectedCode(),
+                        selection.profileBytes(), selection.manifestBytes(), selection.verifyingKeyBytes())
+                if (Thread.currentThread().isInterrupted) throw InterruptedException("Privacy configuration cancelled")
+                observed.requireFresh(System.currentTimeMillis() / 1000)
+                PrivacyPoolRegistry(context).saveExplicit(selection)
+            }
+        }
+    }
+
+    /** Non-secret local preflight: no authentication prompt, RPC or master derivation. */
+    suspend fun privacyReadAvailability(wallet: WalletEntity): PrivacyBalanceState? = withContext(Dispatchers.IO) {
+        try {
+            val stored = database.getAccount(wallet.id) ?: return@withContext PrivacyBalanceState.MaterialUnavailable
+            if (stored.identity != wallet.identity) return@withContext PrivacyBalanceState.MaterialUnavailable
+            if (!stored.isQuantum) return@withContext PrivacyBalanceState.WalletNotProvisioned
+            val id = UUID.fromString(wallet.id)
+            val record = QuantumCreationRecord.load(context, id)
+            require(record.identity == stored.quantumIdentity)
+            if (PrivacyPoolRegistry(context).selected(record.profile) == null) return@withContext PrivacyBalanceState.NotConfigured
+            if (keyguardManager.isDeviceLocked || !quantumCustody.hasOriginalPrivacyMaster(id))
+                PrivacyBalanceState.MaterialUnavailable else null
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { PrivacyBalanceState.Failed(PrivacyBalanceState.Failure.VERIFICATION_OR_TRANSPORT) }
+    }
+
+    /** Read-only observation using original protected master and retained birth/proof provenance.
+     * No descriptor index, signature, reservation, submission or backup state is created.
+     * Non-Quantum wallets need an explicitly provisioned privacy proof profile; no synthetic
+     * identity/anchor is generated here. Role-only restores cannot substitute a signing seed.
+     */
+    suspend fun readPrivacyBalance(wallet: WalletEntity, stopped: () -> Boolean = { false }): PrivacyBalanceState = withContext(Dispatchers.IO) {
+        try {
+            val stored = database.getAccount(wallet.id) ?: return@withContext PrivacyBalanceState.MaterialUnavailable
+            if (stored.identity != wallet.identity) return@withContext PrivacyBalanceState.MaterialUnavailable
+            if (!stored.isQuantum) return@withContext PrivacyBalanceState.WalletNotProvisioned
+            if (keyguardManager.isDeviceLocked) return@withContext PrivacyBalanceState.MaterialUnavailable
+            val id = UUID.fromString(wallet.id)
+            if (!quantumCustody.hasOriginalPrivacyMaster(id)) return@withContext PrivacyBalanceState.MaterialUnavailable
+            val record = QuantumCreationRecord.load(context, id)
+            require(record.identity == stored.quantumIdentity)
+            val selection = PrivacyPoolRegistry(context).selected(record.profile) ?: return@withContext PrivacyBalanceState.NotConfigured
+            val endpoint = quantumPaymentEndpoint()
+            val observed = runInterruptible {
+                PrivacyBalanceReader(QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+                    QuantumHistoryHttpTransport(endpoint, quantumHttpClient)).read(record, selection, stopped) { body ->
+                    quantumCustody.withOriginalPrivacyMaster(id, record.identity, body)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            if (stopped()) throw kotlinx.coroutines.CancellationException("Privacy page left foreground")
+            val after = database.getAccount(wallet.id)
+            if (after?.identity != stored.identity || keyguardManager.isDeviceLocked || !quantumCustody.hasOriginalPrivacyMaster(id)) {
+                PrivacyBalanceState.MaterialUnavailable
+            } else observed
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: PrivacyMasterUnavailable) { PrivacyBalanceState.MaterialUnavailable }
+        catch (error: IllegalStateException) {
+            PrivacyBalanceState.Failed(if (error.message == "Privacy history synchronizer busy") PrivacyBalanceState.Failure.BUSY
+                else PrivacyBalanceState.Failure.VERIFICATION_OR_TRANSPORT)
+        } catch (_: Exception) { PrivacyBalanceState.Failed(PrivacyBalanceState.Failure.VERIFICATION_OR_TRANSPORT) }
+    }
+
+    /** Public recipient preflight for the currently selected wallet and pool. */
+    suspend fun validatePrivacyRecipient(wallet: WalletEntity, input: String, stopped: () -> Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val encoded = input.trim()
+            if (encoded.length != 3432) return@withContext false
+            val descriptor = try {
+                android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP)
+            } catch (_: IllegalArgumentException) {
+                return@withContext false
+            }
+            if (descriptor.size != 2573 ||
+                android.util.Base64.encodeToString(descriptor, android.util.Base64.NO_WRAP) != encoded
+            ) return@withContext false
+            val stored = checkNotNull(database.getAccount(wallet.id))
+            check(stored.identity == wallet.identity && stored.isQuantum && !keyguardManager.isDeviceLocked)
+            val record = QuantumCreationRecord.load(context, UUID.fromString(wallet.id))
+            check(record.identity == stored.quantumIdentity)
+            val selection = checkNotNull(PrivacyPoolRegistry(context).selected(record.profile))
+            val endpoint = quantumPaymentEndpoint()
+            val valid = runInterruptible {
+                PrivacyBalanceReader(
+                    QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+                    QuantumHistoryHttpTransport(endpoint, quantumHttpClient),
+                ).validateRecipient(record, selection, descriptor, stopped)
+            }
+            if (stopped()) throw kotlinx.coroutines.CancellationException("Privacy page left foreground")
+            check(database.getAccount(wallet.id)?.identity == stored.identity && !keyguardManager.isDeviceLocked)
+            valid
+        }
+
+    /** The caller authenticates the wallet owner before requesting a descriptor. */
+    suspend fun issuePrivacyReceipt(wallet: WalletEntity, stopped: () -> Boolean): ByteArray =
+        withPrivacyStore(wallet, stopped, discard = { it.fill(0) }) { reader, record, selection, root ->
+            reader.receive(record, selection, root, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    suspend fun privacyDepositValue(wallet: WalletEntity, amount: ULong, stopped: () -> Boolean): ULong =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, _ ->
+            reader.depositValue(record, selection, amount, stopped)
+        }
+
+    suspend fun preparePrivacySelfDeposit(wallet: WalletEntity, amount: ULong, attachedValue: ULong,
+                                          queryId: ULong, stopped: () -> Boolean): QuantumPaymentIntent =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
+            val body = reader.prepareSelfDeposit(record, selection, root, amount, attachedValue, queryId, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+            QuantumPaymentIntent.privacyDeposit(selection.address(), attachedValue, body)
+        }
+
+    /** The caller authenticates the wallet owner before observing a pending payment. */
+    suspend fun privacyPendingStatus(wallet: WalletEntity, stopped: () -> Boolean): PendingStatus =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
+            reader.pendingStatus(record, selection, root, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    suspend fun loadPrivacyPaymentProver(
+        wallet: WalletEntity, phase1: java.io.File, ceremony: java.io.File, stopped: () -> Boolean,
+    ): PrivacyNative.PaymentProver =
+        withPrivacyStore(wallet, stopped, discard = { it.close() }) { reader, record, selection, _ ->
+            reader.loadPaymentProver(record, selection, phase1, ceremony, stopped)
+        }
+
+    /** The caller authenticates the owner and holds the staged regular file open. */
+    suspend fun transferPrivacyBackup(wallet: WalletEntity, fd: Int, restore: Boolean,
+                                      stopped: () -> Boolean) =
+        withPrivacyStore(wallet, stopped, discard = {}) { reader, record, selection, root ->
+            reader.backupFile(record, selection, root, fd, restore, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    suspend fun requestPrivacyRelayOffer(
+        wallet: WalletEntity, approvedRelay: ByteArray, stopped: () -> Boolean,
+    ): PrivacyNative.RelayOffer =
+        withPrivacyStore(wallet, stopped, discard = { it.close() }) { reader, record, selection, _ ->
+            reader.requestRelayOffer(record, selection, approvedRelay, stopped)
+        }
+
+    suspend fun stagePrivacyPayment(
+        wallet: WalletEntity, recipient: ByteArray, amount: String, fee: String, quoteIdentity: String,
+        prover: PrivacyNative.PaymentProver, offer: PrivacyNative.RelayOffer, stopped: () -> Boolean,
+    ): PrivacyNative.PaymentSubmission =
+        withPrivacyStore(wallet, stopped, discard = { it.close() }) { reader, record, selection, root ->
+            reader.stagePayment(record, selection, root, recipient, amount, fee, quoteIdentity, prover, offer, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    suspend fun recoverPrivacyPayment(
+        wallet: WalletEntity, approvedRelay: ByteArray, stopped: () -> Boolean,
+    ): PrivacyNative.PaymentSubmission? =
+        withPrivacyStore(wallet, stopped, discard = { it?.close() }) { reader, record, selection, root ->
+            val request = org.json.JSONObject(approvedRelay.decodeToString())
+                .put("root", root.decodeToString()).toString().encodeToByteArray()
+            reader.recoverPayment(record, selection, request, stopped) { body ->
+                quantumCustody.withOriginalPrivacyMaster(record.id, record.identity, body)
+            }
+        }
+
+    /** The relay response is provisional until verified against chain history. */
+    suspend fun submitOrRetryPrivacyPayment(
+        payment: PrivacyNative.PaymentSubmission, stopped: () -> Boolean,
+    ): ByteArray = withContext(Dispatchers.IO) {
+        runInterruptible {
+            check(!stopped() && !keyguardManager.isDeviceLocked)
+            val response = payment.submitOrRetry()
+            check(!stopped() && !keyguardManager.isDeviceLocked)
+            response
+        }
+    }
+
+    private suspend fun <T> withPrivacyStore(
+        wallet: WalletEntity, stopped: () -> Boolean, discard: (T) -> Unit,
+        operation: (PrivacyBalanceReader, QuantumCreationRecord, PrivacyPoolSelection, ByteArray) -> T,
+    ): T =
+        withContext(Dispatchers.IO) {
+            val stored = checkNotNull(database.getAccount(wallet.id))
+            check(stored.identity == wallet.identity && stored.isQuantum && !keyguardManager.isDeviceLocked)
+            val id = UUID.fromString(wallet.id)
+            val record = QuantumCreationRecord.load(context, id)
+            check(record.identity == stored.quantumIdentity && quantumCustody.hasOriginalPrivacyMaster(id))
+            val selection = checkNotNull(PrivacyPoolRegistry(context).selected(record.profile))
+            val endpoint = quantumPaymentEndpoint()
+            val result = runInterruptible {
+                val parent = context.noBackupFilesDir
+                val root = java.io.File(parent, "tos-privacy")
+                try {
+                    android.system.Os.mkdir(root.absolutePath, 448) // 0700
+                } catch (error: android.system.ErrnoException) {
+                    if (error.errno != android.system.OsConstants.EEXIST) throw error
+                }
+                val fd = android.system.Os.open(parent.absolutePath,
+                    android.system.OsConstants.O_RDONLY, 0)
+                try { android.system.Os.fsync(fd) } finally { android.system.Os.close(fd) }
+                val reader = PrivacyBalanceReader(
+                    QuantumAccountReader(context, QuantumProofHttpTransport(endpoint, quantumHttpClient)),
+                    QuantumHistoryHttpTransport(endpoint, quantumHttpClient),
+                )
+                operation(reader, record, selection, root.absolutePath.toByteArray(Charsets.UTF_8))
+            }
+            try {
+                currentCoroutineContext().ensureActive()
+                check(!stopped() && !keyguardManager.isDeviceLocked)
+                check(database.getAccount(wallet.id)?.identity == stored.identity)
+                check(quantumCustody.hasOriginalPrivacyMaster(id))
+                currentCoroutineContext().ensureActive()
+                check(!stopped() && !keyguardManager.isDeviceLocked)
+                result
+            } catch (failure: Throwable) {
+                discard(result)
+                throw failure
+            }
+        }
 
     /** One frozen endpoint and one authenticated owner checkpoint for the entire asset refresh. */
     suspend fun readQuantumAssets(wallet: WalletEntity): network.tos.wallet.data.account.pq.QuantumTokenAssets =

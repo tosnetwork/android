@@ -11,6 +11,48 @@ plugins {
 val isCI = project.hasProperty("android.injected.signing.store.file")
 var isAPK = gradle.startParameter.projectProperties["isApk"]?.toBoolean() ?: false
 
+abstract class StagePrivacyReleaseAssets : DefaultTask() {
+    @get:InputDirectory
+    abstract val materialDirectory: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:javax.inject.Inject
+    abstract val fileSystem: org.gradle.api.file.FileSystemOperations
+
+    @TaskAction
+    fun stage() {
+        fileSystem.sync {
+            from(materialDirectory) {
+                include("relay.json", "pool.json", "phase1/**", "ceremony/**")
+                into("PrivacyPayment")
+            }
+            into(outputDirectory)
+        }
+    }
+}
+
+providers.gradleProperty("tosPrivacyReleaseDir").orNull?.let { path ->
+    require(providers.gradleProperty("tosPrivacyProving").orNull == "true") {
+        "tosPrivacyReleaseDir requires tosPrivacyProving=true"
+    }
+    val material = rootProject.file(path)
+    require(material.resolve("relay.json").isFile && material.resolve("pool.json").isFile &&
+        material.resolve("phase1").isDirectory && material.resolve("ceremony").isDirectory) {
+        "Privacy payment material requires relay.json, pool.json, phase1 and ceremony"
+    }
+    androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
+        val stage = tasks.register<StagePrivacyReleaseAssets>(
+            "stage${variant.name.replaceFirstChar { it.uppercaseChar() }}PrivacyReleaseAssets"
+        ) {
+            materialDirectory.set(material)
+            outputDirectory.set(layout.buildDirectory.dir("generated/privacyReleaseAssets/${variant.name}"))
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(stage, StagePrivacyReleaseAssets::outputDirectory)
+    }
+}
+
 android {
     namespace = Build.namespacePrefix("wallet")
     compileSdk = Build.compileSdkVersion
@@ -20,9 +62,9 @@ android {
         applicationId = "network.tos.wallet"
         minSdk = Build.minSdkVersion
         targetSdk = Build.compileSdkVersion
-        versionCode = 5
+        versionCode = 6
 
-        versionName = "1.0.4"
+        versionName = "1.0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

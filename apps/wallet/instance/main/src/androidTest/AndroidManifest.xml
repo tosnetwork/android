@@ -2,7 +2,7 @@
     <application>
         <provider
             android:name="network.tos.wallet.PublicBackupDocumentsProvider"
-            android:authorities="network.tos.wallet.test.public.backups"
+            android:authorities="${applicationId}.public.backups"
             android:label="Public TOS backup fixtures"
             android:exported="true"
             android:grantUriPermissions="true"

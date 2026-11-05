@@ -57,13 +57,59 @@ def build():
     if head != revision:
         raise RuntimeError('Provided proof source does not match the pinned revision')
     work = Path(os.environ.get('TOS_PROOF_BUILD_ROOT', repository / '.gradle/quantum-proof-build')).resolve()
-    host = Path(os.environ.get('TOS_PROOF_HOST_BUILD', work / 'host')).resolve()
-    if not (host / 'CMakeCache.txt').exists():
-        subprocess.run(['cmake', '-S', str(source), '-B', str(host), '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DTOS_USE_ROCKSDB=OFF', '-DTOS_USE_ABSEIL=OFF'], check=True)
+    host_name = 'host-apple' if sys.platform == 'darwin' else 'host'
+    host = Path(os.environ.get('TOS_PROOF_HOST_BUILD', work / host_name)).resolve()
+    build_env = os.environ.copy()
+    if sys.platform == 'darwin':
+        compilers = [
+            subprocess.check_output(['xcrun', '--sdk', 'macosx', '--find', name], text=True).strip()
+            for name in ('clang', 'clang++')
+        ]
+        sdk = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()
+        build_env = {**os.environ, 'PATH': str(Path(compilers[0]).parent) + os.pathsep + os.environ['PATH']}
+        if not (host / 'build.ninja').exists():
+            openssl = host / 'third-party' / 'openssl'
+            configure = [
+                'cmake', '-S', str(source), '-B', str(host), '-G', 'Ninja',
+                '-DCMAKE_BUILD_TYPE=Release', '-DTOS_USE_ROCKSDB=OFF',
+                '-DTOS_USE_ABSEIL=OFF', '-DUSE_QUIC=OFF',
+                f'-DCMAKE_C_COMPILER={compilers[0]}', f'-DCMAKE_CXX_COMPILER={compilers[1]}',
+                f'-DCMAKE_OSX_SYSROOT={sdk}',
+            ]
+            openssl_args = [
+                f'-DOPENSSL_ROOT_DIR={openssl}',
+                f'-DOPENSSL_CRYPTO_LIBRARY={openssl / "lib/libcrypto.a"}',
+                f'-DOPENSSL_SSL_LIBRARY={openssl / "lib/libssl.a"}',
+                f'-DOPENSSL_INCLUDE_DIR={openssl / "include"}',
+            ]
+            host_env = {**build_env, 'SDKROOT': sdk}
+            if not (openssl / 'lib/libcrypto.a').is_file():
+                result = subprocess.run(configure + ['-UOPENSSL_*'], env=host_env)
+                if result.returncode and not (openssl / 'lib/libcrypto.a').is_file():
+                    result.check_returncode()
+            subprocess.run(configure + openssl_args, check=True, env=host_env)
+    elif not (host / 'build.ninja').exists():
+        openssl = host / 'third-party' / 'openssl'
+        configure = [
+            'cmake', '-S', str(source), '-B', str(host), '-G', 'Ninja',
+            '-DCMAKE_BUILD_TYPE=Release', '-DTOS_USE_ROCKSDB=OFF',
+            '-DTOS_USE_ABSEIL=OFF', '-DUSE_QUIC=OFF',
+        ]
+        crypto = openssl / 'lib/libcrypto.a'
+        if not crypto.is_file():
+            result = subprocess.run(configure + ['-UOPENSSL_*'])
+            if result.returncode and not crypto.is_file():
+                result.check_returncode()
+        subprocess.run(configure + [
+            f'-DOPENSSL_ROOT_DIR={openssl}',
+            f'-DOPENSSL_CRYPTO_LIBRARY={crypto}',
+            f'-DOPENSSL_SSL_LIBRARY={openssl / "lib/libssl.a"}',
+            f'-DOPENSSL_INCLUDE_DIR={openssl / "include"}',
+        ], check=True)
     target = work / args.abi
     jobs = int(os.environ.get('TOS_PROOF_BUILD_JOBS', '4'))
     if not 1 <= jobs <= 32: raise RuntimeError('Proof build jobs must be in 1..32')
-    subprocess.run(['python3', str(source / 'scripts/build-embedded-proof-android.py'), '--ndk', str(args.ndk), '--host-build', str(host), '--build-dir', str(target), '--abi', args.abi, '--jobs', str(jobs)], check=True)
+    subprocess.run(['python3', str(source / 'scripts/build-embedded-proof-android.py'), '--ndk', str(args.ndk), '--host-build', str(host), '--build-dir', str(target), '--abi', args.abi, '--jobs', str(jobs)], check=True, env=build_env)
     library = target / 'lite-client/proof-verify/libtosproofverify.so'
     destination = args.output.resolve() / args.abi
     destination.mkdir(parents=True, exist_ok=True)
